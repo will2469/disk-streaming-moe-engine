@@ -19,7 +19,7 @@ Ringkasan gate per milestone ada di §5.2. Detail eksekusi per milestone ada di 
 | G-M0-1 | Reader | len(weight_map) nama == 4659 pada revision pin + header valid | 100% (file aktual == file index ∧ F15; ekspektasi dari index.json, bukan konstanta) | `check-index` dua-sumber |
 | G-M0-2 | Reader | predikat validitas F15 | 100% tensor lolos | unit U + P |
 | G-M0-3 | Reader | file korup → clean error, tanpa crash/hang | 20/20 mutasi lolos | fuzz F (SEC-2) |
-| G-M1-1 | Head path | MATCH strict logits | $\Delta_{max} \le 10^{-3}$; $\mathbb{A} = 100\%$ | 3 prompt × 16 token |
+| G-M1-1 | Head path | MATCH strict logits | $\Delta_{max} \le 10^{-3} \wedge \varepsilon_{rel} \le 10^{-4} \wedge \mathbb{A} = 100\%$ | 3 prompt × 16 token |
 | G-M1-2 | Head path | anggaran memori | $M_{peak} \le 3{,}5$ GiB (F1) | VmHWM |
 | G-M2-1 | Attn layer | MATCH strict (part attn) | $\Delta_{max} \le 10^{-3}$ | layer 0, 12, 23; L=16 |
 | G-M3-1 | MoE layer | MATCH strict (part moe) | $\Delta_{max} \le 10^{-3}$ | layer 0, 12, 23 |
