@@ -44,11 +44,14 @@ Ground truth: `model_config.json` + `model.safetensors.index.json` (`../01-archi
     "scope": "full" | "subset",
     "supplied_shards": ["model-00001-of-00008.safetensors"],
     "total_tensors": 4659,
+    "assessed_tensors": 4659,
     "matched_tensors": 4659,
     "mismatches": [],
     "parse_time_ms": 123.45
   }
   ```
+  `total_tensors` = `len(weight_map)` SELALU; `assessed_tensors` = yang dinilai
+  (sama dengan total di mode full, lebih kecil di subset); `matched_tensors` ⊆ assessed.
 - stderr: error message (bila ada)
 
 **Exit code:**
@@ -86,6 +89,7 @@ kimo check-index \
   "scope": "full",
   "supplied_shards": ["model-00001-of-00008.safetensors", "model-00002-of-00008.safetensors", "model-00003-of-00008.safetensors", "model-00004-of-00008.safetensors", "model-00005-of-00008.safetensors", "model-00006-of-00008.safetensors", "model-00007-of-00008.safetensors", "model-00008-of-00008.safetensors"],
   "total_tensors": 4659,
+  "assessed_tensors": 4659,
   "matched_tensors": 4659,
   "mismatches": [],
   "parse_time_ms": 892.34

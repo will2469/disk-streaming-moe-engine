@@ -6,7 +6,7 @@
 from std.sys.arg import argv
 from std.sys.terminate import exit
 from std.time import perf_counter_ns
-from safetensors import Scanner, STHeader, read_header
+from safetensors import Scanner, STHeader, json_escape, read_header
 
 
 def eprint_json(msg: String) raises:
@@ -23,28 +23,18 @@ def eprint_json(msg: String) raises:
 def err_json(
     code: String, detail: String, shard: String, tensor: String
 ) -> String:
+    # SEMUA field lolos json_escape (detail/shard/tensor bisa dari path CLI).
     return String(
         '{"error_type":"',
-        code,
+        json_escape(code),
         '","detail":"',
-        detail,
+        json_escape(detail),
         '","shard":"',
-        shard,
+        json_escape(shard),
         '","tensor_name":"',
-        tensor,
+        json_escape(tensor),
         '"}',
     )
-
-
-def json_escape(s: String) -> String:
-    var sl = s.as_bytes()
-    var out = List[UInt8]()
-    for i in range(len(sl)):
-        var b = Int(sl[i])
-        if b == 34 or b == 92:
-            out.append(92)
-        out.append(UInt8(b))
-    return String(from_utf8_lossy=Span(out))
 
 
 def basename(path: String) -> String:
@@ -113,6 +103,7 @@ def parse_index(path: String) raises -> List[String]:
     var sc = Scanner(raw^, path)
     var names = List[String]()
     var files = List[String]()
+    var seen = Dict[String, Int]()
     sc.skip_ws()
     sc.expect(123)
     while True:
@@ -157,11 +148,7 @@ def parse_index(path: String) raises -> List[String]:
                 var nm = sc.parse_string()
                 sc.expect(58)
                 var fname = sc.parse_string()
-                var dup = False
-                for i in range(len(names)):
-                    if names[i] == nm:
-                        dup = True
-                if dup:
+                if nm in seen:
                     raise Error(
                         String(
                             (
@@ -174,8 +161,20 @@ def parse_index(path: String) raises -> List[String]:
                             '"}',
                         )
                     )
+                seen[nm] = len(names)
                 names.append(nm)
                 files.append(fname)
+                if len(names) > 100000:
+                    raise Error(
+                        String(
+                            (
+                                '{"error_type":"INVALID_HEADER","detail":"weight_map'
+                                ' > 100000 entri","shard":"'
+                            ),
+                            path,
+                            '","tensor_name":""}',
+                        )
+                    )
                 sc.skip_ws()
                 if sc.eof():
                     raise Error(
@@ -266,9 +265,11 @@ def cmd_check_index(shards: List[String]) raises:
         nn = nn * 10 + (Int(cs[i]) - 48)
     var wnames = List[String]()
     var wfiles = List[String]()
+    var wpos = Dict[String, Int]()
     for i in range(nn):
         wnames.append(packed[1 + 2 * i])
         wfiles.append(packed[1 + 2 * i + 1])
+        wpos[wnames[i]] = i
     # baca header semua shard
     var headers = List[STHeader]()
     for i in range(len(shards)):
@@ -293,20 +294,18 @@ def cmd_check_index(shards: List[String]) raises:
     var scope = String("subset")
     if full:
         scope = String("full")
-    # peta global nama -> file aktual + deteksi DUPLICATE_TENSOR_NAME
+    # peta global nama -> file aktual + deteksi DUPLICATE_TENSOR_NAME (O(1) via Dict)
     var gnames = List[String]()
     var gfiles = List[String]()
+    var gpos = Dict[String, Int]()
     var mismatch = List[String]()
     for i in range(len(headers)):
         var base = basename(shards[i])
         ref st = headers[i]
         for k in range(len(st.entries)):
             ref e = st.entries[k]
-            var seen = -1
-            for g in range(len(gnames)):
-                if gnames[g] == e.name:
-                    seen = g
-            if seen >= 0:
+            if e.name in gpos:
+                var seen = gpos[e.name]
                 mismatch.append(
                     String(
                         '{"tensor_name":"',
@@ -319,22 +318,23 @@ def cmd_check_index(shards: List[String]) raises:
                     )
                 )
             else:
+                gpos[e.name] = len(gnames)
                 gnames.append(e.name)
                 gfiles.append(base)
-    # compare vs weight_map (mode full + subset; subset tak boleh sembunyikan salah tempat)
-    var total = 0
+    # compare vs weight_map (mode full + subset; subset tak boleh sembunyikan salah tempat).
+    # total_tensors = len(weight_map) SELALU; assessed = yang dinilai; matched ⊆ assessed.
+    var assessed = 0
     var matched = 0
     for i in range(nn):
         var gi = -1
-        for g in range(len(gnames)):
-            if gnames[g] == wnames[i]:
-                gi = g
+        if wnames[i] in gpos:
+            gi = gpos[wnames[i]]
         var exp_in = False
         for j in range(len(supplied)):
             if supplied[j] == wfiles[i]:
                 exp_in = True
         if exp_in:
-            total += 1
+            assessed += 1
             if gi < 0:
                 mismatch.append(
                     String(
@@ -361,7 +361,7 @@ def cmd_check_index(shards: List[String]) raises:
                 matched += 1
         elif gi >= 0:
             # subset: harapan di luar subset, tapi fisik ditemukan di pasokan -> tetap mismatch
-            total += 1
+            assessed += 1
             mismatch.append(
                 String(
                     '{"tensor_name":"',
@@ -376,11 +376,7 @@ def cmd_check_index(shards: List[String]) raises:
         # else: di luar subset dan tak ditemukan -> tidak dinilai
     # MISSING_IN_INDEX: nama di header pasokan tapi ∉ weight_map
     for g in range(len(gnames)):
-        var known = False
-        for i in range(nn):
-            if wnames[i] == gnames[g]:
-                known = True
-        if not known:
+        if gnames[g] not in wpos:
             mismatch.append(
                 String(
                     '{"tensor_name":"',
@@ -413,7 +409,9 @@ def cmd_check_index(shards: List[String]) raises:
             '","supplied_shards":[',
             sup_json,
             '],"total_tensors":',
-            total,
+            nn,
+            ',"assessed_tensors":',
+            assessed,
             ',"matched_tensors":',
             matched,
             ',"mismatches":[',

@@ -5,7 +5,24 @@
 
 Kontrak: hanya byte `[0, data_base)` yang dibaca (kontrak I/O M0).
 `data_offsets` bersifat relatif terhadap `data_base = 8 + header_len` [R7].
+
+JSON: pemindai subset terbatas (restricted scanner), BUKAN parser JSON umum.
+Didukung: objek, array, string (escape standar + \\uXXXX dengan pasangan
+surrogate tervalidasi), integer, true/false/null. Kontrol mentah
+< 0x20 selalu ditolak; fraksi/eksponen angka di luar subset. Nilai di luar
+subset → JSON_PARSE_ERROR.
 """
+
+
+def json_escape(s: String) -> String:
+    var sl = s.as_bytes()
+    var out = List[UInt8]()
+    for i in range(len(sl)):
+        var b = Int(sl[i])
+        if b == 34 or b == 92:
+            out.append(92)
+        out.append(UInt8(b))
+    return String(from_utf8_lossy=Span(out))
 
 from std.os import SEEK_END, SEEK_SET
 
@@ -25,13 +42,13 @@ struct STError(Copyable, Movable, Writable):
     def write_to(self, mut writer: Some[Writer]):
         writer.write(
             '{"error_type":"',
-            self.code,
+            json_escape(self.code),
             '","detail":"',
-            self.detail,
+            json_escape(self.detail),
             '","shard":"',
-            self.shard,
+            json_escape(self.shard),
             '","tensor_name":"',
-            self.tensor,
+            json_escape(self.tensor),
             '"}',
         )
 
@@ -201,16 +218,49 @@ struct Scanner(Movable):
                     out.append(9)
                 elif e == 117:
                     var cp = self.parse_hex4()
-                    # encode BMP codepoint as UTF-8
-                    if cp < 128:
-                        out.append(UInt8(cp))
-                    elif cp < 2048:
-                        out.append(UInt8(192 + cp // 64))
-                        out.append(UInt8(128 + cp % 64))
-                    else:
-                        out.append(UInt8(224 + cp // 4096))
-                        out.append(UInt8(128 + (cp // 64) % 64))
-                        out.append(UInt8(128 + cp % 64))
+                    if cp >= 55296 and cp <= 56319:
+                        # high surrogate: wajib diikuti \uDC00..DFFF
+                        if (
+                            self.pos + 1 >= len(self.buf)
+                            or Int(self.buf[self.pos]) != 92
+                            or Int(self.buf[self.pos + 1]) != 117
+                        ):
+                            raise Error(
+                                String(
+                                    STError(
+                                        "JSON_PARSE_ERROR",
+                                        "lone high surrogate",
+                                        self.shard,
+                                        "",
+                                    )
+                                )
+                            )
+                        self.pos += 2
+                        var lo = self.parse_hex4()
+                        if lo < 56320 or lo > 57343:
+                            raise Error(
+                                String(
+                                    STError(
+                                        "JSON_PARSE_ERROR",
+                                        "bad low surrogate",
+                                        self.shard,
+                                        "",
+                                    )
+                                )
+                            )
+                        cp = 65536 + (cp - 55296) * 1024 + (lo - 56320)
+                    elif cp >= 56320 and cp <= 57343:
+                        raise Error(
+                            String(
+                                STError(
+                                    "JSON_PARSE_ERROR",
+                                    "lone low surrogate",
+                                    self.shard,
+                                    "",
+                                )
+                            )
+                        )
+                    self.append_utf8(out, cp)
                 else:
                     raise Error(
                         String(
@@ -222,10 +272,43 @@ struct Scanner(Movable):
                             )
                         )
                     )
+            elif b < 32:
+                raise Error(
+                    String(
+                        STError(
+                            "JSON_PARSE_ERROR",
+                            String("raw control < 0x20 at ", self.pos),
+                            self.shard,
+                            "",
+                        )
+                    )
+                )
             else:
                 out.append(UInt8(b))
                 self.pos += 1
         return String(from_utf8_lossy=Span(out))
+
+    def append_utf8(self, mut out: List[UInt8], cp: Int) raises:
+        if cp < 128:
+            out.append(UInt8(cp))
+        elif cp < 2048:
+            out.append(UInt8(192 + cp // 64))
+            out.append(UInt8(128 + cp % 64))
+        elif cp < 65536:
+            out.append(UInt8(224 + cp // 4096))
+            out.append(UInt8(128 + (cp // 64) % 64))
+            out.append(UInt8(128 + cp % 64))
+        elif cp < 1114112:
+            out.append(UInt8(240 + cp // 262144))
+            out.append(UInt8(128 + (cp // 4096) % 64))
+            out.append(UInt8(128 + (cp // 64) % 64))
+            out.append(UInt8(128 + cp % 64))
+        else:
+            raise Error(
+                String(
+                    STError("JSON_PARSE_ERROR", "codepoint liar", self.shard, "")
+                )
+            )
 
     def parse_hex4(mut self) raises -> Int:
         var v = 0
@@ -260,60 +343,49 @@ struct Scanner(Movable):
 
     def skip_value(mut self) raises:
         # lewati satu nilai JSON arbitrer (untuk __metadata__ / field tak dikenal)
+        # dengan stack penutup eksplisit — struktur silang {"a":[1}} ditolak.
+        # Subset: objek, array, string, integer, true/false/null.
+        # Fraksi/eksponen angka ditolak (di luar subset; lihat docstring modul).
         self.skip_ws()
         if self.eof():
             raise Error(
                 String(
-                    STError(
-                        "JSON_PARSE_ERROR", "unexpected eof", self.shard, ""
-                    )
+                    STError("JSON_PARSE_ERROR", "unexpected eof", self.shard, "")
                 )
             )
         var b = self.peek()
         if b == 34:
             _ = self.parse_string()
-        elif b == 123 or b == 91:
-            var open_b = b
-            var close_b = 125
-            if b == 91:
-                close_b = 93
-            self.pos += 1
-            var depth = 1
-            while depth > 0:
-                if self.eof():
+            return
+        if (b >= 48 and b <= 57) or b == 45:
+            if b == 45:
+                self.pos += 1
+            _ = self.parse_uint()
+            self.skip_ws()
+            if not self.eof():
+                var c = self.peek()
+                if c == 46 or c == 69 or c == 101:
                     raise Error(
                         String(
                             STError(
                                 "JSON_PARSE_ERROR",
-                                "unterminated composite",
+                                "pecahan/eksponen di luar subset",
                                 self.shard,
                                 "",
                             )
                         )
                     )
-                var c = self.peek()
-                self.pos += 1
-                if c == 34:
-                    self.pos -= 1
-                    _ = self.parse_string()
-                elif c == open_b:
-                    depth += 1
-                elif c == close_b:
-                    depth -= 1
-                elif c == 92:
-                    # backslash di luar string: invalid, tapi hitung aman
-                    pass
-        elif (b >= 48 and b <= 57) or b == 45:
-            if b == 45:
-                self.pos += 1
-            _ = self.parse_uint()
-        elif b == 116:
+            return
+        if b == 116:
             self.expect_literal("true")
-        elif b == 102:
+            return
+        if b == 102:
             self.expect_literal("false")
-        elif b == 110:
+            return
+        if b == 110:
             self.expect_literal("null")
-        else:
+            return
+        if b != 123 and b != 91:
             raise Error(
                 String(
                     STError(
@@ -324,6 +396,77 @@ struct Scanner(Movable):
                     )
                 )
             )
+        var stack = List[Int]()
+        stack.append(b)
+        self.pos += 1
+        while len(stack) > 0:
+            if self.eof():
+                raise Error(
+                    String(
+                        STError(
+                            "JSON_PARSE_ERROR",
+                            "unterminated composite",
+                            self.shard,
+                            "",
+                        )
+                    )
+                )
+            var c = self.peek()
+            if c == 34:
+                _ = self.parse_string()
+            elif c == 123 or c == 91:
+                stack.append(c)
+                self.pos += 1
+            elif c == 125 or c == 93:
+                var want = 125
+                if stack[len(stack) - 1] == 91:
+                    want = 93
+                if c != want:
+                    raise Error(
+                        String(
+                            STError(
+                                "JSON_PARSE_ERROR",
+                                String("tutup silang at ", self.pos),
+                                self.shard,
+                                "",
+                            )
+                        )
+                    )
+                _ = stack.pop()
+                self.pos += 1
+            elif c == 44 or c == 58:
+                self.pos += 1
+            elif (c >= 48 and c <= 57) or c == 45:
+                if c == 45:
+                    self.pos += 1
+                _ = self.parse_uint()
+                self.skip_ws()
+                if not self.eof():
+                    var d = self.peek()
+                    if d == 46 or d == 69 or d == 101:
+                        raise Error(
+                            String(
+                                STError(
+                                    "JSON_PARSE_ERROR",
+                                    "pecahan/eksponen di luar subset",
+                                    self.shard,
+                                    "",
+                                )
+                            )
+                        )
+            elif c == 32 or c == 10 or c == 13 or c == 9:
+                self.pos += 1
+            else:
+                raise Error(
+                    String(
+                        STError(
+                            "JSON_PARSE_ERROR",
+                            String("byte liar at ", self.pos),
+                            self.shard,
+                            "",
+                        )
+                    )
+                )
 
     def expect_literal(mut self, word: String) raises:
         var wb = word.as_bytes()

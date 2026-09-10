@@ -47,18 +47,33 @@ fn hash_file(path: &std::path::Path) -> std::io::Result<String> {
     Ok(hex(&h.finalize()))
 }
 
-/// Verifikasi dir terhadap lock. Keluar via exit code (0 ok/skipped, 2 tolak).
-pub fn run(args: &[String]) {
+/// Verifikasi dir terhadap lock. Kembalikan exit code (0 ok/skipped, 2 tolak).
+/// Tanpa unwrap/exit di tengah: semua kegagalan mengalir sebagai nilai.
+pub fn run(args: &[String]) -> i32 {
     let mut lock = String::new();
     let mut dir = String::new();
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
-            "--lock" => lock = it.next().cloned().unwrap_or_default(),
-            "--dir" => dir = it.next().cloned().unwrap_or_default(),
+            "--lock" => {
+                if let Some(v) = it.next() {
+                    lock = v.clone();
+                } else {
+                    eprintln!(r#"{{"error_type":"USAGE","detail":"--lock butuh nilai"}}"#);
+                    return 2;
+                }
+            }
+            "--dir" => {
+                if let Some(v) = it.next() {
+                    dir = v.clone();
+                } else {
+                    eprintln!(r#"{{"error_type":"USAGE","detail":"--dir butuh nilai"}}"#);
+                    return 2;
+                }
+            }
             x => {
                 eprintln!(r#"{{"error_type":"USAGE","detail":"flag tak dikenal: {x}"}}"#);
-                std::process::exit(2);
+                return 2;
             }
         }
     }
@@ -66,16 +81,22 @@ pub fn run(args: &[String]) {
         eprintln!(
             r#"{{"error_type":"USAGE","detail":"pakai: kimo-tools verify --lock <models.lock.json> --dir <model-dir>"}}"#
         );
-        std::process::exit(2);
+        return 2;
     }
-    let text = std::fs::read_to_string(&lock).unwrap_or_else(|_| {
-        eprintln!(r#"{{"error_type":"FILE_NOT_FOUND","detail":"lock tak terbaca"}}"#);
-        std::process::exit(2);
-    });
-    let lock: Lock = serde_json::from_str(&text).unwrap_or_else(|_| {
-        eprintln!(r#"{{"error_type":"INVALID_HEADER","detail":"lock JSON invalid"}}"#);
-        std::process::exit(2);
-    });
+    let text = match std::fs::read_to_string(&lock) {
+        Ok(t) => t,
+        Err(_) => {
+            eprintln!(r#"{{"error_type":"FILE_NOT_FOUND","detail":"lock tak terbaca"}}"#);
+            return 2;
+        }
+    };
+    let lock: Lock = match serde_json::from_str(&text) {
+        Ok(l) => l,
+        Err(_) => {
+            eprintln!(r#"{{"error_type":"INVALID_HEADER","detail":"lock JSON invalid"}}"#);
+            return 2;
+        }
+    };
     let root = std::path::Path::new(&dir);
     let mut checked = 0u32;
     let mut skipped = 0u32;
@@ -110,6 +131,7 @@ pub fn run(args: &[String]) {
         println!(
             r#"{{"status":"{status}","model":"{model}","revision":"{revision}","checked":{checked},"skipped":{skipped},"mismatches":[]}}"#
         );
+        0
     } else {
         let mut items = String::new();
         for (i, (f, exp, got)) in bad.iter().enumerate() {
@@ -124,7 +146,7 @@ pub fn run(args: &[String]) {
         println!(
             r#"{{"status":"mismatch","checked":{checked},"skipped":{skipped},"mismatches":[{items}]}}"#
         );
-        std::process::exit(2);
+        2
     }
 }
 

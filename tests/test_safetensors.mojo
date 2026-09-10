@@ -4,24 +4,32 @@
 """Unit tests parser safetensors + F15 (M0-W1). Jalankan: mojo run tests/test_safetensors.mojo."""
 
 from std.testing import assert_equal, assert_raises, TestSuite
-from safetensors import read_header
+from safetensors import json_escape, read_header
 
 
-def write_shard(path: String, header: String, payload_len: Int) raises:
+def write_shard_bytes(path: String, header: List[UInt8], payload_len: Int) raises:
     var f = open(path, "w")
-    var n = header.byte_length()
+    var n = len(header)
     var prefix = List[UInt8]()
     var mult = 1
     for _ in range(8):
         prefix.append(UInt8((n // mult) % 256))
         mult = mult * 256
     f.write_all(Span(prefix))
-    f.write_all(header.as_bytes())
+    f.write_all(Span(header))
     var zeros = List[UInt8]()
     for _ in range(payload_len):
         zeros.append(0)
     f.write_all(Span(zeros))
     f.close()
+
+
+def write_shard(path: String, header: String, payload_len: Int) raises:
+    var hb = header.as_bytes()
+    var buf = List[UInt8]()
+    for i in range(len(hb)):
+        buf.append(hb[i])
+    write_shard_bytes(path, buf, payload_len)
 
 
 def test_valid_two_tensors() raises:
@@ -199,6 +207,54 @@ def test_bad_arity() raises:
     write_shard("/tmp/kimo_t13.st", h, 8)
     with assert_raises(contains="JSON_PARSE_ERROR"):
         _ = read_header("/tmp/kimo_t13.st")
+
+
+def test_control_rejected() raises:
+    # kontrol mentah 0x01 dalam nama -> tolak (JSON valid melarang < 0x20)
+    var js = String('{"t":{"dtype":"BF16","shape":[4],"data_offsets":[0,8]}}')
+    var hb = js.as_bytes()
+    var buf = List[UInt8]()
+    for i in range(len(hb)):
+        buf.append(hb[i])
+    buf[2] = 1
+    write_shard_bytes("/tmp/kimo_t14.st", buf, 8)
+    with assert_raises(contains="JSON_PARSE_ERROR"):
+        _ = read_header("/tmp/kimo_t14.st")
+
+
+def test_lone_surrogate() raises:
+    var js = String('{"\\ud800":{"dtype":"BF16","shape":[1],"data_offsets":[0,2]}}')
+    write_shard("/tmp/kimo_t15.st", js, 2)
+    with assert_raises(contains="surrogate"):
+        _ = read_header("/tmp/kimo_t15.st")
+
+
+def test_surrogate_pair() raises:
+    # U+1F600 via pasangan -> nama 4 byte, diterima
+    var js = String('{"\\ud83d\\ude00":{"dtype":"BF16","shape":[1],"data_offsets":[0,2]}}')
+    write_shard("/tmp/kimo_t16.st", js, 2)
+    var st = read_header("/tmp/kimo_t16.st")
+    assert_equal(len(st.entries), 1)
+    assert_equal(st.entries[0].name.byte_length(), 4)
+
+
+def test_cross_nesting() raises:
+    # {"a": [1}} silang di field tak dikenal -> tolak (stack penutup)
+    var js = String('{"t":{"dtype":"BF16","shape":[1],"data_offsets":[0,2],"x":{"a":[1}}}}')
+    write_shard("/tmp/kimo_t17.st", js, 2)
+    with assert_raises(contains="JSON_PARSE_ERROR"):
+        _ = read_header("/tmp/kimo_t17.st")
+
+
+def test_escape_roundtrip() raises:
+    var raw = List[UInt8]()
+    raw.append(97)
+    raw.append(34)
+    raw.append(98)
+    raw.append(92)
+    raw.append(99)
+    var got = json_escape(String(from_utf8_lossy=Span(raw)))
+    assert_equal(got, String('a\\"b\\\\c'))
 
 
 def test_prop_random_valid() raises:
