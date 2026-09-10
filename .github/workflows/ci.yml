@@ -23,6 +23,9 @@ jobs:
       - uses: actions/checkout@v4
       # Angka core absolut dilarang di docs/ (prinsip 1-device, §5.1)
       - run: "! grep -rniE '(^|[[:space:]])[0-9]+[- ]cores?\b' docs/"
+      # Atribut allow/supresi dilarang (perbaiki kode, jangan bungkam linter)
+      - run: "! grep -rn '#\\[allow(' --include='*.rs' ."
+      - run: "! grep -rn 'noqa' --include='*.py' ."
 
   rust:
     runs-on: ubuntu-latest

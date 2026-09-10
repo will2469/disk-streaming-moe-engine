@@ -2,8 +2,19 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // See LICENSE for details.
 
-//! kimo-tools: orchestration/verification (M0-W0 skeleton).
+//! kimo-tools: orchestration/verification (dispatcher subcommand).
+
+mod verify;
 
 fn main() {
-    println!("kimo-tools skeleton: M0-W0");
+    let args: Vec<String> = std::env::args().collect();
+    match args.get(1).map(|s| s.as_str()) {
+        Some("verify") => verify::run(&args[2..]),
+        _ => {
+            eprintln!(
+                r#"{{"error_type":"USAGE","detail":"pakai: kimo-tools verify --lock <models.lock.json> --dir <model-dir>"}}"#
+            );
+            std::process::exit(2);
+        }
+    }
 }

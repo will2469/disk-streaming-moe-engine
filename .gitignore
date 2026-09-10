@@ -26,6 +26,7 @@ __pycache__/
 *.so
 build/
 dist/
+/kimo
 
 # Benchmark + measurement scratch (laporan resmi tetap ter-commit di reports/)
 *.prof

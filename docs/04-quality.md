@@ -63,7 +63,7 @@ Catatan scope angka absolut: threshold seperti $BW_{seq}\ge2{,}5$ GB/s, $\ge2$ t
 ## 5.3 Quality Gates Umum (lintas milestone)
 
 1. **Determinisme**: verdict numerik reproducible — ulang 5× hasil identik (seed + threads lock).
-2. **Hygiene kode**: tidak ada `panic` di data path (semua error lewat Result/errno-style); tidak ada `unwrap` di parser; `mojo format` & `ruff` bersih; complexity ≤ 15 per fungsi (Rust: clippy cognitive via `clippy.toml`; Python: ruff McCabe C901 via `ruff.toml`; Mojo: belum ada tool → review manual saat skill `mojo-1-0` aktif).
+2. **Hygiene kode**: tidak ada `panic` di data path (semua error lewat Result/errno-style); tidak ada `unwrap` di parser; `mojo format` & `ruff` bersih; complexity ≤ 15 per fungsi (Rust: clippy cognitive via `clippy.toml`; Python: ruff McCabe C901 via `ruff.toml`; Mojo: belum ada tool → review manual saat skill `mojo-1-0` aktif); atribut supresi (`#[allow]`, `noqa`, dkk) dilarang — perbaiki kode, pengecualian butuh justifikasi tercatat.
 3. **Bukti ter-commit**: setiap milestone melampirkan laporan run-id + kalibrasi; klaim tanpa run-id ditolak review.
 4. **Regresi senyap**: perubahan golden hash tanpa justifikasi = blocking (juga SEC-6).
 5. **Dokumen hidup**: README/spec diperbarui di milestone yang mengubah perilaku atau konstanta.

@@ -128,5 +128,100 @@ def test_file_not_found() raises:
         _ = read_header("/tmp/kimo_tidak_ada.st")
 
 
+struct LCG(Movable):
+    """RNG deterministik untuk property test (pengganti hypothesis: offline, seed tetap)."""
+
+    var s: Int
+
+    def __init__(out self, seed: Int):
+        self.s = seed
+
+    def below(mut self, n: Int) -> Int:
+        self.s = (self.s * 1103515245 + 12345) % 2147483648
+        return self.s % n
+
+
+def build_case(mut rng: LCG, corrupt: Int, mut payload: List[Int]) -> String:
+    var dtypes = List[String]()
+    dtypes.append("BF16")
+    dtypes.append("F32")
+    dtypes.append("F16")
+    dtypes.append("F64")
+    var nt = 1 + rng.below(4)
+    var js = String("{")
+    var off = 0
+    for i in range(nt):
+        if i > 0:
+            js += ","
+        var dt = dtypes[rng.below(4)]
+        var dim = 1 + rng.below(8)
+        var sz = 2
+        if dt == "F32":
+            sz = 4
+        elif dt == "F64":
+            sz = 8
+        var ln = dim * sz
+        var b = off
+        var e = off + ln
+        if corrupt == 1 and i == nt - 1 and nt > 1:
+            b += 1  # lubang 1 byte di tensor terakhir
+            e += 1
+        elif corrupt == 2 and i == nt - 1 and nt > 1:
+            b -= 1  # overlap 1 byte, panjang dijaga (e ikut geser)
+            e -= 1
+        elif corrupt == 3 and i == 0:
+            b = e + 1  # BEGIN > END
+        js += String(
+            '"t', i, '":{"dtype":"', dt, '","shape":[', dim, '],"data_offsets":[', b, ",", e, "]}"
+        )
+        off = e
+    js += "}"
+    payload.append(off)
+    payload.append(nt)
+    return js
+
+
+def test_missing_field() raises:
+    var h = String('{"t":{"dtype":"BF16","shape":[4]}}')
+    write_shard("/tmp/kimo_t11.st", h, 8)
+    with assert_raises(contains="INVALID_HEADER"):
+        _ = read_header("/tmp/kimo_t11.st")
+
+
+def test_not_json() raises:
+    write_shard("/tmp/kimo_t12.st", String("not json!!"), 0)
+    with assert_raises(contains="JSON_PARSE_ERROR"):
+        _ = read_header("/tmp/kimo_t12.st")
+
+
+def test_bad_arity() raises:
+    var h = String('{"t":{"dtype":"BF16","shape":[4],"data_offsets":[0]}}')
+    write_shard("/tmp/kimo_t13.st", h, 8)
+    with assert_raises(contains="JSON_PARSE_ERROR"):
+        _ = read_header("/tmp/kimo_t13.st")
+
+
+def test_prop_random_valid() raises:
+    var rng = LCG(42)
+    for trial in range(20):
+        var payload = List[Int]()
+        var js = build_case(rng, 0, payload)
+        var path = String("/tmp/kimo_pv", trial, ".st")
+        write_shard(path, js, payload[0])
+        var st = read_header(path)
+        assert_equal(len(st.entries), payload[1])
+
+
+def test_prop_random_invalid() raises:
+    var rng = LCG(1337)
+    for trial in range(20):
+        var payload = List[Int]()
+        var js = build_case(rng, 1 + trial % 3, payload)
+        var path = String("/tmp/kimo_pi", trial, ".st")
+        write_shard(path, js, payload[0])
+        with assert_raises(contains="OFFSET_OVERFLOW"):
+            _ = read_header(path)
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

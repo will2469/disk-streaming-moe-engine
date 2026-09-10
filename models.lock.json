@@ -1,7 +1,8 @@
 {
   "model": "Qwen/Qwen1.5-MoE-A2.7B-Chat",
   "revision": "ec052fda178e241c7c443468d2fa1db6618996be",
-  "note": "Skeleton M0-W0: sha256/size diisi bertahap W3 setelah shard terverifikasi. JANGAN isi karangan.",
+  "total_size": 28631568384,
+  "note": "Skeleton M0-W0/W3: sha256/size per shard diisi setelah shard terverifikasi (scratch/download-shards.md langkah 3). JANGAN isi karangan.",
   "shards": [
     {"filename": "model-00001-of-00008.safetensors", "sha256": "TBD-W3", "size": null},
     {"filename": "model-00002-of-00008.safetensors", "sha256": "TBD-W3", "size": null},

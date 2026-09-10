@@ -1,0 +1,128 @@
+[
+  {
+    "file": "00_valid.st",
+    "want_exit": 0,
+    "want_err": "",
+    "size": 137
+  },
+  {
+    "file": "01_empty_valid.st",
+    "want_exit": 0,
+    "want_err": "",
+    "size": 128
+  },
+  {
+    "file": "02_unknown_field_ok.st",
+    "want_exit": 0,
+    "want_err": "",
+    "size": 126
+  },
+  {
+    "file": "03_empty_file.st",
+    "want_exit": 2,
+    "want_err": "INVALID_HEADER",
+    "size": 0
+  },
+  {
+    "file": "04_short_prefix.st",
+    "want_exit": 2,
+    "want_err": "INVALID_HEADER",
+    "size": 2
+  },
+  {
+    "file": "05_huge_len.st",
+    "want_exit": 2,
+    "want_err": "INVALID_HEADER",
+    "size": 10
+  },
+  {
+    "file": "06_not_json.st",
+    "want_exit": 2,
+    "want_err": "JSON_PARSE_ERROR",
+    "size": 18
+  },
+  {
+    "file": "07_truncated.st",
+    "want_exit": 2,
+    "want_err": "INVALID_HEADER",
+    "size": 13
+  },
+  {
+    "file": "08_begin_gt_end.st",
+    "want_exit": 2,
+    "want_err": "OFFSET_OVERFLOW",
+    "size": 79
+  },
+  {
+    "file": "09_negative.st",
+    "want_exit": 2,
+    "want_err": "JSON_PARSE_ERROR",
+    "size": 80
+  },
+  {
+    "file": "10_overflow_filesize.st",
+    "want_exit": 2,
+    "want_err": "OFFSET_OVERFLOW",
+    "size": 77
+  },
+  {
+    "file": "11_hole.st",
+    "want_exit": 2,
+    "want_err": "OFFSET_OVERFLOW",
+    "size": 139
+  },
+  {
+    "file": "12_overlap.st",
+    "want_exit": 2,
+    "want_err": "OFFSET_OVERFLOW",
+    "size": 130
+  },
+  {
+    "file": "13_dtype_asing.st",
+    "want_exit": 2,
+    "want_err": "UNKNOWN_DTYPE",
+    "size": 69
+  },
+  {
+    "file": "14_dtype_lower.st",
+    "want_exit": 2,
+    "want_err": "UNKNOWN_DTYPE",
+    "size": 71
+  },
+  {
+    "file": "15_layout_mismatch.st",
+    "want_exit": 2,
+    "want_err": "LAYOUT_MISMATCH",
+    "size": 71
+  },
+  {
+    "file": "16_dup_key.st",
+    "want_exit": 2,
+    "want_err": "DUPLICATE_JSON_KEY",
+    "size": 134
+  },
+  {
+    "file": "17_shape_neg.st",
+    "want_exit": 2,
+    "want_err": "JSON_PARSE_ERROR",
+    "size": 72
+  },
+  {
+    "file": "18_missing_field.st",
+    "want_exit": 2,
+    "want_err": "INVALID_HEADER",
+    "size": 50
+  },
+  {
+    "file": "19_bad_arity.st",
+    "want_exit": 2,
+    "want_err": "JSON_PARSE_ERROR",
+    "size": 69
+  },
+  {
+    "file": "20_garbage.st",
+    "want_exit": 2,
+    "want_err": "INVALID_HEADER",
+    "size": 1024
+  }
+]

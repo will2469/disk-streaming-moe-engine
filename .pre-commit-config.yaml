@@ -62,3 +62,17 @@ repos:
           exit 0' --
         language: system
         files: ^docs/
+      # Hygiene: atribut allow/supresi dilarang (dead_code, unused_*, noqa, ...).
+      # Perbaiki kode, jangan bungkam linter. Pengecualian butuh justifikasi + catat di spec.
+      - id: no-allow-attributes
+        name: no allow/noqa suppressions
+        entry: >
+          bash -c 'grep -rn "#\[allow(" "$@" && { echo "FAIL: #[allow] dilarang, perbaiki kodenya" >&2; exit 1; } || exit 0' --
+        language: system
+        types: [rust]
+      - id: no-noqa-comments
+        name: no noqa suppressions
+        entry: >
+          bash -c 'grep -rn "noqa" "$@" && { echo "FAIL: noqa dilarang, perbaiki kodenya" >&2; exit 1; } || exit 0' --
+        language: system
+        types: [python]
