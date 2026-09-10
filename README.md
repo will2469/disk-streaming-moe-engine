@@ -27,6 +27,12 @@ cargo test --manifest-path tools/kimo-tools/Cargo.toml
 uv tool install pre-commit && pre-commit install
 ```
 
+Commit selalu via wrapper (semantik lint-staged — format → stage → valid → done):
+
+```bash
+git add <file> && scripts/commit.sh "pesan"
+```
+
 Model (28,6 GB, di luar repo): lihat `scratch/download-shards.md` — metadata dulu,
 shard nyicil; `~/models/`, revision ter-pin di `models.lock.json`.
 
