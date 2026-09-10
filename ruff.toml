@@ -1,0 +1,8 @@
+# ruff — lint Python oracle/tooling (dijalankan via uvx ruff / pre-commit).
+# C901 = McCabe complexity ≤ 15 (proksi complexity; cognitive-complexity
+# khusus Python belum ada di toolchain ini). E501 = max 88 kolom.
+[lint]
+select = ["E", "F", "C901"]
+
+[lint.mccabe]
+max-complexity = 15

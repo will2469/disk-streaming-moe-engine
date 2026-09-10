@@ -1,0 +1,3 @@
+# clippy — ambang complexity proyek (hygiene §5.3).
+# cognitive-complexity default clippy = 25; proyek menuntut ≤ 15.
+cognitive-complexity-threshold = 15

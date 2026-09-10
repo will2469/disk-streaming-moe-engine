@@ -1,0 +1,51 @@
+# CI minimal gate — fmt + test + docs.
+# Kebijakan: job kode aktif hanya bila manifestnya ada (skeleton M0),
+# agar CI hijau sejak hari pertama tanpa mengorbankan gate.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  docs-links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv run --python 3.12 scripts/check-doc-links.py
+
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Angka core absolut dilarang di docs/ (prinsip 1-device, §5.1)
+      - run: "! grep -rniE '(^|[[:space:]])[0-9]+[- ]cores?\b' docs/"
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+        if: hashFiles('**/Cargo.toml') != ''
+      - run: cargo clippy --all-targets -- -D warnings
+        if: hashFiles('**/Cargo.toml') != ''
+      - run: cargo test
+        if: hashFiles('**/Cargo.toml') != ''
+
+  oracle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uvx ruff@0.8.4 check . && uvx ruff@0.8.4 format --check .
+        if: hashFiles('**/*.py') != ''
+      - run: uv run --python 3.12 --with pytest pytest -q
+        if: hashFiles('tests/**/*.py') != ''

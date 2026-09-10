@@ -1,0 +1,38 @@
+# Model weights — SELALU di luar repo (~/models). Hook large-files + baris ini
+# pengaman ganda agar checkpoint tidak pernah ter-commit.
+/models/
+*.safetensors
+
+# Scratch — catatan kerja lokal
+/scratch/
+
+# Rust (Cargo.lock WAJIB ter-commit: tooling biner, reproducibility per spec §4.6)
+/target/
+**/*.rs.bk
+.ruff_cache/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# pixi / conda
+.pixi/
+*.conda
+
+# Mojo / MAX build outputs
+*.o
+*.so
+build/
+dist/
+
+# Benchmark + measurement scratch (laporan resmi tetap ter-commit di reports/)
+*.prof
+.perf/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+*~

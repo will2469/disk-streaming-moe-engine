@@ -1,0 +1,64 @@
+# pre-commit — hygiene minimal sebelum commit.
+# Install: `uv tool install pre-commit && pre-commit install`
+# (atau via pixi task setelah pixi.toml ada). Jalan manual: `pre-commit run --all-files`.
+# Kebijakan Python: uv/uvx, bukan Python sistem (PEP 668).
+# Prinsip §5.3 butir 7: mojo format + ruff bersih; fmt Rust; docs tanpa angka core absolut.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=5120']
+      - id: check-merge-conflict
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        args: ['--fix']
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      # Rust fmt — tooling biner kimo-tools
+      - id: cargo-fmt
+        name: cargo fmt --check
+        entry: cargo fmt --all -- --check
+        language: system
+        types: [rust]
+        pass_filenames: false
+      # Rust complexity — clippy cognitive ≤15 (clippy.toml); skip bila belum ada manifest
+      - id: cargo-clippy-cognit
+        name: cargo clippy cognitive-complexity ≤15
+        entry: >
+          bash -c 'command -v cargo >/dev/null || exit 0;
+          cargo metadata --no-deps --format-version 1 >/dev/null 2>&1 || exit 0;
+          exec cargo clippy --all-targets -- -D warnings' --
+        language: system
+        types: [rust]
+        pass_filenames: false
+      # Mojo complexity — BELUM ADA tool (tercatat, bukan diabaikan):
+      # tidak ada linter complexity untuk Mojo 1.0; gantinya review manual
+      # saat skill mojo-1-0 aktif + batas fungsi kecil via review.
+      # Mojo fmt — 1.0 tidak punya --check, jadi hook memformat in-place
+      # (pre-commit melaporkan file termodifikasi); CI yang memverifikasi via diff.
+      - id: mojo-format
+        name: mojo format
+        entry: >
+          bash -c 'command -v mojo >/dev/null ||
+          { echo "mojo missing, skip"; exit 0; };
+          exec mojo format "$@"' --
+        language: system
+        files: \.mojo$
+      # Hygiene spec: angka core absolut dilarang di docs/ (prinsip 1-device, §5.1)
+      - id: no-absolute-cores-in-docs
+        name: no absolute core counts in docs/
+        entry: >
+          bash -c 'grep -rniE "(^|[[:space:]])[0-9]+[- ]cores?\b" "$@" &&
+          { echo "FAIL: angka core absolut dilarang di docs/" >&2; exit 1; } ||
+          exit 0' --
+        language: system
+        files: ^docs/
