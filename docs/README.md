@@ -1,8 +1,5 @@
 # Spec — `disk-streaming-moe-engine`
 
-> v0.2 (refined) · 2026-09-10 · Target HW: 8 GB RAM, CPU, NVMe SSD.
-> Hasil split dari `docs/SPEC.md` (lama) berdasarkan milestone. Nama proyek lama `qwen-moe-in-mojo` sudah di-rename menjadi `disk-streaming-moe-engine` di seluruh dokumen ini.
-
 Kontrak: setiap klaim "benar / lolos" = (1) rumus + (2) threshold + (3) metode ukur yang bisa diulang. Rumus tanpa ukur = opini; ukur tanpa rumus = tebakan.
 
 ## Peta Dokumen
@@ -21,22 +18,22 @@ Kontrak: setiap klaim "benar / lolos" = (1) rumus + (2) threshold + (3) metode u
 
 **Trial inti (correctness):**
 
-- `milestones/M0-reader.md` — reader multi-shard → G-M0-*
-- `milestones/M1-head-path.md` — embed → norm → lm_head → G-M1-*
-- `milestones/M2-attention.md` — attention 1 layer → G-M2-*
-- `milestones/M3-moe.md` — MoE 1 layer (paling kritis) → G-M3-*
-- `milestones/M4-full-forward.md` — full 24 layer streaming → G-M4-*
+- `milestones/M0-reader.md` — reader multi-shard → G-M0-\*
+- `milestones/M1-head-path.md` — embed → norm → lm_head → G-M1-\*
+- `milestones/M2-attention.md` — attention 1 layer → G-M2-\*
+- `milestones/M3-moe.md` — MoE 1 layer (paling kritis) → G-M3-\*
+- `milestones/M4-full-forward.md` — full 24 layer streaming → G-M4-\*
 
 **Trial rekayasa (performa):**
 
-- `milestones/M5-kv-decode.md` — KV + decode → G-M5-*
-- `milestones/M6-quantizer.md` — quant 4-bit sendiri → G-M6-*
-- `milestones/M7-odirect-lru.md` — O_DIRECT + LRU → G-M7-*
+- `milestones/M5-kv-decode.md` — KV + decode → G-M5-\*
+- `milestones/M6-quantizer.md` — quant 4-bit sendiri → G-M6-\*
+- `milestones/M7-odirect-lru.md` — O_DIRECT + LRU → G-M7-\*
 
 **Frontier:**
 
-- `milestones/M8-gdn.md` — Gated DeltaNet → G-M8-*
-- `milestones/M9-port.md` — port Qwen3.6-35B-A3B → G-M9-*
+- `milestones/M8-gdn.md` — Gated DeltaNet → G-M8-\*
+- `milestones/M9-port.md` — port Qwen3.6-35B-A3B → G-M9-\*
 
 ### Lampiran
 
@@ -61,9 +58,3 @@ Kontrak: setiap klaim "benar / lolos" = (1) rumus + (2) threshold + (3) metode u
 3. `router-selection` FAIL = root-cause, bukan naikkan threshold.
 4. Setiap milestone: gate hijau + laporan run-id + kalibrasi + update docs bila perilaku berubah.
 5. Angka estimasi (TBM, placeholder $T_{comp}$) tidak boleh dipakai sebagai bukti acceptance.
-
-## Rename
-
-- `qwen-moe-in-mojo` → `disk-streaming-moe-engine` (seluruh spec ini).
-- Struktur lama `docs/SPEC.md` → folder `docs/spec/` ini.
-- Nama teknis (`bin/kimo`, `tools/kimo-tools`, `kimi-k3-in-c`, config Qwen) dipertahankan apa adanya karena merujuk artefak/kode, bukan nama proyek.

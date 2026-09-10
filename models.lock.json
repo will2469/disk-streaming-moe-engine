@@ -1,0 +1,15 @@
+{
+  "model": "Qwen/Qwen1.5-MoE-A2.7B-Chat",
+  "revision": "ec052fda178e241c7c443468d2fa1db6618996be",
+  "note": "Skeleton M0-W0: sha256/size diisi bertahap W3 setelah shard terverifikasi. JANGAN isi karangan.",
+  "shards": [
+    {"filename": "model-00001-of-00008.safetensors", "sha256": "TBD-W3", "size": null},
+    {"filename": "model-00002-of-00008.safetensors", "sha256": "TBD-W3", "size": null},
+    {"filename": "model-00003-of-00008.safetensors", "sha256": "TBD-W3", "size": null},
+    {"filename": "model-00004-of-00008.safetensors", "sha256": "TBD-W3", "size": null},
+    {"filename": "model-00005-of-00008.safetensors", "sha256": "TBD-W3", "size": null},
+    {"filename": "model-00006-of-00008.safetensors", "sha256": "TBD-W3", "size": null},
+    {"filename": "model-00007-of-00008.safetensors", "sha256": "TBD-W3", "size": null},
+    {"filename": "model-00008-of-00008.safetensors", "sha256": "TBD-W3", "size": null}
+  ]
+}

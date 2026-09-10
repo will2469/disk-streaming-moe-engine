@@ -1,0 +1,16 @@
+[workspace]
+name = "disk-streaming-moe-engine"
+version = "0.1.0"
+description = "MoE streaming inference engine (Mojo 1.0.0) — trial Qwen1.5-MoE-A2.7B-Chat"
+authors = ["will2469 <will.i.is.ega@gmail.com>"]
+channels = ["https://conda.modular.com/max/", "conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+# Pin eksak Mojo 1.0.0 stable (K6). Nightly (1.1.0.dev) dilarang untuk engine.
+mojo = "==1.0.0"
+
+[tasks]
+check = "mojo --version"
+fmt = "mojo format src tests"
+test-m0 = "mojo run -I src tests/test_safetensors.mojo"

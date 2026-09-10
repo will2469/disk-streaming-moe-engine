@@ -1,0 +1,6 @@
+[package]
+name = "kimo-tools"
+version = "0.1.0"
+edition = "2021"
+
+# [dependencies] menyusul W1+ (saat ini tanpa dependensi eksternal)

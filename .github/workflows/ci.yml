@@ -26,11 +26,15 @@ jobs:
 
   rust:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        # Manifest Rust di subdir (bukan root)
+        working-directory: tools/kimo-tools
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
+          components: rustfmt, clippy
       - run: cargo fmt --all -- --check
         if: hashFiles('**/Cargo.toml') != ''
       - run: cargo clippy --all-targets -- -D warnings

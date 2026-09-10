@@ -7,7 +7,7 @@
 /scratch/
 
 # Rust (Cargo.lock WAJIB ter-commit: tooling biner, reproducibility per spec §4.6)
-/target/
+target/
 **/*.rs.bk
 .ruff_cache/
 
@@ -34,5 +34,6 @@ dist/
 # OS / editor
 .DS_Store
 .vscode/
+!.vscode/settings.json
 .idea/
 *~

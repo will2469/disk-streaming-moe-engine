@@ -23,10 +23,10 @@ repos:
 
   - repo: local
     hooks:
-      # Rust fmt — tooling biner kimo-tools
+      # Rust fmt — tooling biner kimo-tools (manifest di subdir, bukan root)
       - id: cargo-fmt
         name: cargo fmt --check
-        entry: cargo fmt --all -- --check
+        entry: cargo fmt --manifest-path tools/kimo-tools/Cargo.toml -- --check
         language: system
         types: [rust]
         pass_filenames: false
@@ -35,8 +35,8 @@ repos:
         name: cargo clippy cognitive-complexity ≤15
         entry: >
           bash -c 'command -v cargo >/dev/null || exit 0;
-          cargo metadata --no-deps --format-version 1 >/dev/null 2>&1 || exit 0;
-          exec cargo clippy --all-targets -- -D warnings' --
+          cargo metadata --manifest-path tools/kimo-tools/Cargo.toml --no-deps --format-version 1 >/dev/null 2>&1 || exit 0;
+          exec cargo clippy --manifest-path tools/kimo-tools/Cargo.toml --all-targets -- -D warnings' --
         language: system
         types: [rust]
         pass_filenames: false
