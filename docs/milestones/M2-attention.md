@@ -29,7 +29,7 @@ Membuktikan kernel attention trial benar: MHA 16 head × 128, **QKV bias ada**, 
 
 - `activation.bin` (activation input, binary fp32, shape: [L, hidden_dim] = [16, 2048])
 - Layer number: `--layer 0|12|23` (command line arg)
-- 3 path shard safetensors (command line args)
+- N path shard safetensors, N ≥ 1 (command line args)
 - `model.safetensors.index.json` (auto-discovered di directory yang sama)
 
 **Output:**
@@ -57,6 +57,7 @@ Membuktikan kernel attention trial benar: MHA 16 head × 128, **QKV bias ada**, 
 **Contoh penggunaan:**
 
 ```bash
+# contoh fixture synthetic; checkpoint asli 8 shard
 kimo layer --layer 0 activation.bin shard-00001-of-00003.safetensors shard-00002-of-00003.safetensors shard-00003-of-00003.safetensors
 ```
 

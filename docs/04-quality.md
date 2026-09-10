@@ -16,7 +16,7 @@ Ringkasan gate per milestone ada di §5.2. Detail eksekusi per milestone ada di 
 
 | Gate | Milestone | Kriteria | Rumus / Threshold | Metode |
 |---|---|---|---|---|
-| G-M0-1 | Reader | metadata 4.659 tensor == index (nama → shard, dtype, shape) | 100% match | `check-index` vs `weight_map` |
+| G-M0-1 | Reader | len(weight_map) nama == 4659 pada revision pin + header valid | 100% (file aktual == file index ∧ F15; ekspektasi dari index.json, bukan konstanta) | `check-index` dua-sumber |
 | G-M0-2 | Reader | predikat validitas F15 | 100% tensor lolos | unit U + P |
 | G-M0-3 | Reader | file korup → clean error, tanpa crash/hang | 20/20 mutasi lolos | fuzz F (SEC-2) |
 | G-M1-1 | Head path | MATCH strict logits | $\Delta_{max} \le 10^{-3}$; $\mathbb{A} = 100\%$ | 3 prompt × 16 token |

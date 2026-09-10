@@ -34,7 +34,7 @@ kimo decode \
   [--seed <SEED>]
 ```
 
-- `--model-dir`: Direktori checkpoint (3 shard safetensors + index.json).
+- `--model-dir`: Direktori checkpoint (8 shard safetensors + index.json).
 - `--prompt`: Text prompt (akan di-tokenize).
 - `--max-tokens`: Jumlah token untuk generate (default: 64).
 - `--context-size`: Ukuran konteks maksimal untuk KV cache (default: 2048).
@@ -132,7 +132,7 @@ python tools/oracle/oracle_kv_decode.py \
 
 ### Process: KV Decode Path
 
-1. Load model PyTorch dari safetensors (3 shard → merge).
+1. Load model PyTorch dari safetensors (8 shard → merge).
 2. Convert semua bobot ke FP32.
 3. **Prefill**: tokenization → embedding → 24 layer forward → store K/V per layer.
 4. **Decode loop** (untuk t = 1..N):

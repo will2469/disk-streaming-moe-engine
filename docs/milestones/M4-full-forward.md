@@ -31,7 +31,7 @@ kimo forward \
   [--threads <N>]
 ```
 
-- `--model-dir`: Direktori checkpoint (3 shard safetensors + index.json).
+- `--model-dir`: Direktori checkpoint (8 shard safetensors + index.json).
 - `--tokens`: Path ke `tokens.json` berisi array token IDs `[u32]`.
 - `--output`: Path output logits BF16 binary (row-major).
 - `--workdir`: Direktori kerja untuk temporary files (default: `./work`).
@@ -109,7 +109,7 @@ python tools/oracle/oracle_full.py \
 
 ### Process
 
-1. Load model PyTorch dari safetensors (3 shard → merge).
+1. Load model PyTorch dari safetensors (8 shard → merge).
 2. Convert semua bobot ke FP32 (reference precision).
 3. Embedding lookup → 24 layer forward:
    - RMSNorm (F6).
@@ -235,7 +235,7 @@ Untuk setiap prompt:
     "stage": "index_load",
     "message": "F15 validation failed: shard header checksum mismatch",
     "details": {
-      "shard": "model-00001-of-00003.safetensors",
+      "shard": "model-00001-of-00008.safetensors",
       "expected_checksum": "abc123...",
       "actual_checksum": "def456..."
     }
@@ -329,7 +329,7 @@ flowchart TD
     A[Start: kimo forward] --> B[Load tokens.json]
     B --> C{Validate tokens?}
     C -->|No| ERR1[Error: M4_ERR_INPUT, exit 1]
-    C -->|Yes| D[Read 3 shards]
+    C -->|Yes| D[Read 8 shards]
     D --> E{F15 valid?}
     E -->|No| ERR2[Error: M4_ERR_INDEX, exit 2]
     E -->|Yes| F[Merge index]
@@ -381,7 +381,7 @@ flowchart TD
 
 ## Alur
 
-1. Baca 3 shard → validasi F15 → merge index.
+1. Baca 8 shard → validasi F15 → merge index.
 2. Embedding + lm_head resident F32 (2,318 GiB).
 3. `tokens.json` → embedding → untuk `l=0..23`: pread bobot layer, forward (attn M2 + MoE M3), buang buffer.
 4. Final norm → lm_head → `logits_mojo.bin` (atomic).
@@ -448,7 +448,7 @@ for i in {1..5}; do
 done
 
 # IT-M4-2: Missing shard
-mv "$MODEL_DIR/model-00002-of-00003.safetensors" "$MODEL_DIR/model-00002-of-00003.safetensors.bak"
+mv "$MODEL_DIR/model-00002-of-00008.safetensors" "$MODEL_DIR/model-00002-of-00008.safetensors.bak"
 kimo forward --model-dir "$MODEL_DIR" --tokens "$TOKENS" --output "$OUTPUT" --workdir "$WORKDIR" || true
 # Expect exit 4
 
@@ -518,11 +518,12 @@ Qwen1.5-MoE-A2.7B tensor naming convention:
 - Shared expert: `model.layers.{l}.mlp.shared_expert.{w1,w2,w3}.weight`
 - Layer norms: `model.layers.{l}.input_layernorm.weight`, `post_attention_layernorm.weight`
 
-Shard distribution (from index.json):
+Shard distribution (dari index.json ter-pin `ec052fda…` — layer MENYEBRANG batas shard,
+jangan asumsikan 1 layer = 1 file):
 
-- Shard 1: layers 0-7
-- Shard 2: layers 8-15
-- Shard 3: layers 16-23
+- Shard 1–7: masing-masing ~3,5 layer (≈578–681 tensor); layer 2, 6, 9, 13, 16, 20, 23 terbagi ke 2 file
+- Shard 8: sisa layer 23 (5 tensor) + `lm_head.weight` + `model.embed_tokens.weight` (7 tensor total)
+- `model.norm.weight` di shard 1; total 4.659 tensor, 28.631.568.384 B
 
 ### State Persistence
 
@@ -562,13 +563,13 @@ Index.json mapping untuk layer weights:
     "shape": [2048, 2048],
     "dtype": "F16",
     "data_offsets": [0, 8388608],
-    "file": "model-00001-of-00003.safetensors"
+    "file": "model-00001-of-00008.safetensors"
   },
   ...
 }
 ```
 
-- `data_offsets`: [start_byte, end_byte] dalam shard.
+- `data_offsets`: [BEGIN, END) relatif terhadap awal byte buffer (`data_base = 8 + header_len`, bukan absolut file); koordinat file = `data_base + offset`.
 - `file`: shard identifier (1/2/3).
 - Mojo implementation: parse index.json → per-layer offset map → pread exact byte range.
 
@@ -647,7 +648,7 @@ Index.json mapping untuk layer weights:
     "message": "Failed to read shard: I/O error",
     "details": {
       "layer": 12,
-      "shard": "model-00002-of-00003.safetensors",
+      "shard": "model-00002-of-00008.safetensors",
       "offset": 1234567890,
       "size": 8388608,
       "errno": 5
@@ -769,7 +770,7 @@ kimo forward \
 
 - **Prefill time**: ≤ 5 menit untuk 5 prompt × 16 token (16 token per prompt, 24 layer).
 - **Memory peak**: ≤ 5 GiB (VmHWM).
-- **Bytes read**: ≈ 28,63 GB per prompt (3 shard, 28,63 GB total).
+- **Bytes read**: ≈ 28,63 GB per prompt (8 shard, 28,63 GB total).
 - **Bandwidth effective**: ≥ 10 GB/s (sustained, measured per ref-perf).
 
 ### Measurement Protocol

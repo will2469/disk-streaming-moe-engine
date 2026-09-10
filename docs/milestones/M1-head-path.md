@@ -29,7 +29,7 @@ Membuktikan jalur paling luar model benar end-to-end (tanpa transformer layer): 
 **Input:**
 
 - `tokens.json` (token IDs, format: array of integers)
-- 3 path shard safetensors (command line args)
+- N path shard safetensors, N ≥ 1 (command line args)
 - `model.safetensors.index.json` (auto-discovered di directory yang sama)
 
 **Output:**
@@ -56,6 +56,7 @@ Membuktikan jalur paling luar model benar end-to-end (tanpa transformer layer): 
 **Contoh penggunaan:**
 
 ```bash
+# contoh fixture synthetic; checkpoint asli 8 shard
 kimo head tokens.json shard-00001-of-00003.safetensors shard-00002-of-00003.safetensors shard-00003-of-00003.safetensors
 ```
 
@@ -197,7 +198,7 @@ kimo head tokens.json shard-00001-of-00003.safetensors shard-00002-of-00003.safe
 
 ```mermaid
 flowchart TB
-    START[Mulai head CLI] --> INPUT[Input: tokens.json + 3 shard]
+    START[Mulai head CLI] --> INPUT[Input: tokens.json + N shard]
     INPUT --> PARSET[Parse tokens.json]
     PARSET --> LOADE[Load embedding weights]
     LOADE --> LOOKUP[Token ID lookup]
@@ -220,7 +221,7 @@ flowchart TB
 
 **Alur utama:**
 
-1. CLI menerima tokens.json + 3 path shard sebagai input
+1. CLI menerima tokens.json + N≥1 path shard sebagai input
 2. Parse tokens.json → validasi token IDs
 3. Load embedding weights (151.936 × 2048, F32) ke RAM resident
 4. Token ID lookup → embedding vectors untuk setiap token

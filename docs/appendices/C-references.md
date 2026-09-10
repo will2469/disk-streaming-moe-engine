@@ -41,7 +41,8 @@
 
 - **[R7] Safetensors — format specification / repository**
   https://github.com/safetensors/safetensors
-  Spesifikasi format: 8-byte little-endian header length, JSON header, `data_offsets`, byte buffer; implementasi saat ini menolak header > **100,000,000 bytes**.
+  Spesifikasi format: 8-byte little-endian header length, JSON header, `data_offsets`, byte buffer; implementasi saat ini menolak header > **100,000,000 bytes**. Kritis: `data_offsets` relatif terhadap awal byte buffer (bukan absolut file); buffer wajib terindeks penuh tanpa lubang. Enum dtype resmi (`safetensors::tensor::Dtype`, non-exhaustive): BOOL, F4/F6/F8*, U/I8–64, F16, BF16, F32, C64, F64 — proyek hanya menerima {BF16, F32, F16, F64}:
+  https://docs.rs/safetensors/0.8.0/safetensors/tensor/enum.Dtype.html
 
 - **[R8] Hugging Face — Safetensors metadata parsing**
   https://huggingface.co/docs/safetensors/metadata_parsing

@@ -18,7 +18,7 @@ metadata:
 
 **Step 1 — Format dulu, data kemudian.** File = `[len: u64][header JSON][data]` [R7]; contoh parsing + index sharded [R8].
 
-**Step 2 — Tegakkan F15 sebelum 1 byte data dibaca:** `hdr_end ≤ off ≤ off+len ≤ filesize`, dtype whitelist, nama unik, `header_len ≤ 100 MB`, tensor ≤ 100.000.
+**Step 2 — Tegakkan F15 sebelum 1 byte data dibaca:** konversi dulu (`data_base = 8 + header_len`; file = `data_base + offset`), lalu `0 ≤ BEGIN ≤ END ∧ data_base + END ≤ filesize`, dtype himpunan eksak + F15c, nama unik intra-header (F15) dan unik global saat merge (aturan MERGE), buffer penuh tanpa lubang; `header_len ≤ 100 MB`, tensor ≤ 100.000. SHA/revision = SEC-1, bukan F15 — jangan campur. Payload (offset ≥ `data_base`) dilarang dibaca: kontrak I/O M0.
 
 **Step 3 — I/O aman.** Triple alignment O_DIRECT (Grup E, [R22]); short-`pread` di-loop ([R23]); buffer aligned + bounded; 20+ mutasi fuzz → 0 crash/hang/OOM (SEC-2).
 

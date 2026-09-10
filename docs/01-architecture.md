@@ -27,7 +27,7 @@ flowchart TB
             CMP["compare.py\nmax-diff / rel-L2 / cosine / argmax"]
             FX["fixtures synthetic"]
         end
-        DISK[("Shard safetensors\n28,63 GB BF16 - 3 shard - 4659 tensor")]
+        DISK[("Shard safetensors\n28,63 GB BF16 - 8 shard - 4659 tensor")]
         BASE["llama.cpp baseline\n(sanity, bukan oracle)"]
         CG["cgroup / RLIMIT\nmemory 6 G - FSIZE"]
     end
@@ -52,7 +52,7 @@ flowchart TB
 | --- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
 | C1  | `main.mojo` (CLI)        | subperintah `check-index / head / layer / forward`, exit code, output biner                                              | exit 0 = sukses; error → stderr terstruktur, bukan panic    |
 | C2  | `model.mojo`             | config loader, kernels (rmsnorm, rope rotate_half, attn, moe + router + sigmoid gate), forward streaming                 | setiap kernel punya oracle pasangan (M2/M3)                 |
-| C3  | `safetensors.mojo`       | parser header JSON, merge index 3 shard, pread                                                                           | predikat validitas F15 = 100% tensor; parse < 1 s           |
+| C3  | `safetensors.mojo`       | parser header JSON, merge index multi-shard (8 pada checkpoint trial), pread | F15 = 100% tensor (kebenaran independen cache); benchmark parse fixture < 1 s (terkendali) |
 | C4  | kv-state (M5)            | cache K/V incremental per layer                                                                                          | ukur memori = prediksi F2 ± 5%                              |
 | C5  | quantizer (M6)           | kuantisasi 4-bit per-grup + dequant di kernel                                                                            | ε_rel per tensor ≤ 1e-2 (F11)                               |
 | C6  | io_direct + LRU (M7)     | reader O_DIRECT + LRU cache expert                                                                                       | BW cold ≥ 2,5 GB/s; model F13 terkalibrasi                  |
@@ -98,7 +98,18 @@ Sumber kebenaran dimensi = `model_config.json` **plus** verifikasi ke `model.saf
 | router          | softmax fp32 → top-4 **tanpa renormalisasi** (`norm_topk_prob=false`)           |
 | aktif / total   | **2,7 B activated / ~14,32 B total** (model card resmi)                         |
 | vocab / lm_head | 151.936 / untied (tensor terpisah)                                              |
-| disk            | 28,63 GB BF16, 3 shard, 4.659 tensor                                            |
+| disk            | 28,63 GB BF16, 8 shard, 4.659 tensor                                            |
+
+Artefak pin (terverifikasi langsung dari `model.safetensors.index.json` pada revision
+`ec052fda178e241c7c443468d2fa1db6618996be` — bukan dari URL model saja, per SEC-1):
+`Qwen/Qwen1.5-MoE-A2.7B-Chat` = 8 file `model-00001-of-00008` s/d `00008`,
+`weight_map` = **4.659 tensor**, `total_size` = 28.631.568.384 B, bias QKV = **72 tensor**
+(24× `q/k/v_proj.bias` — jebakan #1 terkonfirmasi nyata). Angka 4.659/28.631.568.384/72 berlaku
+**untuk revision ini saja, bukan fakta intrinsik model** — validator mengambil ekspektasi dari
+index.json (`len(weight_map)`); gate menegaskan kesamaan pada artefak pin. Tidak ada repack internal:
+angka "3 shard" di dokumen ini hanya untuk fixture synthetic (desain CI, §4.5),
+bukan checkpoint asli. Layer MENYEBRANG batas shard (mis. layer 2, 6, 9, 13, 16, 20, 23
+terbagi ke 2 file); shard 8 hanya berisi sisa layer 23 + `lm_head` + `embed_tokens`.
 
 Dua jebakan yang sudah ditemukan dan menjadi **invariant test permanen**:
 
@@ -107,7 +118,7 @@ Dua jebakan yang sudah ditemukan dan menjadi **invariant test permanen**:
 
 ## 2.4 Alur Forward Streaming (fase M0–M4)
 
-1. CLI membaca 3 path shard; parser (C3) memvalidasi header per shard dengan predikat F15 (`02-math-models.md` §3.6), lalu menggabungkan `weight_map` menjadi satu index.
+1. CLI membaca path shard (8 pada checkpoint trial); parser (C3) memvalidasi header per shard dengan predikat F15 (`02-math-models.md` §3.6), lalu menggabungkan dua sumber menjadi satu pandangan: `weight_map` index.json (nama → file harapan) + header tiap shard (nama → dtype, shape, offsets aktual).
 2. Embedding + lm_head dimuat resident dalam F32 (**≈2,318 GiB**) — satu-satunya bobot non-streaming; perhitungan berasal dari `2 × V × d × 4 B`.
 3. Tokens dari `tokens.json` → lookup embedding → activation buffer fp32.
 4. Untuk layer `l = 0..23`: pread seluruh bobot layer (attn + MoE) ke buffer, pakai, **buang** — RAM tidak menumpuk antar-layer.

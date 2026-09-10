@@ -15,7 +15,7 @@ Ground truth proyek ini adalah **PyTorch fp32** (`tools/oracle/oracle_head.py`, 
 | O — Oracle equivalence | 5 langkah README §4 (head, attn, moe, full) | **PyTorch oracle + Rust compare + Mojo binary** | tiap build | verdict MATCH (§4.3) |
 | I — Integration | forward end-to-end 5 prompt, exit code CLI, schema report JSON | **Rust CLI + Mojo + fixture** | tiap build | 100% sesuai kontrak C1/C7 |
 | B — Benchmark | waktu prefill, VmHWM, bytes dibaca, (M5+) tok/s & BW | harness §4.4 | per milestone + on-demand | laporan + kalibrasi ≤ gate |
-| F — Fuzz/negative | 20+ mutasi file korup (header liar, offset negatif, dtype asing, truncation, duplikat nama) | corpus mutasi | tiap perubahan parser | 0 crash / 0 hang / 0 OOM; semua clean error (SEC-2) |
+| F — Fuzz/negative | 20+ mutasi file korup (header liar, offset negatif, BEGIN>END, lubang/overlap, dtype asing, layout mismatch, truncation, duplikat kunci/nama, JSON rusak) | corpus mutasi | tiap perubahan parser | 0 crash / 0 hang / 0 OOM; semua clean error (SEC-2) |
 | R — Regression | golden bins + SHA-256, fixture synthetic | **cargo test + pytest oracle generation (sesuai kebutuhan)** | tiap commit | hash stabil; perubahan tanpa alasan = blocking |
 
 Pemakaian per milestone:

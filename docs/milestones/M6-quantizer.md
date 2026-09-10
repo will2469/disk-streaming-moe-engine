@@ -30,7 +30,7 @@ kimo quantize \
   [--workdir <DIR>]
 ```
 
-- `--input-dir`: Direktori checkpoint BF16 (3 shard safetensors + index.json).
+- `--input-dir`: Direktori checkpoint BF16 (8 shard safetensors + index.json).
 - `--output-dir`: Direktori output untuk file quant 4-bit.
 - `--group-size`: Ukuran grup quant (default: 128).
 - `--workdir`: Direktori kerja untuk temporary files (default: `./work`).
@@ -100,7 +100,7 @@ python tools/oracle/oracle_quant.py \
 
 ### Process
 
-1. Load model BF16 dari safetensors (3 shard → merge).
+1. Load model BF16 dari safetensors (8 shard → merge).
 2. Per tensor:
    - Split ke grup G (default: 128).
    - Compute scale $s_g = \max|w_j|/7$ per grup.

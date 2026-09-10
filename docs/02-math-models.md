@@ -19,7 +19,7 @@
 | F12 | Perplexity & ΔPPL | M6, M9 |
 | F13 | Hit rate LRU + bandwidth efektif | M7 |
 | F14 | Delta rule / Gated DeltaNet | M8 |
-| F15 | Predikat validitas safetensors + SHA-256 | `05-security.md` (SEC-1..3) |
+| F15 | Predikat validitas struktural safetensors (F15a/b/c; SHA = SEC-1, bukan F15) | `05-security.md` (SEC-1..3) |
 | F16 | Kurva skala core (rasio, device-agnostic) | M5, M7, benchmark |
 | F17 | Pola I/O storage (seq vs expert-size, QD, sustained) | M7, benchmark |
 
@@ -141,11 +141,24 @@ Versi tanpa gate: $\gamma_t = 1$. Oracle M8 = **loop rekuren naive** (Python fp3
 
 ## 3.6 Integritas & Parsing Aman
 
-**F15 — Format safetensors & predikat validitas:** file = `[len: u64][header JSON][data]`; file sah jika dan hanya jika:
+**F15 — Format safetensors & predikat validitas:** file = `[len: u64 LE][header JSON sepanjang N][data buffer]`; `data_base = 8 + N`. `data_offsets = [BEGIN, END)` tiap tensor bersifat **relatif terhadap `data_base`, bukan koordinat absolut file** [R7]; koordinat file = `data_base + BEGIN`, `data_base + END`. File sah jika dan hanya jika:
 
-$$\forall t:\quad \text{hdr\_end} \le \text{off}_t \;\wedge\; \text{off}_t + \text{len}_t \le \text{filesize} \;\wedge\; \text{dtype}_t \in \mathcal{D} \;\wedge\; \text{name}_t \text{ unik} \tag{F15}$$
+$$\forall t:\quad 0 \le \mathrm{BEGIN}_t \le \mathrm{END}_t \;\wedge\; \mathrm{data\_base} + \mathrm{END}_t \le \mathrm{filesize} \;\wedge\; \mathrm{dtype}_t \in \mathcal{D} \;\wedge\; \mathrm{name}_t \text{ unik dalam header} \tag{F15a}$$
 
-dengan $\mathcal{D}$ = whitelist dtype (BF16, F32, F16, …) dan batas keras **`header_len` ≤ 100 MB**, jumlah tensor ≤ 100.000. Batas 100 MB mengikuti implementasi `safetensors` saat ini; offset tensor juga divalidasi terhadap ukuran file. [R7][R8] Integritas di luar format: $\operatorname{SHA-256}(\text{file}) = d_{pinned}$ (`05-security.md` §6.3-K1). Dipakai di `milestones/M0-reader.md`.
+$$\text{sortir menurut BEGIN:}\quad \mathrm{BEGIN}_0 = 0 \;\wedge\; \forall i:\ \mathrm{BEGIN}_{i+1} = \mathrm{END}_i \;\wedge\; \mathrm{END}_{last} = \mathrm{filesize} - \mathrm{data\_base} \tag{F15b}$$
+
+(F15b = buffer terindeks penuh tanpa lubang/overlap [R7]; tensor kosong BEGIN==END diizinkan. Membandingkan `data_offsets` mentah dengan `filesize` tanpa tambah `data_base` adalah bug — koordinatnya beda sistem.)
+
+**Konsistensi dtype–shape–range (F15c):** ukuran byte harus cocok dengan deklarasi:
+$$\mathrm{END}_t - \mathrm{BEGIN}_t = \mathrm{numel}(\mathrm{shape}_t) \times \mathrm{size}(\mathrm{dtype}_t) \tag{F15c}$$
+
+dengan $\mathrm{size} = \{\mathrm{BF16}{:}2, \mathrm{F16}{:}2, \mathrm{F32}{:}4, \mathrm{F64}{:}8\}$ byte/elemen. Pelanggaran → error `LAYOUT_MISMATCH` (bukan `UNKNOWN_DTYPE`: dtype-nya dikenal, aritmetikanya tidak cocok).
+
+**Validasi MERGE (lintas shard — bukan F15):** F15 berhenti di batas satu file. Gabungan semua header yang dipasok wajib memenuhi: nama unik global (tabrakan → `DUPLICATE_TENSOR_NAME`); lalu compare vs `weight_map` per mode (full: semua file rujukan dipasok; subset: hanya nama yang file harapannya termasuk subset yang dinilai).
+
+dengan $\mathcal{D} = \{\mathrm{BF16}, \mathrm{F32}, \mathrm{F16}, \mathrm{F64}\}$ (himpunan eksak proyek — bukan "dll") dan batas keras **`header_len` ≤ 100 MB**, jumlah tensor ≤ 100.000, header JSON diawali `{`, tanpa rekursi parser. Himpunan R7 sendiri non-exhaustive dan kini mencakup BOOL, int/uint, F4/F6/F8*, C64 (docs.rs `safetensors::tensor::Dtype`); proyek menolak semuanya — int/bool tanpa semantik engine, sub-byte bermasalah alignment [R7], kompleks tak dipakai — dan menolak varian masa depan yang tak dikenal. Checkpoint trial terbukti 100% BF16 (metadata HF `safetensors.parameters`), jadi F32/F16/F64 hanya untuk fixture/forward-compat. Batas 100 MB mengikuti implementasi `safetensors` saat ini; offset tensor divalidasi terhadap ukuran file **setelah dikonversi ke koordinat file**. [R7][R8] Dipakai di `milestones/M0-reader.md`.
+
+**Batas lapisan (normatif):** F15 murni struktural — berhenti di "file ini safetensors yang well-formed". Integritas artefak ($\operatorname{SHA-256}(\text{file}) = d_{pinned}$, revision pin) adalah **SEC-1/K1, bukan F15**: file valid-struktural dengan hash salah = FAIL SEC-1 (tolak start), bukan FAIL F15 (malformed). Mencampur keduanya mengaburkan debugging (parser vs provenance).
 
 ## 3.7 Skala Core (F16) — rasio, tanpa angka device di spec
 

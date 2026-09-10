@@ -38,7 +38,7 @@ Diagnostik F9 (analisis): $f_i, P_i, \mathcal{L}_{lb}=N_e\sum f_iP_i$, $CV=\sigm
 - `activation.bin` (activation input, binary fp32, shape: [L, hidden_dim] = [16, 2048])
 - Layer number: `--layer 0|12|23` (command line arg)
 - Part: `--part moe` (command line arg)
-- 3 path shard safetensors (command line args)
+- N path shard safetensors, N ≥ 1 (command line args)
 - `model.safetensors.index.json` (auto-discovered di directory yang sama)
 
 **Output:**
@@ -71,6 +71,7 @@ Diagnostik F9 (analisis): $f_i, P_i, \mathcal{L}_{lb}=N_e\sum f_iP_i$, $CV=\sigm
 **Contoh penggunaan:**
 
 ```bash
+# contoh fixture synthetic; checkpoint asli 8 shard
 kimo layer --layer 0 --part moe activation.bin shard-00001-of-00003.safetensors shard-00002-of-00003.safetensors shard-00003-of-00003.safetensors
 ```
 

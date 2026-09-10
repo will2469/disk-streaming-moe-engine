@@ -462,7 +462,7 @@ Target: G-M8-1 (chunked == naive) lulus dengan fixture synthetic sebelum testing
 
 **Test setup**:
 
-- Model trial Qwen1.5-MoE dengan safetensors 3 shards.
+- Model trial Qwen1.5-MoE dengan safetensors 8 shards.
 - O_DIRECT reader aktif (M7).
 - LRU cache expert aktif (M7).
 - GDN layer diproses dengan chunked scan.
