@@ -559,23 +559,23 @@ F1: $M_{peak} = W_{res} + M_{KV}(=0) + M_{ws} + M_{io}$ — pemetaan M1: $W_{res
 
 ## DoD
 
-- [ ] G-M1-1, G-M1-2 hijau; laporan M1-C (real-checkpoint, report-only) ter-commit
-- [ ] Laporan benchmark + run-id ter-commit
-- [ ] Kalibrasi F1 awal tercatat
-- [ ] Risiko R5 (Wres 2,318 GiB) dievaluasi: opsi BF16 resident + dequant on-the-fly bila workspace sempit
-- [ ] head CLI implementasi lengkap (input/output/exit code sesuai spec, termasuk `--model-dir`, `--output`, `--workdir`, satu resolver + allowlist shard, resolusi 3 required weight tensor)
-- [ ] Oracle head.py implementasi dan ter-commit (binding tensor eksplisit + kontrak `rms_norm_eps`, baca config kanonis yang sama)
-- [ ] RMSNorm kernel implementasi (F6, $\varepsilon$ dari config tanpa default diam-diam)
-- [ ] Embedding lookup implementasi
-- [ ] LM head untied implementasi
-- [ ] Atomic write output path implementasi (tmp + rename, workdir tunggal + path confinement)
-- [ ] Load strategy chunked BF16→F32 implementasi (tanpa double-residency penuh) + telemetri `memory.*` di report
-- [ ] Error handling M1 implementasi (format JSON, dua lapisan error: propagasi reader M0 + semantik M1)
-- [ ] Fixture M1 ter-commit (`fixtures/m1/`: tokens.json 3×16 + `model_config.json` kanonis dengan `rms_norm_eps` + logits_ref.bin [3,16,V], hash-pinned)
-- [ ] Unit tests coverage ≥ 85% untuk head path components
-- [ ] Integration test end-to-end head implementasi (7 test cases)
-- [ ] Performance baseline M1 terukur dan terdokumentasi (M1-A waktu report-only; M1-C real-checkpoint report-only, tanpa latency gate)
-- [ ] Logits file format implementasi (binary fp32, shape [3,16,V], shape validation)
-- [ ] Cgroup memory.max=6G integration testing (SEC-4)
-- [ ] Property tests RMSNorm implementasi (invariant F6)
-- [ ] SHA-256 verification implementasi (golden hash `logits_ref.bin`)
+- [x] G-M1-1, G-M1-2 hijau; laporan M1-C (real-checkpoint, report-only) ter-commit
+- [x] Laporan benchmark + run-id ter-commit
+- [x] Kalibrasi F1 awal tercatat
+- [x] Risiko R5 (Wres 2,318 GiB) dievaluasi: opsi BF16 resident + dequant on-the-fly bila workspace sempit
+- [x] head CLI implementasi lengkap (input/output/exit code sesuai spec, termasuk `--model-dir`, `--output`, `--workdir`, satu resolver + allowlist shard, resolusi 3 required weight tensor)
+- [x] Oracle head.py implementasi dan ter-commit (binding tensor eksplisit + kontrak `rms_norm_eps`, baca config kanonis yang sama)
+- [x] RMSNorm kernel implementasi (F6, $\varepsilon$ dari config tanpa default diam-diam)
+- [x] Embedding lookup implementasi
+- [x] LM head untied implementasi
+- [x] Atomic write output path implementasi (tmp + rename, workdir tunggal + path confinement)
+- [x] Load strategy chunked BF16→F32 implementasi (tanpa double-residency penuh) + telemetri `memory.*` di report
+- [x] Error handling M1 implementasi (format JSON, dua lapisan error: propagasi reader M0 + semantik M1)
+- [x] Fixture M1 ter-commit (`fixtures/m1/`: tokens.json 3×16 + `model_config.json` kanonis dengan `rms_norm_eps` + logits_ref.bin [3,16,V], hash-pinned)
+- [x] Unit tests coverage ≥ 85% untuk head path components
+- [x] Integration test end-to-end head implementasi (7 test cases)
+- [x] Performance baseline M1 terukur dan terdokumentasi (M1-A waktu report-only; M1-C real-checkpoint report-only, tanpa latency gate)
+- [x] Logits file format implementasi (binary fp32, shape [3,16,V], shape validation)
+- [x] Cgroup memory.max=6G integration testing (SEC-4)
+- [x] Property tests RMSNorm implementasi (invariant F6)
+- [x] SHA-256 verification implementasi (golden hash `logits_ref.bin`)

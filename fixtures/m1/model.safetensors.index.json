@@ -1,0 +1,26 @@
+{
+  "metadata": {
+    "total_size": 0
+  },
+  "weight_map": {
+    "model.embed_tokens.weight": "fixture-00001-of-00003.safetensors",
+    "model.layers.0.self_attn.q_proj.bias": "fixture-00001-of-00003.safetensors",
+    "model.layers.0.mlp.gate.weight": "fixture-00001-of-00003.safetensors",
+    "model.layers.0.input_layernorm.weight": "fixture-00001-of-00003.safetensors",
+    "model.layers.1.self_attn.k_proj.weight": "fixture-00001-of-00003.safetensors",
+    "model.layers.1.mlp.experts.0.w1.weight": "fixture-00001-of-00003.safetensors",
+    "lm_head.weight": "fixture-00001-of-00003.safetensors",
+    "model.norm.weight": "fixture-00002-of-00003.safetensors",
+    "model.layers.0.self_attn.k_proj.weight": "fixture-00002-of-00003.safetensors",
+    "model.layers.0.mlp.experts.0.w1.weight": "fixture-00002-of-00003.safetensors",
+    "model.layers.1.self_attn.q_proj.weight": "fixture-00002-of-00003.safetensors",
+    "model.layers.1.self_attn.o_proj.weight": "fixture-00002-of-00003.safetensors",
+    "model.layers.1.mlp.shared_expert.w1.weight": "fixture-00002-of-00003.safetensors",
+    "model.layers.0.self_attn.q_proj.weight": "fixture-00003-of-00003.safetensors",
+    "model.layers.0.self_attn.o_proj.weight": "fixture-00003-of-00003.safetensors",
+    "model.layers.0.mlp.shared_expert.w1.weight": "fixture-00003-of-00003.safetensors",
+    "model.layers.1.self_attn.q_proj.bias": "fixture-00003-of-00003.safetensors",
+    "model.layers.1.mlp.gate.weight": "fixture-00003-of-00003.safetensors",
+    "model.layers.1.input_layernorm.weight": "fixture-00003-of-00003.safetensors"
+  }
+}

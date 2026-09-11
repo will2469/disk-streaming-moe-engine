@@ -1,0 +1,9 @@
+# Copyright 2026 will2469
+# Licensed under the Apache License, Version 2.0 (the "License");
+# See LICENSE for details.
+
+[workspace]
+members = [
+    "tools/kimo-tools",
+]
+resolver = "2"
