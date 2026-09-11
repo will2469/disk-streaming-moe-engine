@@ -1,16 +1,48 @@
 {
   "model": "Qwen/Qwen1.5-MoE-A2.7B-Chat",
   "revision": "ec052fda178e241c7c443468d2fa1db6618996be",
-  "total_size": 28631568384,
-  "note": "Skeleton M0-W0/W3: sha256/size per shard diisi setelah shard terverifikasi (scratch/download-shards.md langkah 3). JANGAN isi karangan.",
+  "total_size": 28632144944,
+  "note": "M0-W3 langkah 3 (2026-09-11): sha256+size terukur dari ~/models/qwen1.5-moe-a2.7b-chat via sha256sum; total_size = jumlah 8 shard.",
   "shards": [
-    {"filename": "model-00001-of-00008.safetensors", "sha256": "TBD-W3", "size": null},
-    {"filename": "model-00002-of-00008.safetensors", "sha256": "TBD-W3", "size": null},
-    {"filename": "model-00003-of-00008.safetensors", "sha256": "TBD-W3", "size": null},
-    {"filename": "model-00004-of-00008.safetensors", "sha256": "TBD-W3", "size": null},
-    {"filename": "model-00005-of-00008.safetensors", "sha256": "TBD-W3", "size": null},
-    {"filename": "model-00006-of-00008.safetensors", "sha256": "TBD-W3", "size": null},
-    {"filename": "model-00007-of-00008.safetensors", "sha256": "TBD-W3", "size": null},
-    {"filename": "model-00008-of-00008.safetensors", "sha256": "TBD-W3", "size": null}
+    {
+      "filename": "model-00001-of-00008.safetensors",
+      "sha256": "a51a84c031e0f6c8808bc284106c488ab3db6069a3f6f5a231be1e963206d020",
+      "size": 3999614664
+    },
+    {
+      "filename": "model-00002-of-00008.safetensors",
+      "sha256": "02a9f530c526ac09e5d26cdece113d62b030ebc6f137ea69cd2754bea1287121",
+      "size": 3999385424
+    },
+    {
+      "filename": "model-00003-of-00008.safetensors",
+      "sha256": "200116fdf90ea17c2dae53594a87b9efbbe199e4c4e487fb25aba9c65e674112",
+      "size": 3988628968
+    },
+    {
+      "filename": "model-00004-of-00008.safetensors",
+      "sha256": "41296f5c77188a4182c87f9bc5958222897ed5fe1bde6912755df050f1222b8d",
+      "size": 3999386088
+    },
+    {
+      "filename": "model-00005-of-00008.safetensors",
+      "sha256": "a613a2c68f18630beb1eb681627d34110cec36a615a35c4d7f35f72e0df5b2e4",
+      "size": 3988629648
+    },
+    {
+      "filename": "model-00006-of-00008.safetensors",
+      "sha256": "44de056d0f2c4375685ec7545a987c20d59cd8ee75c1802e04a11e7dcd7a84f1",
+      "size": 3999386104
+    },
+    {
+      "filename": "model-00007-of-00008.safetensors",
+      "sha256": "fbc95c8fc0842c425168c21e933629cde22fc156ef9b4af927ad2787fe4d33a1",
+      "size": 3988629648
+    },
+    {
+      "filename": "model-00008-of-00008.safetensors",
+      "sha256": "9a5e51c0a101292c249032382f20d912677e1c0c4b5b0c78e951450fedb820ee",
+      "size": 668484400
+    }
   ]
 }
