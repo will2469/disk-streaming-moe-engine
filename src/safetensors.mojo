@@ -24,6 +24,7 @@ def json_escape(s: String) -> String:
         out.append(UInt8(b))
     return String(from_utf8_lossy=Span(out))
 
+
 from std.os import SEEK_END, SEEK_SET
 
 comptime HEADER_MAX = 100000000
@@ -306,7 +307,9 @@ struct Scanner(Movable):
         else:
             raise Error(
                 String(
-                    STError("JSON_PARSE_ERROR", "codepoint liar", self.shard, "")
+                    STError(
+                        "JSON_PARSE_ERROR", "codepoint liar", self.shard, ""
+                    )
                 )
             )
 
@@ -350,7 +353,9 @@ struct Scanner(Movable):
         if self.eof():
             raise Error(
                 String(
-                    STError("JSON_PARSE_ERROR", "unexpected eof", self.shard, "")
+                    STError(
+                        "JSON_PARSE_ERROR", "unexpected eof", self.shard, ""
+                    )
                 )
             )
         var b = self.peek()

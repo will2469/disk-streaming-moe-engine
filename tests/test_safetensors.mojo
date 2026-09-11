@@ -7,7 +7,9 @@ from std.testing import assert_equal, assert_raises, TestSuite
 from safetensors import json_escape, read_header
 
 
-def write_shard_bytes(path: String, header: List[UInt8], payload_len: Int) raises:
+def write_shard_bytes(
+    path: String, header: List[UInt8], payload_len: Int
+) raises:
     var f = open(path, "w")
     var n = len(header)
     var prefix = List[UInt8]()
@@ -137,7 +139,8 @@ def test_file_not_found() raises:
 
 
 struct LCG(Movable):
-    """RNG deterministik untuk property test (pengganti hypothesis: offline, seed tetap)."""
+    """RNG deterministik untuk property test (pengganti hypothesis: offline, seed tetap).
+    """
 
     var s: Int
 
@@ -180,7 +183,17 @@ def build_case(mut rng: LCG, corrupt: Int, mut payload: List[Int]) -> String:
         elif corrupt == 3 and i == 0:
             b = e + 1  # BEGIN > END
         js += String(
-            '"t', i, '":{"dtype":"', dt, '","shape":[', dim, '],"data_offsets":[', b, ",", e, "]}"
+            '"t',
+            i,
+            '":{"dtype":"',
+            dt,
+            '","shape":[',
+            dim,
+            '],"data_offsets":[',
+            b,
+            ",",
+            e,
+            "]}",
         )
         off = e
     js += "}"
@@ -223,7 +236,9 @@ def test_control_rejected() raises:
 
 
 def test_lone_surrogate() raises:
-    var js = String('{"\\ud800":{"dtype":"BF16","shape":[1],"data_offsets":[0,2]}}')
+    var js = String(
+        '{"\\ud800":{"dtype":"BF16","shape":[1],"data_offsets":[0,2]}}'
+    )
     write_shard("/tmp/kimo_t15.st", js, 2)
     with assert_raises(contains="surrogate"):
         _ = read_header("/tmp/kimo_t15.st")
@@ -231,7 +246,9 @@ def test_lone_surrogate() raises:
 
 def test_surrogate_pair() raises:
     # U+1F600 via pasangan -> nama 4 byte, diterima
-    var js = String('{"\\ud83d\\ude00":{"dtype":"BF16","shape":[1],"data_offsets":[0,2]}}')
+    var js = String(
+        '{"\\ud83d\\ude00":{"dtype":"BF16","shape":[1],"data_offsets":[0,2]}}'
+    )
     write_shard("/tmp/kimo_t16.st", js, 2)
     var st = read_header("/tmp/kimo_t16.st")
     assert_equal(len(st.entries), 1)
@@ -240,7 +257,9 @@ def test_surrogate_pair() raises:
 
 def test_cross_nesting() raises:
     # {"a": [1}} silang di field tak dikenal -> tolak (stack penutup)
-    var js = String('{"t":{"dtype":"BF16","shape":[1],"data_offsets":[0,2],"x":{"a":[1}}}}')
+    var js = String(
+        '{"t":{"dtype":"BF16","shape":[1],"data_offsets":[0,2],"x":{"a":[1}}}}'
+    )
     write_shard("/tmp/kimo_t17.st", js, 2)
     with assert_raises(contains="JSON_PARSE_ERROR"):
         _ = read_header("/tmp/kimo_t17.st")
