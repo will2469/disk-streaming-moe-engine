@@ -19,7 +19,19 @@ from safetensors import (
 )
 from std.builtin.dtype import DType
 from std.collections import Dict, List
-from std.math import abs, cos, isfinite, isinf, isnan, max, min, pow, sin, sqrt
+from std.math import (
+    abs,
+    cos,
+    exp,
+    isfinite,
+    isinf,
+    isnan,
+    max,
+    min,
+    pow,
+    sin,
+    sqrt,
+)
 from std.memory import Pointer
 from std.os import SEEK_SET
 from std.testing import (
@@ -337,6 +349,16 @@ struct QKVWeights(Copyable, Movable):
     var b_v: List[Float32]
 
 
+@fieldwise_init
+struct AttentionWeights(Copyable, Movable):
+    """Bobot attention satu layer: norm_gamma, QKV (w+b), w_o, b_o."""
+
+    var norm_gamma: List[Float32]
+    var qkv: QKVWeights
+    var w_o: List[Float32]
+    var b_o: List[Float32]
+
+
 def qkv_project(
     x: List[Float32],
     w: List[Float32],
@@ -651,6 +673,555 @@ def apply_rope(
     var q_rot = rope_rotate_half(q, seq_len, cfg, pos_offset, base, layer_idx)
     var k_rot = rope_rotate_half(k, seq_len, cfg, pos_offset, base, layer_idx)
     return (q_rot^, k_rot^)
+
+
+def build_causal_mask(seq_len: Int) raises -> List[Float32]:
+    """Bangun matriks causal mask triangular [seq_len, seq_len].
+
+    M[i, j] = 0.0 jika i >= j, else -inf.
+    @spec scratch/wave/m2/m2-w3-attention.md
+    """
+    if seq_len <= 0:
+        raise Error(
+            '{"error_type":"MASK_ERROR","detail":"seq_len must be'
+            ' positive","stage":"attention","layer":0}'
+        )
+    var mask = List[Float32]()
+    mask.resize(seq_len * seq_len, Float32(0.0))
+    var p_mask = mask.unsafe_ptr()
+    var neg_inf = -Float32(1.0) / Float32(0.0)
+    for i in range(seq_len):
+        for j in range(seq_len):
+            if j > i:
+                p_mask[unsafe_offset=i * seq_len + j] = neg_inf
+            else:
+                p_mask[unsafe_offset=i * seq_len + j] = Float32(0.0)
+    return mask^
+
+
+def verify_causal_mask_property(
+    probs: List[Float32],
+    seq_len: Int,
+    num_heads: Int,
+    layer_idx: Int = 0,
+) raises:
+    """Verifikasi bahwa token i HANYA mengattend ke token j <= i (prob[i, j] == 0 untuk j > i).
+
+    @spec scratch/wave/m2/m2-w3-attention.md
+    """
+    var p_probs = probs.unsafe_ptr()
+    for h in range(num_heads):
+        var head_offset = h * seq_len * seq_len
+        for i in range(seq_len):
+            for j in range(i + 1, seq_len):
+                var val = p_probs[unsafe_offset=head_offset + i * seq_len + j]
+                if val != Float32(0.0):
+                    raise Error(
+                        '{"error_type":"MASK_ERROR","detail":"causal mask'
+                        " violation: future attention detected at i="
+                        + String(i)
+                        + ", j="
+                        + String(j)
+                        + '","stage":"attention","layer":'
+                        + String(layer_idx)
+                        + "}"
+                    )
+
+
+def softmax_row_stable(
+    scores: List[Float32],
+    offset: Int,
+    length: Int,
+    valid_len: Int,
+    layer_idx: Int = 0,
+) raises -> List[Float32]:
+    """Softmax stabil numerik dengan pergeseran nilai maksimum: exp(z - max z) / sum exp(z - max z).
+
+    Elemen j >= valid_len diatur ke probabilitas 0.0 secara eksak.
+    Deteksi NaN atau unmasked Inf menghasilkan ATTENTION_ERROR.
+    @spec scratch/wave/m2/m2-w3-attention.md
+    """
+    if valid_len <= 0 or valid_len > length:
+        raise Error(
+            '{"error_type":"ATTENTION_ERROR","detail":"invalid'
+            ' valid_len","stage":"attention","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+    var p_scores = scores.unsafe_ptr()
+
+    # Cari max dari elemen valid
+    var max_val = p_scores[unsafe_offset=offset]
+    for j in range(valid_len):
+        var s = p_scores[unsafe_offset=offset + j]
+        if isnan(s) or isinf(s):
+            raise Error(
+                '{"error_type":"ATTENTION_ERROR","detail":"non-finite score in'
+                ' attention logits","stage":"attention","layer":'
+                + String(layer_idx)
+                + "}"
+            )
+        if s > max_val:
+            max_val = s
+
+    # Hitung exp(z - max_val)
+    var sum_exp = Float32(0.0)
+    var probs = List[Float32]()
+    probs.resize(length, Float32(0.0))
+    var p_probs = probs.unsafe_ptr()
+
+    for j in range(valid_len):
+        var e = exp(p_scores[unsafe_offset=offset + j] - max_val)
+        if isnan(e) or isinf(e):
+            raise Error(
+                '{"error_type":"ATTENTION_ERROR","detail":"overflow in'
+                ' softmax exponential","stage":"attention","layer":'
+                + String(layer_idx)
+                + "}"
+            )
+        p_probs[unsafe_offset=j] = e
+        sum_exp += e
+
+    if sum_exp <= Float32(0.0) or isnan(sum_exp) or isinf(sum_exp):
+        raise Error(
+            '{"error_type":"ATTENTION_ERROR","detail":"invalid softmax'
+            ' denominator","stage":"attention","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+
+    # Normalisasi
+    for j in range(valid_len):
+        p_probs[unsafe_offset=j] = p_probs[unsafe_offset=j] / sum_exp
+
+    return probs^
+
+
+def mha_forward(
+    q: List[Float32],
+    k: List[Float32],
+    v: List[Float32],
+    seq_len: Int,
+    cfg: ModelConfig,
+    layer_idx: Int = 0,
+) raises -> List[Float32]:
+    """Multi-Head Attention dengan causal mask dan softmax stabil.
+
+    Rumus: softmax(Q K^T / sqrt(d_h) + M) V
+    @spec scratch/wave/m2/m2-w3-attention.md
+    """
+    if seq_len <= 0:
+        raise Error(
+            '{"error_type":"ATTENTION_ERROR","detail":"seq_len must be'
+            ' positive","stage":"attention","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+    var hidden = cfg.hidden_size
+    var num_heads = cfg.num_attention_heads
+    var head_dim = cfg.head_dim()
+
+    if num_heads * head_dim != hidden:
+        raise Error(
+            '{"error_type":"CONFIG_ERROR","detail":"num_attention_heads *'
+            ' head_dim != hidden_size","stage":"attention","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+    if (
+        len(q) != seq_len * hidden
+        or len(k) != seq_len * hidden
+        or len(v) != seq_len * hidden
+    ):
+        raise Error(
+            '{"error_type":"ATTENTION_ERROR","detail":"Q, K, V length'
+            ' mismatch","stage":"attention","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+
+    for i in range(len(q)):
+        if isnan(q[i]) or isinf(q[i]):
+            raise Error(
+                '{"error_type":"ATTENTION_ERROR","detail":"non-finite value in'
+                ' Q","stage":"attention","layer":'
+                + String(layer_idx)
+                + "}"
+            )
+    for i in range(len(k)):
+        if isnan(k[i]) or isinf(k[i]):
+            raise Error(
+                '{"error_type":"ATTENTION_ERROR","detail":"non-finite value in'
+                ' K","stage":"attention","layer":'
+                + String(layer_idx)
+                + "}"
+            )
+    for i in range(len(v)):
+        if isnan(v[i]) or isinf(v[i]):
+            raise Error(
+                '{"error_type":"ATTENTION_ERROR","detail":"non-finite value in'
+                ' V","stage":"attention","layer":'
+                + String(layer_idx)
+                + "}"
+            )
+
+    var scale = Float32(1.0) / sqrt(Float32(head_dim))
+    var out = List[Float32]()
+    out.resize(seq_len * hidden, Float32(0.0))
+
+    var p_q = q.unsafe_ptr()
+    var p_k = k.unsafe_ptr()
+    var p_v = v.unsafe_ptr()
+    var p_out = out.unsafe_ptr()
+
+    var scores_row = List[Float32]()
+    scores_row.resize(seq_len, Float32(0.0))
+    var p_scores = scores_row.unsafe_ptr()
+
+    # Track probabilities untuk verifikasi causal mask
+    var all_probs = List[Float32]()
+    all_probs.resize(num_heads * seq_len * seq_len, Float32(0.0))
+    var p_all_probs = all_probs.unsafe_ptr()
+
+    for h in range(num_heads):
+        for i in range(seq_len):
+            # 1. Hitung Q K^T / sqrt(d_h) untuk j <= i
+            for j in range(i + 1):
+                var acc = Float32(0.0)
+                var q_offset = i * hidden + h * head_dim
+                var k_offset = j * hidden + h * head_dim
+                for d in range(head_dim):
+                    acc += (
+                        p_q[unsafe_offset=q_offset + d]
+                        * p_k[unsafe_offset=k_offset + d]
+                    )
+                p_scores[unsafe_offset=j] = acc * scale
+
+            # 2. Softmax stabil numerik untuk baris i
+            var probs_row = softmax_row_stable(
+                scores_row, 0, seq_len, i + 1, layer_idx
+            )
+            var p_prow = probs_row.unsafe_ptr()
+
+            # Catat probabilitas ke all_probs
+            var prob_base = (h * seq_len + i) * seq_len
+            for j in range(seq_len):
+                p_all_probs[unsafe_offset=prob_base + j] = p_prow[
+                    unsafe_offset=j
+                ]
+
+            # 3. Akumulasi bobot perhatian * V
+            var out_offset = i * hidden + h * head_dim
+            for d in range(head_dim):
+                var val = Float32(0.0)
+                for j in range(i + 1):
+                    var v_offset = j * hidden + h * head_dim
+                    val += (
+                        p_prow[unsafe_offset=j]
+                        * p_v[unsafe_offset=v_offset + d]
+                    )
+                if isnan(val) or isinf(val):
+                    raise Error(
+                        '{"error_type":"ATTENTION_ERROR","detail":"non-finite'
+                        " value in MHA context"
+                        ' output","stage":"attention","layer":'
+                        + String(layer_idx)
+                        + "}"
+                    )
+                p_out[unsafe_offset=out_offset + d] = val
+
+    # Verifikasi causal mask property
+    verify_causal_mask_property(all_probs, seq_len, num_heads, layer_idx)
+
+    return out^
+
+
+def o_project(
+    x: List[Float32],
+    w_o: List[Float32],
+    b_o: List[Float32],
+    seq_len: Int,
+    hidden: Int,
+    layer_idx: Int = 0,
+) raises -> List[Float32]:
+    """Proyeksi linear output attention: y = x W_o^T (+ b_o jika ada).
+
+    @spec scratch/wave/m2/m2-w3-attention.md
+    """
+    if seq_len <= 0 or hidden <= 0:
+        raise Error(
+            '{"error_type":"ATTENTION_ERROR","detail":"seq_len and hidden must'
+            ' be positive","stage":"oproj","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+    if len(x) != seq_len * hidden:
+        raise Error(
+            '{"error_type":"ATTENTION_ERROR","detail":"input length'
+            ' mismatch","stage":"oproj","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+    if len(w_o) != hidden * hidden:
+        raise Error(
+            '{"error_type":"WEIGHT_LOAD_FAILED","detail":"w_o length'
+            ' mismatch","stage":"oproj","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+    var has_bias = len(b_o) > 0
+    if has_bias and len(b_o) != hidden:
+        raise Error(
+            '{"error_type":"WEIGHT_LOAD_FAILED","detail":"b_o length'
+            ' mismatch","stage":"oproj","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+
+    for i in range(len(x)):
+        if isnan(x[i]) or isinf(x[i]):
+            raise Error(
+                '{"error_type":"ATTENTION_ERROR","detail":"non-finite value in'
+                ' o_proj input","stage":"oproj","layer":'
+                + String(layer_idx)
+                + "}"
+            )
+    for i in range(len(w_o)):
+        if isnan(w_o[i]) or isinf(w_o[i]):
+            raise Error(
+                '{"error_type":"WEIGHT_LOAD_FAILED","detail":"non-finite value'
+                ' in w_o","stage":"oproj","layer":'
+                + String(layer_idx)
+                + "}"
+            )
+    if has_bias:
+        for i in range(len(b_o)):
+            if isnan(b_o[i]) or isinf(b_o[i]):
+                raise Error(
+                    '{"error_type":"WEIGHT_LOAD_FAILED","detail":"non-finite'
+                    ' value in b_o","stage":"oproj","layer":'
+                    + String(layer_idx)
+                    + "}"
+                )
+
+    var out = List[Float32]()
+    out.resize(seq_len * hidden, Float32(0.0))
+
+    var p_x = x.unsafe_ptr()
+    var p_w = w_o.unsafe_ptr()
+    var p_b = b_o.unsafe_ptr()
+    var p_out = out.unsafe_ptr()
+
+    for t in range(seq_len):
+        var x_row = t * hidden
+        for j in range(hidden):
+            var w_row = j * hidden
+            var acc = Float32(0.0)
+            for k in range(hidden):
+                acc += (
+                    p_x[unsafe_offset=x_row + k] * p_w[unsafe_offset=w_row + k]
+                )
+            if has_bias:
+                acc += p_b[unsafe_offset=j]
+            if isnan(acc) or isinf(acc):
+                raise Error(
+                    '{"error_type":"ATTENTION_ERROR","detail":"non-finite'
+                    ' value in o_proj output","stage":"oproj","layer":'
+                    + String(layer_idx)
+                    + "}"
+                )
+            p_out[unsafe_offset=x_row + j] = acc
+    return out^
+
+
+def add_residual(
+    y: List[Float32],
+    x: List[Float32],
+    layer_idx: Int = 0,
+) raises -> List[Float32]:
+    """Residual connection: out = y + x.
+
+    @spec scratch/wave/m2/m2-w3-attention.md
+    """
+    if len(y) != len(x):
+        raise Error(
+            '{"error_type":"ATTENTION_ERROR","detail":"residual length'
+            ' mismatch","stage":"residual","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+    var n = len(y)
+    var out = List[Float32]()
+    out.resize(n, Float32(0.0))
+    var p_y = y.unsafe_ptr()
+    var p_x = x.unsafe_ptr()
+    var p_out = out.unsafe_ptr()
+    for i in range(n):
+        var vy = p_y[unsafe_offset=i]
+        var vx = p_x[unsafe_offset=i]
+        if isnan(vy) or isinf(vy) or isnan(vx) or isinf(vx):
+            raise Error(
+                '{"error_type":"ATTENTION_ERROR","detail":"non-finite value in'
+                ' residual","stage":"residual","layer":'
+                + String(layer_idx)
+                + "}"
+            )
+        var val = vy + vx
+        if isnan(val) or isinf(val):
+            raise Error(
+                '{"error_type":"ATTENTION_ERROR","detail":"overflow in'
+                ' residual addition","stage":"residual","layer":'
+                + String(layer_idx)
+                + "}"
+            )
+        p_out[unsafe_offset=i] = val
+    return out^
+
+
+def forward_attention_block(
+    x: List[Float32],
+    weights: AttentionWeights,
+    seq_len: Int,
+    cfg: ModelConfig,
+    eps: Float32,
+    pos_offset: Int = 0,
+    base: Float32 = Float32(1000000.0),
+    layer_idx: Int = 0,
+) raises -> List[Float32]:
+    """Pipeline blok attention utuh: RMSNorm F6 -> QKV (+bias) -> RoPE rotate_half F7 -> MHA Causal -> o_proj (+bias) -> Residual.
+
+    @spec docs/milestones/M2-attention.md
+    @spec scratch/wave/m2/m2-w3-attention.md
+    """
+    var hidden = cfg.hidden_size
+    if len(x) != seq_len * hidden:
+        raise Error(
+            '{"error_type":"ACT_LOAD_FAILED","detail":"activation length'
+            ' mismatch","stage":"attention","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+
+    # 1. RMSNorm per-token (reuse F6 dari M1 tanpa duplikasi)
+    var x_norm = List[Float32]()
+    x_norm.reserve(seq_len * hidden)
+    for t in range(seq_len):
+        var tok_vec = List[Float32]()
+        tok_vec.reserve(hidden)
+        var row = t * hidden
+        for k in range(hidden):
+            tok_vec.append(x[row + k])
+        var normed = rmsnorm(tok_vec, weights.norm_gamma, eps)
+        for k in range(hidden):
+            x_norm.append(normed[k])
+
+    # 2. QKV Projection (W1)
+    var qkv_res = qkv_forward(x_norm, weights.qkv, seq_len, cfg)
+    ref q = qkv_res[0]
+    ref k = qkv_res[1]
+    ref v = qkv_res[2]
+
+    # 3. RoPE rotate_half F7 (W2)
+    var rope_res = apply_rope(q, k, seq_len, cfg, pos_offset, base, layer_idx)
+    ref q_rot = rope_res[0]
+    ref k_rot = rope_res[1]
+
+    # 4. MHA dengan Causal Mask & Softmax Stabil (W3)
+    var attn_out = mha_forward(q_rot, k_rot, v, seq_len, cfg, layer_idx)
+
+    # 5. o_proj (W3)
+    var y = o_project(
+        attn_out, weights.w_o, weights.b_o, seq_len, hidden, layer_idx
+    )
+
+    # 6. Residual connection y_final = y + x (W3)
+    var y_final = add_residual(y, x, layer_idx)
+    return y_final^
+
+
+def load_layer_attention_weights(
+    layer_idx: Int,
+    model_root: String,
+    weight_map: Dict[String, String],
+    cfg: ModelConfig,
+    mut telemetry: LoadMemoryTelemetry,
+) raises -> AttentionWeights:
+    """Memuat seluruh bobot blok attention satu layer dari shard safetensors.
+
+    - input_layernorm.weight
+    - QKV weights (W_q, W_k, W_v, b_q, b_k, b_v)
+    - o_proj.weight (+ b_o jika ada di checkpoint)
+    """
+    if layer_idx < 0 or layer_idx >= cfg.num_hidden_layers:
+        raise Error(
+            '{"error_type":"LAYER_INVALID","detail":"invalid layer index: '
+            + String(layer_idx)
+            + " (expected 0.."
+            + String(cfg.num_hidden_layers - 1)
+            + ')","stage":"attention","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+
+    var hidden = cfg.hidden_size
+    var prefix = "model.layers." + String(layer_idx) + "."
+    var norm_name = prefix + "input_layernorm.weight"
+    var o_proj_name = prefix + "self_attn.o_proj.weight"
+    var o_bias_name = prefix + "self_attn.o_proj.bias"
+
+    if norm_name not in weight_map:
+        raise Error(
+            '{"error_type":"WEIGHT_LOAD_FAILED","detail":"norm weight not in'
+            " weight_map: "
+            + norm_name
+            + '","shard":"","tensor_name":"'
+            + norm_name
+            + '"}'
+        )
+    if o_proj_name not in weight_map:
+        raise Error(
+            '{"error_type":"WEIGHT_LOAD_FAILED","detail":"o_proj weight not in'
+            " weight_map: "
+            + o_proj_name
+            + '","shard":"","tensor_name":"'
+            + o_proj_name
+            + '"}'
+        )
+
+    var norm_gamma = _load_one_tensor_by_name(
+        model_root,
+        weight_map[norm_name],
+        norm_name,
+        hidden,
+        1,
+        False,
+        telemetry,
+    )
+    var qkv = load_layer_qkv_weights(
+        layer_idx, model_root, weight_map, cfg, telemetry
+    )
+    var w_o = _load_one_tensor_by_name(
+        model_root,
+        weight_map[o_proj_name],
+        o_proj_name,
+        hidden,
+        hidden,
+        True,
+        telemetry,
+    )
+    var b_o = List[Float32]()
+    if o_bias_name in weight_map:
+        b_o = _load_one_tensor_by_name(
+            model_root,
+            weight_map[o_bias_name],
+            o_bias_name,
+            hidden,
+            1,
+            False,
+            telemetry,
+        )
+
+    return AttentionWeights(norm_gamma^, qkv^, w_o^, b_o^)
 
 
 def validate_bias_count(
@@ -1609,6 +2180,275 @@ def test_apply_rope_q_and_k() raises:
     assert_equal(len(k_rot), 4)
     assert_almost_equal(q_rot[0], Float32(-1.9841106), atol=1e-5)
     assert_almost_equal(k_rot[0], Float32(-1.8335261), atol=1e-5)
+
+
+def test_causal_mask_triangular_structure() raises:
+    """Struktur matriks causal mask: 0 pada j <= i, -inf pada j > i."""
+    var seq_len = 4
+    var mask = build_causal_mask(seq_len)
+    assert_equal(len(mask), 16)
+    for i in range(seq_len):
+        for j in range(seq_len):
+            var val = mask[i * seq_len + j]
+            if j <= i:
+                assert_almost_equal(val, Float32(0.0), atol=1e-6)
+            else:
+                assert_true(isinf(val) and val < Float32(0.0))
+
+
+def test_causal_mask_autoregressive_property() raises:
+    """Property test causal mask: output token t hanya dari input <= t."""
+    var cfg = ModelConfig(4, 1, 1, 10)
+    var seq_len = 3
+    var hidden = 4
+
+    # Sequence A: [t0, t1, t2]
+    var q_a: List[Float32] = [
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        1.0,
+        1.0,
+        0.0,
+        0.0,
+    ]
+    var k_a: List[Float32] = [
+        1.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+    ]
+    var v_a: List[Float32] = [
+        1.0,
+        2.0,
+        3.0,
+        4.0,
+        5.0,
+        6.0,
+        7.0,
+        8.0,
+        9.0,
+        10.0,
+        11.0,
+        12.0,
+    ]
+
+    # Sequence B: [t0, t1, t2_prime] (token 0 dan 1 sama persis, token 2 berbeda drastis)
+    var q_b: List[Float32] = [
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        -5.0,
+        8.0,
+        -3.0,
+        2.0,
+    ]
+    var k_b: List[Float32] = [
+        1.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        99.0,
+        -42.0,
+        13.0,
+        7.0,
+    ]
+    var v_b: List[Float32] = [
+        1.0,
+        2.0,
+        3.0,
+        4.0,
+        5.0,
+        6.0,
+        7.0,
+        8.0,
+        -100.0,
+        200.0,
+        -300.0,
+        400.0,
+    ]
+
+    var out_a = mha_forward(q_a, k_a, v_a, seq_len, cfg)
+    var out_b = mha_forward(q_b, k_b, v_b, seq_len, cfg)
+
+    # Output pada token 0 dan token 1 wajib IDENTIK (tidak terpengaruh perubahan token 2)
+    for t in range(2):
+        for d in range(hidden):
+            assert_almost_equal(
+                out_a[t * hidden + d], out_b[t * hidden + d], atol=1e-6
+            )
+
+    # Output pada token 2 wajib BERBEDA
+    var diff_t2 = Float32(0.0)
+    for d in range(hidden):
+        diff_t2 += abs(out_a[2 * hidden + d] - out_b[2 * hidden + d])
+    assert_true(diff_t2 > Float32(1.0))
+
+
+def test_softmax_stable_max_shift() raises:
+    """Property test softmax stabil: invariansi max-shift softmax(z + c) == softmax(z).
+    """
+    var z: List[Float32] = [1.0, 5.0, 2.0, 4.0]
+    var z_shifted: List[Float32] = [1001.0, 1005.0, 1002.0, 1004.0]
+    var p1 = softmax_row_stable(z, 0, 4, 4)
+    var p2 = softmax_row_stable(z_shifted, 0, 4, 4)
+    for j in range(4):
+        assert_almost_equal(p1[j], p2[j], atol=1e-6)
+
+
+def test_softmax_stable_sum_to_one() raises:
+    """Probabilitas softmax wajib berjumlah tepat 1.0 pada elemen valid."""
+    var z: List[Float32] = [-3.0, 2.0, 0.5, 99.0]
+    # Uji valid_len = 3 (elemen ke-4 dimask)
+    var p = softmax_row_stable(z, 0, 4, 3)
+    var sum_prob = Float32(0.0)
+    for j in range(3):
+        sum_prob += p[j]
+    assert_almost_equal(sum_prob, Float32(1.0), atol=1e-6)
+    assert_almost_equal(p[3], Float32(0.0), atol=1e-6)
+
+
+def test_softmax_stable_nan_inf_rejected() raises:
+    """Non-finite value di unmasked logits memicu ATTENTION_ERROR."""
+    var nan_z: List[Float32] = [1.0, Float32(0.0) / Float32(0.0), 3.0]
+    var r1 = False
+    try:
+        var _p = softmax_row_stable(nan_z, 0, 3, 3)
+    except e:
+        r1 = True
+    assert_true(r1)
+
+
+def test_mha_forward_known_oracle() raises:
+    """Verifikasi analitis MHA dengan bobot deterministik kecil vs PyTorch oracle.
+    """
+    var cfg = ModelConfig(4, 1, 1, 10)
+    var seq_len = 2
+    var q: List[Float32] = [1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0]
+    var k: List[Float32] = [1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0]
+    var v: List[Float32] = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+    var out = mha_forward(q, k, v, seq_len, cfg)
+    assert_equal(len(out), 8)
+    # Token 0 (hanya attend ke token 0): [1, 2, 3, 4]
+    assert_almost_equal(out[0], Float32(1.0), atol=1e-5)
+    assert_almost_equal(out[1], Float32(2.0), atol=1e-5)
+    assert_almost_equal(out[2], Float32(3.0), atol=1e-5)
+    assert_almost_equal(out[3], Float32(4.0), atol=1e-5)
+    # Token 1 (attend 50% ke 0 dan 50% ke 1): [3, 4, 5, 6]
+    assert_almost_equal(out[4], Float32(3.0), atol=1e-5)
+    assert_almost_equal(out[5], Float32(4.0), atol=1e-5)
+    assert_almost_equal(out[6], Float32(5.0), atol=1e-5)
+    assert_almost_equal(out[7], Float32(6.0), atol=1e-5)
+
+
+def test_o_project_matmul_and_bias() raises:
+    """Proyeksi output o_project: perkalian matriks + penambahan bias opsional.
+    """
+    var seq_len = 1
+    var hidden = 2
+    var x: List[Float32] = [2.0, 3.0]
+    var w_o: List[Float32] = [1.0, 0.0, 0.0, 1.0]
+    var b_o: List[Float32] = [0.5, -0.5]
+    var empty_b = List[Float32]()
+
+    # Tanpa bias
+    var y1 = o_project(x, w_o, empty_b, seq_len, hidden)
+    assert_almost_equal(y1[0], Float32(2.0), atol=1e-6)
+    assert_almost_equal(y1[1], Float32(3.0), atol=1e-6)
+
+    # Dengan bias
+    var y2 = o_project(x, w_o, b_o, seq_len, hidden)
+    assert_almost_equal(y2[0], Float32(2.5), atol=1e-6)
+    assert_almost_equal(y2[1], Float32(2.5), atol=1e-6)
+
+
+def test_add_residual() raises:
+    """Residual connection y + x dan validasi dimensi."""
+    var y: List[Float32] = [1.0, 2.0, 3.0]
+    var x: List[Float32] = [0.5, 1.0, 1.5]
+    var res = add_residual(y, x)
+    assert_equal(len(res), 3)
+    assert_almost_equal(res[0], Float32(1.5), atol=1e-6)
+    assert_almost_equal(res[1], Float32(3.0), atol=1e-6)
+    assert_almost_equal(res[2], Float32(4.5), atol=1e-6)
+
+
+def test_forward_attention_block_oracle_slice() raises:
+    """End-to-end forward attention block vs PyTorch fp32 oracle."""
+    var cfg = ModelConfig(4, 1, 1, 10)
+    var seq_len = 2
+    var eps = Float32(1e-6)
+
+    var x: List[Float32] = [
+        1.0,
+        2.0,
+        3.0,
+        4.0,
+        0.5,
+        -1.0,
+        2.5,
+        -0.5,
+    ]
+    var gamma: List[Float32] = [1.0, 1.0, 1.0, 1.0]
+
+    # Matriks identitas 4x4 untuk W_q, W_k, W_v, W_o
+    var eye4 = List[Float32]()
+    eye4.resize(16, Float32(0.0))
+    eye4[0] = Float32(1.0)
+    eye4[5] = Float32(1.0)
+    eye4[10] = Float32(1.0)
+    eye4[15] = Float32(1.0)
+
+    var zero_bias = List[Float32]()
+    zero_bias.resize(4, Float32(0.0))
+
+    var qkv = QKVWeights(
+        eye4.copy(),
+        eye4.copy(),
+        eye4.copy(),
+        zero_bias.copy(),
+        zero_bias.copy(),
+        zero_bias.copy(),
+    )
+    var empty_b = List[Float32]()
+    var weights = AttentionWeights(gamma^, qkv^, eye4^, empty_b^)
+
+    var y_final = forward_attention_block(
+        x, weights, seq_len, cfg, eps, pos_offset=0
+    )
+    assert_equal(len(y_final), 8)
+
+    # Cross-check nilai presisi terhadap oracle PyTorch fp32
+    assert_almost_equal(y_final[0], Float32(1.3651483), atol=1e-5)
+    assert_almost_equal(y_final[1], Float32(2.7302966), atol=1e-5)
+    assert_almost_equal(y_final[2], Float32(4.0954452), atol=1e-5)
+    assert_almost_equal(y_final[3], Float32(5.4605932), atol=1e-5)
+    assert_almost_equal(y_final[4], Float32(0.8598768), atol=1e-5)
+    assert_almost_equal(y_final[5], Float32(-1.5558764), atol=1e-5)
+    assert_almost_equal(y_final[6], Float32(4.2174449), atol=1e-5)
+    assert_almost_equal(y_final[7], Float32(-0.6550304), atol=1e-5)
 
 
 def test_model_config_head_dim() raises:
