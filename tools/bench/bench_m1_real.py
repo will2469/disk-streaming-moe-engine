@@ -132,10 +132,8 @@ def main():
     print(f"Compute time:  {median_comp:.2f} ms")
     print(f"Total time:    {median_total:.2f} ms")
     print(f"Throughput:    {median_throughput:.2f} tok/s")
-    print(
-        f"VmHWM:         {median_vmhwm / (1024**3):.3f} GiB " f"({median_vmhwm} bytes)"
-    )
-    print(f"I/O Read:      {median_io / (1024**3):.3f} GiB " f"({median_io} bytes)")
+    print(f"VmHWM:         {median_vmhwm / (1024**3):.3f} GiB ({median_vmhwm} bytes)")
+    print(f"I/O Read:      {median_io / (1024**3):.3f} GiB ({median_io} bytes)")
     print("=" * 50)
 
     # Save summary json

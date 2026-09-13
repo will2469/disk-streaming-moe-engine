@@ -225,7 +225,8 @@ pub fn run(args: &[String]) -> i32 {
     let mut cand_path = String::new();
     let mut gate = "G-M1-1".to_string();
     let mut vocab_size: usize = 512;
-    let mut run_id = "M1-F10-001".to_string();
+    let mut explicit_dim = false;
+    let mut run_id = String::new();
 
     let mut positional = Vec::new();
     let mut i = 0;
@@ -249,11 +250,12 @@ pub fn run(args: &[String]) -> i32 {
                     gate = args[i].clone();
                 }
             }
-            "--vocab" | "--vocab-size" => {
+            "--dim" | "--dim-size" | "--vocab" | "--vocab-size" => {
                 i += 1;
                 if i < args.len() {
                     if let Ok(v) = args[i].parse::<usize>() {
                         vocab_size = v;
+                        explicit_dim = true;
                     }
                 }
             }
@@ -283,8 +285,15 @@ pub fn run(args: &[String]) -> i32 {
     if ref_path.is_empty() || cand_path.is_empty() {
         return emit_error(
             "USAGE",
-            "pakai: kimo-tools compare <ref.bin> <cand.bin> [--gate G-M1-1] [--vocab <N>]",
+            "pakai: kimo-tools compare <ref.bin> <cand.bin> [--gate G-M1-1|G-M2-1] [--dim <N>]",
         );
+    }
+
+    if run_id.is_empty() {
+        run_id = match gate.as_str() {
+            "G-M2-1" => "M2-F10-001".to_string(),
+            _ => "M1-F10-001".to_string(),
+        };
     }
 
     let ref_floats = match read_floats(&ref_path) {
@@ -297,39 +306,23 @@ pub fn run(args: &[String]) -> i32 {
         Err((code, detail)) => return emit_error(&code, &detail),
     };
 
+    if !explicit_dim && gate == "G-M2-1" {
+        if ref_floats.len() % 2048 == 0 {
+            vocab_size = 2048;
+        } else if ref_floats.len() % 64 == 0 {
+            vocab_size = 64;
+        } else {
+            vocab_size = ref_floats.len();
+        }
+    }
+
     let metrics = match compute_f10_metrics(&ref_floats, &cand_floats, vocab_size) {
         Ok(m) => m,
         Err(e) => return emit_error("LAYOUT_MISMATCH", &e),
     };
 
     // Evaluate gate
-    let (is_pass, threshold_str, fail_cat) = match gate.as_str() {
-        "G-M1-1" => {
-            let pass = metrics.delta_max <= 1e-3
-                && metrics.epsilon_rel <= 1e-4
-                && (metrics.agreement - 100.0).abs() < 1e-5;
-            let thresh = "delta_max <= 1e-3 && epsilon_rel <= 1e-4 && agreement == 100.0";
-            let cat = if pass {
-                None
-            } else if metrics.agreement < 99.0 || metrics.delta_max > 0.05 {
-                Some("dtype-layout".to_string())
-            } else {
-                Some("numeric-order".to_string())
-            };
-            (pass, thresh, cat)
-        }
-        _ => {
-            // Default loose check
-            let pass = metrics.delta_max <= 1e-2 && metrics.epsilon_rel <= 1e-4;
-            let thresh = "delta_max <= 1e-2 && epsilon_rel <= 1e-4";
-            let cat = if pass {
-                None
-            } else {
-                Some("numeric-order".to_string())
-            };
-            (pass, thresh, cat)
-        }
-    };
+    let (is_pass, threshold_str, fail_cat) = evaluate_gate(&gate, &metrics);
 
     let report = CompareReport {
         status: if is_pass {
@@ -356,6 +349,52 @@ pub fn run(args: &[String]) -> i32 {
         0
     } else {
         1
+    }
+}
+
+pub fn evaluate_gate(gate: &str, metrics: &CompareMetrics) -> (bool, &'static str, Option<String>) {
+    match gate {
+        "G-M1-1" => {
+            let pass = metrics.delta_max <= 1e-3
+                && metrics.epsilon_rel <= 1e-4
+                && (metrics.agreement - 100.0).abs() < 1e-5;
+            let thresh = "delta_max <= 1e-3 && epsilon_rel <= 1e-4 && agreement == 100.0";
+            let cat = if pass {
+                None
+            } else if metrics.agreement < 99.0 || metrics.delta_max > 0.05 {
+                Some("dtype-layout".to_string())
+            } else {
+                Some("numeric-order".to_string())
+            };
+            (pass, thresh, cat)
+        }
+        "G-M2-1" => {
+            let pass = metrics.delta_max <= 1e-3 && metrics.epsilon_rel <= 1e-4;
+            let thresh = "delta_max <= 1e-3 && epsilon_rel <= 1e-4";
+            let cat = if pass {
+                None
+            } else if metrics.delta_max > 1.0 || metrics.cos_theta < 0.90 {
+                Some("dtype-layout".to_string())
+            } else if metrics.delta_max >= 0.05 && metrics.delta_max <= 0.25 {
+                Some("rope-style".to_string())
+            } else if metrics.delta_max > 0.25 && metrics.delta_max <= 1.0 {
+                Some("bias-placement".to_string())
+            } else {
+                Some("numeric-order".to_string())
+            };
+            (pass, thresh, cat)
+        }
+        _ => {
+            // Default loose check
+            let pass = metrics.delta_max <= 1e-2 && metrics.epsilon_rel <= 1e-4;
+            let thresh = "delta_max <= 1e-2 && epsilon_rel <= 1e-4";
+            let cat = if pass {
+                None
+            } else {
+                Some("numeric-order".to_string())
+            };
+            (pass, thresh, cat)
+        }
     }
 }
 
@@ -391,5 +430,70 @@ mod tests {
         let m = compute_f10_metrics(&a, &b, 2).unwrap();
         assert_eq!(m.agreement, 0.0);
         assert!(m.delta_max > 1.0);
+    }
+
+    #[test]
+    fn test_gate_g_m2_1_pass() {
+        let m = CompareMetrics {
+            delta_max: 5e-4,
+            epsilon_rel: 5e-5,
+            cos_theta: 0.9999,
+            agreement: 100.0,
+            delta_ce: 0.0,
+        };
+        let (pass, _, cat) = evaluate_gate("G-M2-1", &m);
+        assert!(pass);
+        assert_eq!(cat, None);
+    }
+
+    #[test]
+    fn test_gate_g_m2_1_fail_categories() {
+        // rope-style: 0.05 <= delta_max <= 0.25
+        let m_rope = CompareMetrics {
+            delta_max: 0.12,
+            epsilon_rel: 1e-2,
+            cos_theta: 0.98,
+            agreement: 90.0,
+            delta_ce: 0.1,
+        };
+        let (pass, _, cat) = evaluate_gate("G-M2-1", &m_rope);
+        assert!(!pass);
+        assert_eq!(cat.as_deref(), Some("rope-style"));
+
+        // bias-placement: 0.25 < delta_max <= 1.0
+        let m_bias = CompareMetrics {
+            delta_max: 0.45,
+            epsilon_rel: 1e-2,
+            cos_theta: 0.95,
+            agreement: 80.0,
+            delta_ce: 0.2,
+        };
+        let (pass, _, cat) = evaluate_gate("G-M2-1", &m_bias);
+        assert!(!pass);
+        assert_eq!(cat.as_deref(), Some("bias-placement"));
+
+        // dtype-layout: delta_max > 1.0 or cos_theta < 0.90
+        let m_layout = CompareMetrics {
+            delta_max: 1.5,
+            epsilon_rel: 0.5,
+            cos_theta: 0.85,
+            agreement: 50.0,
+            delta_ce: 1.0,
+        };
+        let (pass, _, cat) = evaluate_gate("G-M2-1", &m_layout);
+        assert!(!pass);
+        assert_eq!(cat.as_deref(), Some("dtype-layout"));
+
+        // numeric-order: delta_max < 0.05 but > 1e-3
+        let m_numeric = CompareMetrics {
+            delta_max: 0.005,
+            epsilon_rel: 0.001,
+            cos_theta: 0.999,
+            agreement: 99.0,
+            delta_ce: 0.01,
+        };
+        let (pass, _, cat) = evaluate_gate("G-M2-1", &m_numeric);
+        assert!(!pass);
+        assert_eq!(cat.as_deref(), Some("numeric-order"));
     }
 }
