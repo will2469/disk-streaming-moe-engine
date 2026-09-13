@@ -1,14 +1,18 @@
 # Copyright 2026 will2469
 # Licensed under the Apache License, Version 2.0 (the "License");
 # See LICENSE for details.
-"""Kimo CLI — check-index (M0) dan head path (M1)."""
+"""Kimo CLI — check-index (M0), head path (M1), and layer attention (M2)."""
 
 from model import (
+    AttentionWeights,
     HeadWeights,
     LoadMemoryTelemetry,
     ModelConfig,
+    forward_attention_block,
     forward_head,
+    load_layer_attention_weights,
     load_tensor_f32_chunked,
+    validate_bias_count,
     validate_logits,
 )
 from safetensors import (
@@ -21,8 +25,10 @@ from safetensors import (
     read_header,
     read_small_file,
 )
+from std.builtin.dtype import DType
 from std.collections import Dict, List
 from std.ffi import external_call
+from std.math import abs, isfinite, isinf, isnan
 from std.sys.arg import argv
 from std.sys.terminate import exit
 from std.time import perf_counter_ns
@@ -86,6 +92,27 @@ def dirname(path: String) -> String:
 
 def fail(code: String, detail: String, shard: String, tensor: String) raises:
     eprint_json(err_json(code, detail, shard, tensor))
+    exit(2)
+
+
+def err_layer_json(
+    code: String, detail: String, stage: String, layer: Int
+) -> String:
+    return String(
+        '{"error_type":"',
+        json_escape(code),
+        '","detail":"',
+        json_escape(detail),
+        '","stage":"',
+        json_escape(stage),
+        '","layer":',
+        String(layer),
+        "}",
+    )
+
+
+def fail_layer(code: String, detail: String, stage: String, layer: Int) raises:
+    eprint_json(err_layer_json(code, detail, stage, layer))
     exit(2)
 
 
@@ -680,6 +707,110 @@ def atomic_write_logits(target_path: String, logits: List[Float32]) raises:
         )
 
 
+def load_and_validate_activation(
+    path: String,
+    layer_idx: Int,
+    expected_tokens: Int,
+    hidden_dim: Int,
+) raises -> List[Float32]:
+    var real = c_realpath(path)
+    if real == "":
+        fail_layer(
+            "FILE_NOT_FOUND",
+            "activation file not found: " + path,
+            "attention",
+            layer_idx,
+        )
+
+    var raw_bytes = List[UInt8]()
+    try:
+        raw_bytes = read_small_file(path)
+    except e:
+        fail_layer(
+            "ACT_LOAD_FAILED",
+            "cannot read activation file: " + String(e),
+            "attention",
+            layer_idx,
+        )
+
+    var expected_elements = expected_tokens * hidden_dim
+    var expected_bytes = expected_elements * 4
+    if len(raw_bytes) != expected_bytes:
+        fail_layer(
+            "ACT_LOAD_FAILED",
+            String(
+                "activation size mismatch: expected ",
+                expected_bytes,
+                " bytes (shape [",
+                expected_tokens,
+                ", ",
+                hidden_dim,
+                "]), got ",
+                len(raw_bytes),
+            ),
+            "attention",
+            layer_idx,
+        )
+
+    var out = List[Float32]()
+    out.reserve(expected_elements)
+    var p_u8 = raw_bytes.unsafe_ptr()
+    var p_f32 = p_u8.unsafe_bitcast[Scalar[DType.float32]]()
+    for i in range(expected_elements):
+        var v = p_f32[unsafe_offset=i]
+        if isnan(v) or isinf(v):
+            fail_layer(
+                "ACT_LOAD_FAILED",
+                "activation contains non-finite values (NaN or Inf) at index "
+                + String(i),
+                "attention",
+                layer_idx,
+            )
+        if abs(v) > Float32(1e6):
+            fail_layer(
+                "ACT_LOAD_FAILED",
+                "activation value out of reasonable range at index "
+                + String(i),
+                "attention",
+                layer_idx,
+            )
+        out.append(v)
+    return out^
+
+
+def atomic_write_attn_output(
+    target_path: String, output: List[Float32], layer_idx: Int
+) raises:
+    var tmp_path = String(target_path, ".tmp.bin")
+    try:
+        var f = open(tmp_path, "w")
+        var p_u8 = output.unsafe_ptr().unsafe_bitcast[UInt8]()
+        var span = Span(unsafe_ptr=p_u8, length=len(output) * 4)
+        f.write_bytes(span)
+        f.close()
+    except:
+        _ = c_unlink(tmp_path)
+        raise Error(
+            err_layer_json(
+                "OUTPUT_WRITE_FAILED",
+                "cannot write tmp file: " + tmp_path,
+                "output",
+                layer_idx,
+            )
+        )
+    var ret = c_rename(tmp_path, target_path)
+    if ret != 0:
+        _ = c_unlink(tmp_path)
+        raise Error(
+            err_layer_json(
+                "OUTPUT_WRITE_FAILED",
+                "atomic rename failed from " + tmp_path + " to " + target_path,
+                "output",
+                layer_idx,
+            )
+        )
+
+
 def cmd_head(args: List[String]) raises:
     if len(args) < 3:
         fail(
@@ -1040,10 +1171,410 @@ def cmd_head(args: List[String]) raises:
     exit(0)
 
 
+def cmd_layer(args: List[String]) raises:
+    var layer_str = String("")
+    var model_dir = String("")
+    var output_file = String("attn_output.bin")
+    var workdir = String("")
+    var positionals = List[String]()
+
+    var i = 2
+    while i < len(args):
+        var a = String(args[i])
+        if a == "--layer":
+            if i + 1 >= len(args):
+                fail_layer(
+                    "LAYER_INVALID",
+                    "missing argument for --layer",
+                    "attention",
+                    -1,
+                )
+            layer_str = String(args[i + 1])
+            i += 2
+        elif a == "--model-dir":
+            if i + 1 >= len(args):
+                fail_layer(
+                    "WEIGHT_LOAD_FAILED",
+                    "missing argument for --model-dir",
+                    "attention",
+                    -1,
+                )
+            model_dir = String(args[i + 1])
+            i += 2
+        elif a == "--output":
+            if i + 1 >= len(args):
+                fail_layer(
+                    "OUTPUT_WRITE_FAILED",
+                    "missing argument for --output",
+                    "output",
+                    -1,
+                )
+            output_file = String(args[i + 1])
+            i += 2
+        elif a == "--workdir":
+            if i + 1 >= len(args):
+                fail_layer(
+                    "OUTPUT_WRITE_FAILED",
+                    "missing argument for --workdir",
+                    "output",
+                    -1,
+                )
+            workdir = String(args[i + 1])
+            i += 2
+        elif a.startswith("-"):
+            fail_layer("LAYER_INVALID", "unknown option: " + a, "attention", -1)
+        else:
+            positionals.append(a)
+            i += 1
+
+    if layer_str == "":
+        fail_layer(
+            "LAYER_INVALID",
+            "missing required --layer argument",
+            "attention",
+            -1,
+        )
+
+    var layer_val = 0
+    var is_neg = False
+    var lb = List[UInt8]()
+    var sb = layer_str.as_bytes()
+    for b_idx in range(len(sb)):
+        lb.append(sb[b_idx])
+    var start_k = 0
+    if len(lb) > 0 and Int(lb[0]) == 45:  # '-'
+        is_neg = True
+        start_k = 1
+    if len(lb) == 0 or (is_neg and len(lb) == 1):
+        fail_layer(
+            "LAYER_INVALID",
+            "invalid layer number format: " + layer_str,
+            "attention",
+            -1,
+        )
+    for k in range(start_k, len(lb)):
+        var c = Int(lb[k])
+        if c < 48 or c > 57:
+            fail_layer(
+                "LAYER_INVALID",
+                "invalid layer number format: " + layer_str,
+                "attention",
+                -1,
+            )
+        layer_val = layer_val * 10 + (c - 48)
+    if is_neg:
+        layer_val = -layer_val
+
+    if layer_val != 0 and layer_val != 12 and layer_val != 23:
+        fail_layer(
+            "LAYER_INVALID",
+            "layer number invalid (must be 0, 12, or 23 for M2): "
+            + String(layer_val),
+            "attention",
+            layer_val,
+        )
+
+    if len(positionals) < 1:
+        fail_layer(
+            "ACT_LOAD_FAILED",
+            "missing activation input file argument",
+            "attention",
+            layer_val,
+        )
+
+    var activation_path = positionals[0]
+    var supplied_shards = List[String]()
+    for si in range(1, len(positionals)):
+        supplied_shards.append(positionals[si])
+
+    var workdir_canon = c_realpath(workdir if workdir != "" else ".")
+    if workdir_canon == "":
+        fail_layer(
+            "OUTPUT_WRITE_FAILED",
+            "workdir does not exist: " + (workdir if workdir != "" else "."),
+            "output",
+            layer_val,
+        )
+
+    var target_output = output_file
+    if not output_file.startswith("/"):
+        target_output = String(workdir_canon, "/", output_file)
+
+    var out_parent = dirname(target_output)
+    if out_parent == "":
+        out_parent = workdir_canon
+    var parent_canon = c_realpath(out_parent)
+    if parent_canon == "" or not parent_canon.startswith(workdir_canon):
+        fail_layer(
+            "OUTPUT_WRITE_FAILED",
+            "output path escapes workdir: " + target_output,
+            "output",
+            layer_val,
+        )
+
+    var model_root: String
+    var is_model_dir_mode = False
+    if model_dir != "":
+        if c_realpath(model_dir) == "":
+            fail_layer(
+                "FILE_NOT_FOUND",
+                "model directory not found: " + model_dir,
+                "attention",
+                layer_val,
+            )
+        model_root = model_dir
+        is_model_dir_mode = True
+    else:
+        if len(supplied_shards) < 1:
+            fail_layer(
+                "WEIGHT_LOAD_FAILED",
+                (
+                    "must provide --model-dir <dir> or at least one shard"
+                    " safetensors"
+                ),
+                "attention",
+                layer_val,
+            )
+        var r0 = dirname(supplied_shards[0])
+        if r0 == "":
+            r0 = "."
+        for k in range(len(supplied_shards)):
+            var rk = dirname(supplied_shards[k])
+            if rk == "":
+                rk = "."
+            if rk != r0:
+                fail_layer(
+                    "FILE_NOT_FOUND",
+                    "all supplied shards must reside in the same directory",
+                    "attention",
+                    layer_val,
+                )
+        model_root = r0
+
+    var t_parse0 = perf_counter_ns()
+
+    var index_path = String(model_root, "/model.safetensors.index.json")
+    if c_realpath(index_path) == "":
+        fail_layer(
+            "FILE_NOT_FOUND",
+            "index file not found: " + index_path,
+            "attention",
+            layer_val,
+        )
+
+    var packed = parse_index(index_path)
+    var num_map = 0
+    var cs = packed[0].as_bytes()
+    for ci in range(len(cs)):
+        num_map = num_map * 10 + (Int(cs[ci]) - 48)
+    var weight_map = Dict[String, String]()
+    for w in range(num_map):
+        weight_map[packed[1 + 2 * w]] = packed[1 + 2 * w + 1]
+
+    var config_path = String(model_root, "/model_config.json")
+    if c_realpath(config_path) == "":
+        var alt_cfg = String(model_root, "/config.json")
+        if c_realpath(alt_cfg) != "":
+            config_path = alt_cfg
+    if c_realpath(config_path) == "":
+        fail_layer(
+            "FILE_NOT_FOUND",
+            "config file not found in: " + model_root,
+            "attention",
+            layer_val,
+        )
+
+    var cfg_tuple = parse_model_config(config_path)
+    var cfg = cfg_tuple[0].copy()
+    var eps = cfg_tuple[1]
+
+    if layer_val >= cfg.num_hidden_layers:
+        fail_layer(
+            "LAYER_INVALID",
+            String(
+                "layer index ",
+                layer_val,
+                " exceeds num_hidden_layers ",
+                cfg.num_hidden_layers,
+            ),
+            "attention",
+            layer_val,
+        )
+
+    if cfg.num_hidden_layers == 24:
+        var bias_count = 0
+        for l_i in range(cfg.num_hidden_layers):
+            var pfx = "model.layers." + String(l_i) + ".self_attn."
+            if (pfx + "q_proj.bias") in weight_map:
+                bias_count += 1
+            if (pfx + "k_proj.bias") in weight_map:
+                bias_count += 1
+            if (pfx + "v_proj.bias") in weight_map:
+                bias_count += 1
+        if bias_count != 72:
+            fail_layer(
+                "WEIGHT_LOAD_FAILED",
+                String(
+                    "attention bias count mismatch: expected 72, got ",
+                    bias_count,
+                ),
+                "attention",
+                layer_val,
+            )
+
+    var prefix = "model.layers." + String(layer_val) + "."
+    var req_norm = prefix + "input_layernorm.weight"
+    var req_wq = prefix + "self_attn.q_proj.weight"
+    var req_bq = prefix + "self_attn.q_proj.bias"
+    var req_wk = prefix + "self_attn.k_proj.weight"
+    var req_bk = prefix + "self_attn.k_proj.bias"
+    var req_wv = prefix + "self_attn.v_proj.weight"
+    var req_bv = prefix + "self_attn.v_proj.bias"
+    var req_wo = prefix + "self_attn.o_proj.weight"
+
+    var req_list = List[String]()
+    req_list.append(req_norm)
+    req_list.append(req_wq)
+    req_list.append(req_bq)
+    req_list.append(req_wk)
+    req_list.append(req_bk)
+    req_list.append(req_wv)
+    req_list.append(req_bv)
+    req_list.append(req_wo)
+
+    for ri in range(len(req_list)):
+        var rn = req_list[ri]
+        if rn not in weight_map:
+            fail_layer(
+                "WEIGHT_LOAD_FAILED",
+                "required tensor not in weight_map: " + rn,
+                "attention",
+                layer_val,
+            )
+
+    if not is_model_dir_mode:
+        for si in range(len(supplied_shards)):
+            var sp = supplied_shards[si]
+            if c_realpath(sp) == "":
+                fail_layer(
+                    "FILE_NOT_FOUND",
+                    "supplied shard not found on disk: " + sp,
+                    "attention",
+                    layer_val,
+                )
+
+        var supplied_bases = List[String]()
+        for si in range(len(supplied_shards)):
+            supplied_bases.append(basename(supplied_shards[si]))
+
+        var missing_tensors = List[String]()
+        var expected_shards = List[String]()
+        for ri in range(len(req_list)):
+            var rn = req_list[ri]
+            var sh_name = weight_map[rn]
+            if not _in_list(supplied_bases, sh_name):
+                missing_tensors.append(rn)
+                if not _in_list(expected_shards, sh_name):
+                    expected_shards.append(sh_name)
+
+        if len(missing_tensors) > 0:
+            var mt_json = String("")
+            for mi in range(len(missing_tensors)):
+                if mi > 0:
+                    mt_json += ","
+                mt_json += String('"', missing_tensors[mi], '"')
+            var es_json = String("")
+            for ei in range(len(expected_shards)):
+                if ei > 0:
+                    es_json += ","
+                es_json += String('"', expected_shards[ei], '"')
+            eprint_json(
+                '{"error_type":"WEIGHT_LOAD_FAILED","detail":"Required tensors'
+                ' not covered by supplied shards","stage":"attention","layer":'
+                + String(layer_val)
+                + ',"missing_tensors":['
+                + mt_json
+                + '],"expected_shards":['
+                + es_json
+                + "]}"
+            )
+            exit(2)
+
+    var act = load_and_validate_activation(
+        activation_path, layer_val, 16, cfg.hidden_size
+    )
+
+    var telemetry = LoadMemoryTelemetry()
+    var weights = load_layer_attention_weights(
+        layer_val, model_root, weight_map, cfg, telemetry
+    )
+    var parse_time_ms = Float64(perf_counter_ns() - t_parse0) / 1000000.0
+
+    var t_comp0 = perf_counter_ns()
+    var out_act = forward_attention_block(
+        act,
+        weights,
+        16,
+        cfg,
+        eps,
+        pos_offset=0,
+        base=Float32(1000000.0),
+        layer_idx=layer_val,
+    )
+    var compute_time_ms = Float64(perf_counter_ns() - t_comp0) / 1000000.0
+
+    if len(out_act) != 16 * cfg.hidden_size:
+        fail_layer(
+            "ATTENTION_ERROR",
+            "output size mismatch",
+            "attention",
+            layer_val,
+        )
+
+    var max_diff = Float32(0.0)
+    for idx in range(len(out_act)):
+        var val = out_act[idx]
+        if isnan(val) or isinf(val):
+            fail_layer(
+                "ATTENTION_ERROR",
+                "output contains non-finite values at index " + String(idx),
+                "attention",
+                layer_val,
+            )
+        var diff = abs(val - act[idx])
+        if diff > max_diff:
+            max_diff = diff
+
+    if max_diff == Float32(0.0):
+        fail_layer(
+            "ATTENTION_ERROR",
+            "residual check failed: output is identical to input",
+            "residual",
+            layer_val,
+        )
+
+    atomic_write_attn_output(target_output, out_act, layer_val)
+
+    print(
+        String(
+            '{"status":"success","layer":',
+            String(layer_val),
+            ',"num_tokens":16,"output_file":"',
+            json_escape(output_file),
+            '","parse_time_ms":',
+            String(parse_time_ms),
+            ',"compute_time_ms":',
+            String(compute_time_ms),
+            "}",
+        )
+    )
+    exit(0)
+
+
 def main() raises:
     var args = argv()
     if len(args) < 2:
-        fail("USAGE", "pakai: kimo (check-index|head) ...", "", "")
+        fail("USAGE", "pakai: kimo (check-index|head|layer) ...", "", "")
     var cmd = String(args[1])
     if cmd == "check-index":
         var shards = List[String]()
@@ -1062,6 +1593,19 @@ def main() raises:
                 eprint_json(err_s)
             else:
                 fail("INTERNAL_ERROR", err_s, "", "")
+            exit(2)
+    elif cmd == "layer":
+        var pass_args = List[String]()
+        for i in range(len(args)):
+            pass_args.append(String(args[i]))
+        try:
+            cmd_layer(pass_args^)
+        except e:
+            var err_s = String(e)
+            if err_s.startswith("{"):
+                eprint_json(err_s)
+            else:
+                fail_layer("INTERNAL_ERROR", err_s, "attention", -1)
             exit(2)
     else:
         fail("USAGE", String("subcommand tak dikenal: ", cmd), "", "")

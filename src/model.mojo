@@ -1174,7 +1174,9 @@ def load_layer_attention_weights(
             '{"error_type":"WEIGHT_LOAD_FAILED","detail":"norm weight not in'
             " weight_map: "
             + norm_name
-            + '","shard":"","tensor_name":"'
+            + '","stage":"attention","layer":'
+            + String(layer_idx)
+            + ',"shard":"","tensor_name":"'
             + norm_name
             + '"}'
         )
@@ -1183,7 +1185,9 @@ def load_layer_attention_weights(
             '{"error_type":"WEIGHT_LOAD_FAILED","detail":"o_proj weight not in'
             " weight_map: "
             + o_proj_name
-            + '","shard":"","tensor_name":"'
+            + '","stage":"attention","layer":'
+            + String(layer_idx)
+            + ',"shard":"","tensor_name":"'
             + o_proj_name
             + '"}'
         )
@@ -1242,7 +1246,7 @@ def validate_bias_count(
             + String(expected)
             + " got "
             + String(actual)
-            + '","shard":"'
+            + '","stage":"attention","layer":0,"shard":"'
             + shard
             + '","tensor_name":""}'
         )
