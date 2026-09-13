@@ -433,11 +433,19 @@ def qkv_project(
         var x_row = t * hidden
         for j in range(hidden):
             var w_row = j * hidden
-            var acc = Float32(0.0)
-            for k in range(hidden):
+            var acc_simd = SIMD[DType.float32, 16](0.0)
+            var k = 0
+            while k + 16 <= hidden:
+                acc_simd += p_x.unsafe_load[width=16](
+                    x_row + k
+                ) * p_w.unsafe_load[width=16](w_row + k)
+                k += 16
+            var acc = acc_simd.reduce_add()
+            while k < hidden:
                 acc += (
                     p_x[unsafe_offset=x_row + k] * p_w[unsafe_offset=w_row + k]
                 )
+                k += 1
             var val = acc + p_b[unsafe_offset=j]
             if isnan(val) or isinf(val):
                 raise Error(
@@ -887,14 +895,22 @@ def mha_forward(
         for i in range(seq_len):
             # 1. Hitung Q K^T / sqrt(d_h) untuk j <= i
             for j in range(i + 1):
-                var acc = Float32(0.0)
                 var q_offset = i * hidden + h * head_dim
                 var k_offset = j * hidden + h * head_dim
-                for d in range(head_dim):
+                var acc_simd = SIMD[DType.float32, 16](0.0)
+                var d = 0
+                while d + 16 <= head_dim:
+                    acc_simd += p_q.unsafe_load[width=16](
+                        q_offset + d
+                    ) * p_k.unsafe_load[width=16](k_offset + d)
+                    d += 16
+                var acc = acc_simd.reduce_add()
+                while d < head_dim:
                     acc += (
                         p_q[unsafe_offset=q_offset + d]
                         * p_k[unsafe_offset=k_offset + d]
                     )
+                    d += 1
                 p_scores[unsafe_offset=j] = acc * scale
 
             # 2. Softmax stabil numerik untuk baris i
@@ -1016,11 +1032,19 @@ def o_project(
         var x_row = t * hidden
         for j in range(hidden):
             var w_row = j * hidden
-            var acc = Float32(0.0)
-            for k in range(hidden):
+            var acc_simd = SIMD[DType.float32, 16](0.0)
+            var k = 0
+            while k + 16 <= hidden:
+                acc_simd += p_x.unsafe_load[width=16](
+                    x_row + k
+                ) * p_w.unsafe_load[width=16](w_row + k)
+                k += 16
+            var acc = acc_simd.reduce_add()
+            while k < hidden:
                 acc += (
                     p_x[unsafe_offset=x_row + k] * p_w[unsafe_offset=w_row + k]
                 )
+                k += 1
             if has_bias:
                 acc += p_b[unsafe_offset=j]
             if isnan(acc) or isinf(acc):
@@ -1105,15 +1129,18 @@ def forward_attention_block(
     # 1. RMSNorm per-token (reuse F6 dari M1 tanpa duplikasi)
     var x_norm = List[Float32]()
     x_norm.reserve(seq_len * hidden)
+    var tok_vec = List[Float32]()
+    tok_vec.resize(hidden, Float32(0.0))
+    var p_tok = tok_vec.unsafe_ptr()
+    var p_raw_x = x.unsafe_ptr()
     for t in range(seq_len):
-        var tok_vec = List[Float32]()
-        tok_vec.reserve(hidden)
         var row = t * hidden
         for k in range(hidden):
-            tok_vec.append(x[row + k])
+            p_tok[unsafe_offset=k] = p_raw_x[unsafe_offset=row + k]
         var normed = rmsnorm(tok_vec, weights.norm_gamma, eps)
+        var p_normed = normed.unsafe_ptr()
         for k in range(hidden):
-            x_norm.append(normed[k])
+            x_norm.append(p_normed[unsafe_offset=k])
 
     # 2. QKV Projection (W1)
     var qkv_res = qkv_forward(x_norm, weights.qkv, seq_len, cfg)

@@ -1,0 +1,243 @@
+{
+  "run_id": "M2-20260913-001",
+  "model": "Qwen1.5-MoE-A2.7B-Chat",
+  "num_tokens": 16,
+  "hidden_size": 2048,
+  "num_attention_heads": 16,
+  "head_dim": 128,
+  "layers": {
+    "0": {
+      "parse_time_ms": 49.079066,
+      "compute_time_ms": 65.745218,
+      "total_time_ms": 114.12164899999999,
+      "throughput_tok_s": 243.36370745625942,
+      "vmhwm_bytes": 0,
+      "vmhwm_gib": 0.0,
+      "io_read_bytes": 0,
+      "io_read_gib": 0.0
+    },
+    "12": {
+      "parse_time_ms": 50.548472,
+      "compute_time_ms": 65.510437,
+      "total_time_ms": 116.058909,
+      "throughput_tok_s": 244.2358917556908,
+      "vmhwm_bytes": 0,
+      "vmhwm_gib": 0.0,
+      "io_read_bytes": 0,
+      "io_read_gib": 0.0
+    },
+    "23": {
+      "parse_time_ms": 52.461595,
+      "compute_time_ms": 63.807242,
+      "total_time_ms": 116.268837,
+      "throughput_tok_s": 250.75523558908878,
+      "vmhwm_bytes": 0,
+      "vmhwm_gib": 0.0,
+      "io_read_bytes": 0,
+      "io_read_gib": 0.0
+    }
+  },
+  "raw_runs": {
+    "0": [
+      {
+        "run": 1,
+        "layer": 0,
+        "type": "cold",
+        "parse_time_ms": 50.955728,
+        "compute_time_ms": 68.474977,
+        "total_time_ms": 119.43070499999999,
+        "throughput_tok_s": 233.661998893406,
+        "vmhwm_bytes": 0,
+        "vmhwm_gib": 0.0,
+        "io_read_bytes": 0,
+        "io_read_gib": 0.0
+      },
+      {
+        "run": 2,
+        "layer": 0,
+        "type": "warm",
+        "parse_time_ms": 49.079066,
+        "compute_time_ms": 65.042583,
+        "total_time_ms": 114.12164899999999,
+        "throughput_tok_s": 245.99269066543687,
+        "vmhwm_bytes": 0,
+        "vmhwm_gib": 0.0,
+        "io_read_bytes": 0,
+        "io_read_gib": 0.0
+      },
+      {
+        "run": 3,
+        "layer": 0,
+        "type": "warm",
+        "parse_time_ms": 49.769447,
+        "compute_time_ms": 67.475629,
+        "total_time_ms": 117.245076,
+        "throughput_tok_s": 237.1226506091555,
+        "vmhwm_bytes": 0,
+        "vmhwm_gib": 0.0,
+        "io_read_bytes": 0,
+        "io_read_gib": 0.0
+      },
+      {
+        "run": 4,
+        "layer": 0,
+        "type": "warm",
+        "parse_time_ms": 47.050241,
+        "compute_time_ms": 65.745218,
+        "total_time_ms": 112.795459,
+        "throughput_tok_s": 243.36370745625942,
+        "vmhwm_bytes": 0,
+        "vmhwm_gib": 0.0,
+        "io_read_bytes": 0,
+        "io_read_gib": 0.0
+      },
+      {
+        "run": 5,
+        "layer": 0,
+        "type": "warm",
+        "parse_time_ms": 48.492235,
+        "compute_time_ms": 60.079014,
+        "total_time_ms": 108.571249,
+        "throughput_tok_s": 266.31595518528314,
+        "vmhwm_bytes": 0,
+        "vmhwm_gib": 0.0,
+        "io_read_bytes": 0,
+        "io_read_gib": 0.0
+      }
+    ],
+    "12": [
+      {
+        "run": 1,
+        "layer": 12,
+        "type": "cold",
+        "parse_time_ms": 51.125886,
+        "compute_time_ms": 62.381899,
+        "total_time_ms": 113.507785,
+        "throughput_tok_s": 256.48465751259033,
+        "vmhwm_bytes": 0,
+        "vmhwm_gib": 0.0,
+        "io_read_bytes": 0,
+        "io_read_gib": 0.0
+      },
+      {
+        "run": 2,
+        "layer": 12,
+        "type": "warm",
+        "parse_time_ms": 49.335547,
+        "compute_time_ms": 62.421242,
+        "total_time_ms": 111.756789,
+        "throughput_tok_s": 256.3229997890782,
+        "vmhwm_bytes": 0,
+        "vmhwm_gib": 0.0,
+        "io_read_bytes": 0,
+        "io_read_gib": 0.0
+      },
+      {
+        "run": 3,
+        "layer": 12,
+        "type": "warm",
+        "parse_time_ms": 50.548472,
+        "compute_time_ms": 65.510437,
+        "total_time_ms": 116.058909,
+        "throughput_tok_s": 244.2358917556908,
+        "vmhwm_bytes": 0,
+        "vmhwm_gib": 0.0,
+        "io_read_bytes": 0,
+        "io_read_gib": 0.0
+      },
+      {
+        "run": 4,
+        "layer": 12,
+        "type": "warm",
+        "parse_time_ms": 79.07897,
+        "compute_time_ms": 68.78725,
+        "total_time_ms": 147.86622,
+        "throughput_tok_s": 232.60124514354044,
+        "vmhwm_bytes": 0,
+        "vmhwm_gib": 0.0,
+        "io_read_bytes": 0,
+        "io_read_gib": 0.0
+      },
+      {
+        "run": 5,
+        "layer": 12,
+        "type": "warm",
+        "parse_time_ms": 49.70449,
+        "compute_time_ms": 66.994938,
+        "total_time_ms": 116.69942800000001,
+        "throughput_tok_s": 238.8240138381798,
+        "vmhwm_bytes": 0,
+        "vmhwm_gib": 0.0,
+        "io_read_bytes": 0,
+        "io_read_gib": 0.0
+      }
+    ],
+    "23": [
+      {
+        "run": 1,
+        "layer": 23,
+        "type": "cold",
+        "parse_time_ms": 52.5425,
+        "compute_time_ms": 67.599117,
+        "total_time_ms": 120.141617,
+        "throughput_tok_s": 236.68948220137253,
+        "vmhwm_bytes": 0,
+        "vmhwm_gib": 0.0,
+        "io_read_bytes": 0,
+        "io_read_gib": 0.0
+      },
+      {
+        "run": 2,
+        "layer": 23,
+        "type": "warm",
+        "parse_time_ms": 57.828796,
+        "compute_time_ms": 65.514942,
+        "total_time_ms": 123.343738,
+        "throughput_tok_s": 244.21909737781647,
+        "vmhwm_bytes": 0,
+        "vmhwm_gib": 0.0,
+        "io_read_bytes": 0,
+        "io_read_gib": 0.0
+      },
+      {
+        "run": 3,
+        "layer": 23,
+        "type": "warm",
+        "parse_time_ms": 48.008568,
+        "compute_time_ms": 61.660564,
+        "total_time_ms": 109.66913199999999,
+        "throughput_tok_s": 259.48513866983114,
+        "vmhwm_bytes": 0,
+        "vmhwm_gib": 0.0,
+        "io_read_bytes": 0,
+        "io_read_gib": 0.0
+      },
+      {
+        "run": 4,
+        "layer": 23,
+        "type": "warm",
+        "parse_time_ms": 52.461595,
+        "compute_time_ms": 63.807242,
+        "total_time_ms": 116.268837,
+        "throughput_tok_s": 250.75523558908878,
+        "vmhwm_bytes": 0,
+        "vmhwm_gib": 0.0,
+        "io_read_bytes": 0,
+        "io_read_gib": 0.0
+      },
+      {
+        "run": 5,
+        "layer": 23,
+        "type": "warm",
+        "parse_time_ms": 49.229833,
+        "compute_time_ms": 62.424998,
+        "total_time_ms": 111.654831,
+        "throughput_tok_s": 256.307577294596,
+        "vmhwm_bytes": 0,
+        "vmhwm_gib": 0.0,
+        "io_read_bytes": 0,
+        "io_read_gib": 0.0
+      }
+    ]
+  }
+}
