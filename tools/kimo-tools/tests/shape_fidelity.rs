@@ -52,3 +52,77 @@ fn delapan_shard_24_layer_72_bias() {
     assert_eq!(idx["metadata"]["total_size"], 28631568384u64);
     assert!(per_file.values().all(|&c| c > 0));
 }
+
+#[test]
+fn property_p2_config_vs_index_bias() {
+    // Property P-2 (§2.3 / M2-W1):
+    // Jebakan permanen: config.json TIDAK menuliskan attention_bias,
+    // namun checkpoint memiliki tepat 72 tensor bias QKV (24 layer x 3 bias).
+    let m0_cfg_p = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/m0/model_config.json"
+    );
+    let m0_cfg: Value = serde_json::from_str(&std::fs::read_to_string(m0_cfg_p).unwrap()).unwrap();
+    assert!(
+        m0_cfg.get("attention_bias").is_none(),
+        "config.json tidak boleh mendefinisikan attention_bias (jebakan §2.3)"
+    );
+
+    let m1_cfg_p = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/m1/model_config.json"
+    );
+    let m1_cfg: Value = serde_json::from_str(&std::fs::read_to_string(m1_cfg_p).unwrap()).unwrap();
+    assert!(
+        m1_cfg.get("attention_bias").is_none(),
+        "config.json m1 tidak boleh mendefinisikan attention_bias"
+    );
+
+    let idx = load_index();
+    let wm = idx["weight_map"].as_object().unwrap();
+
+    let mut qkv_bias_tensors = BTreeSet::new();
+    let mut o_proj_bias_count = 0u32;
+
+    for name in wm.keys() {
+        if name.ends_with(".bias") && name.contains("self_attn") {
+            if name.contains("q_proj.bias")
+                || name.contains("k_proj.bias")
+                || name.contains("v_proj.bias")
+            {
+                qkv_bias_tensors.insert(name.clone());
+            }
+            if name.contains("o_proj.bias") {
+                o_proj_bias_count += 1;
+            }
+        }
+    }
+
+    assert_eq!(
+        qkv_bias_tensors.len(),
+        72,
+        "Jumlah tensor bias QKV di index wajib tepat 72"
+    );
+    assert_eq!(
+        o_proj_bias_count, 0,
+        "o_proj TIDAK boleh memiliki bias pada Qwen1.5-MoE-A2.7B"
+    );
+
+    for layer in 0..24 {
+        let q = format!("model.layers.{layer}.self_attn.q_proj.bias");
+        let k = format!("model.layers.{layer}.self_attn.k_proj.bias");
+        let v = format!("model.layers.{layer}.self_attn.v_proj.bias");
+        assert!(
+            qkv_bias_tensors.contains(&q),
+            "Layer {layer} wajib punya q_proj.bias"
+        );
+        assert!(
+            qkv_bias_tensors.contains(&k),
+            "Layer {layer} wajib punya k_proj.bias"
+        );
+        assert!(
+            qkv_bias_tensors.contains(&v),
+            "Layer {layer} wajib punya v_proj.bias"
+        );
+    }
+}

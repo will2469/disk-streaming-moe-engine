@@ -9,9 +9,16 @@
 @see docs/milestones/M2-attention.md
 """
 
-from safetensors import read_header, STHeader, TensorMeta
+from safetensors import (
+    STHeader,
+    TensorMeta,
+    parse_index,
+    parse_index_to_dict,
+    read_header,
+    read_small_file,
+)
 from std.builtin.dtype import DType
-from std.collections import List
+from std.collections import Dict, List
 from std.math import min, sqrt, isnan, isinf, isfinite
 from std.memory import Pointer
 from std.os import SEEK_SET
@@ -341,16 +348,81 @@ def qkv_project(
 
     @spec m2-w1-qkv-bias.md
     """
+    if seq_len <= 0 or hidden <= 0:
+        raise Error(
+            '{"error_type":"ACT_LOAD_FAILED","detail":"seq_len and hidden must'
+            ' be positive","stage":"qkv"}'
+        )
+    if len(x) != seq_len * hidden:
+        raise Error(
+            '{"error_type":"ACT_LOAD_FAILED","detail":"activation length'
+            " mismatch: expected "
+            + String(seq_len * hidden)
+            + " got "
+            + String(len(x))
+            + '","stage":"qkv"}'
+        )
+    if len(w) != hidden * hidden:
+        raise Error(
+            '{"error_type":"WEIGHT_LOAD_FAILED","detail":"weight length'
+            " mismatch: expected "
+            + String(hidden * hidden)
+            + " got "
+            + String(len(w))
+            + '","stage":"qkv"}'
+        )
+    if len(b) != hidden:
+        raise Error(
+            '{"error_type":"WEIGHT_LOAD_FAILED","detail":"bias length'
+            " mismatch: expected "
+            + String(hidden)
+            + " got "
+            + String(len(b))
+            + '","stage":"qkv"}'
+        )
+
+    for i in range(len(x)):
+        if isnan(x[i]) or isinf(x[i]):
+            raise Error(
+                '{"error_type":"ACT_LOAD_FAILED","detail":"non-finite value in'
+                ' activation","stage":"qkv"}'
+            )
+    for i in range(len(w)):
+        if isnan(w[i]) or isinf(w[i]):
+            raise Error(
+                '{"error_type":"WEIGHT_LOAD_FAILED","detail":"non-finite value'
+                ' in weight","stage":"qkv"}'
+            )
+    for i in range(len(b)):
+        if isnan(b[i]) or isinf(b[i]):
+            raise Error(
+                '{"error_type":"WEIGHT_LOAD_FAILED","detail":"non-finite value'
+                ' in bias","stage":"qkv"}'
+            )
+
     var out = List[Float32]()
-    for _ in range(seq_len * hidden):
-        out.append(Float32(0.0))
+    out.reserve(seq_len * hidden)
+
+    var p_x = x.unsafe_ptr()
+    var p_w = w.unsafe_ptr()
+    var p_b = b.unsafe_ptr()
 
     for t in range(seq_len):
+        var x_row = t * hidden
         for j in range(hidden):
+            var w_row = j * hidden
             var acc = Float32(0.0)
             for k in range(hidden):
-                acc += x[t * hidden + k] * w[j * hidden + k]
-            out[t * hidden + j] = acc + b[j]
+                acc += (
+                    p_x[unsafe_offset=x_row + k] * p_w[unsafe_offset=w_row + k]
+                )
+            var val = acc + p_b[unsafe_offset=j]
+            if isnan(val) or isinf(val):
+                raise Error(
+                    '{"error_type":"ATTENTION_ERROR","detail":"non-finite'
+                    ' value in qkv projection","stage":"qkv"}'
+                )
+            out.append(val)
     return out^
 
 
@@ -362,6 +434,11 @@ def qkv_forward(
 ) raises -> Tuple[List[Float32], List[Float32], List[Float32]]:
     """Hitung Q, K, V dari input x menggunakan bobot QKV satu layer."""
     var hidden = cfg.hidden_size
+    if cfg.num_attention_heads * cfg.head_dim() != hidden:
+        raise Error(
+            '{"error_type":"CONFIG_ERROR","detail":"num_attention_heads *'
+            ' head_dim != hidden_size","stage":"qkv"}'
+        )
     var q = qkv_project(x, weights.w_q, weights.b_q, seq_len, hidden)
     var k = qkv_project(x, weights.w_k, weights.b_k, seq_len, hidden)
     var v = qkv_project(x, weights.w_v, weights.b_v, seq_len, hidden)
@@ -392,6 +469,45 @@ def validate_bias_count(
         )
 
 
+def validate_attention_bias_in_index(
+    weight_map: Dict[String, String],
+    num_layers: Int = 24,
+) raises:
+    """Validasi P-2: index safetensors wajib memiliki 3 tensor bias per layer (q, k, v)
+    sehingga total bias == 3 * num_layers (72 untuk 24 layer).
+    Jika kurang/lebih atau ada layer yang tidak lengkap -> WEIGHT_LOAD_FAILED.
+    """
+    for l in range(num_layers):
+        var prefix = "model.layers." + String(l) + ".self_attn."
+        var q_bias = prefix + "q_proj.bias"
+        var k_bias = prefix + "k_proj.bias"
+        var v_bias = prefix + "v_proj.bias"
+        if q_bias not in weight_map:
+            raise Error(
+                '{"error_type":"WEIGHT_LOAD_FAILED","detail":"missing '
+                + q_bias
+                + ' in index weight_map","shard":"","tensor_name":"'
+                + q_bias
+                + '"}'
+            )
+        if k_bias not in weight_map:
+            raise Error(
+                '{"error_type":"WEIGHT_LOAD_FAILED","detail":"missing '
+                + k_bias
+                + ' in index weight_map","shard":"","tensor_name":"'
+                + k_bias
+                + '"}'
+            )
+        if v_bias not in weight_map:
+            raise Error(
+                '{"error_type":"WEIGHT_LOAD_FAILED","detail":"missing '
+                + v_bias
+                + ' in index weight_map","shard":"","tensor_name":"'
+                + v_bias
+                + '"}'
+            )
+
+
 def collect_attention_bias_names(
     tensor_names: List[String],
     num_layers: Int,
@@ -420,6 +536,153 @@ def collect_attention_bias_names(
                 if has_attn and has_proj:
                     result.append(name)
     return result^
+
+
+def _load_one_tensor_by_name(
+    model_root: String,
+    shard_file: String,
+    tensor_name: String,
+    dim0: Int,
+    dim1: Int,
+    is_2d: Bool,
+    mut telemetry: LoadMemoryTelemetry,
+) raises -> List[Float32]:
+    var shard_path = (
+        String(model_root, "/", shard_file) if model_root != "" else shard_file
+    )
+    var header = read_header(shard_path)
+    var found = False
+    var meta = TensorMeta("", "", List[Int](), 0, 0)
+    for i in range(len(header.entries)):
+        ref e = header.entries[i]
+        if e.name == tensor_name:
+            meta = e.copy()
+            found = True
+            break
+    if not found:
+        raise Error(
+            '{"error_type":"WEIGHT_LOAD_FAILED","detail":"tensor '
+            + tensor_name
+            + ' not found in shard header","shard":"'
+            + shard_path
+            + '","tensor_name":"'
+            + tensor_name
+            + '"}'
+        )
+    if is_2d:
+        if (
+            len(meta.shape) != 2
+            or meta.shape[0] != dim0
+            or meta.shape[1] != dim1
+        ):
+            raise Error(
+                '{"error_type":"WEIGHT_LOAD_FAILED","detail":"weight shape'
+                " mismatch: expected ["
+                + String(dim0)
+                + ", "
+                + String(dim1)
+                + "] got length "
+                + String(len(meta.shape))
+                + '","shard":"'
+                + shard_path
+                + '","tensor_name":"'
+                + tensor_name
+                + '"}'
+            )
+    else:
+        if len(meta.shape) != 1 or meta.shape[0] != dim0:
+            raise Error(
+                '{"error_type":"WEIGHT_LOAD_FAILED","detail":"bias shape'
+                " mismatch: expected ["
+                + String(dim0)
+                + "] got length "
+                + String(len(meta.shape))
+                + '","shard":"'
+                + shard_path
+                + '","tensor_name":"'
+                + tensor_name
+                + '"}'
+            )
+    return load_tensor_f32_chunked(
+        shard_path, header.data_base, meta, telemetry
+    )
+
+
+def load_layer_qkv_weights(
+    layer_idx: Int,
+    model_root: String,
+    weight_map: Dict[String, String],
+    cfg: ModelConfig,
+    mut telemetry: LoadMemoryTelemetry,
+) raises -> QKVWeights:
+    """Memuat bobot QKV (w_q, w_k, w_v + b_q, b_k, b_v) untuk satu layer dari shard safetensors.
+
+    @spec m2-w1-qkv-bias.md
+    Validasi:
+    - layer_idx dalam [0, num_hidden_layers) (else LAYER_INVALID)
+    - bobot shape [hidden_size, hidden_size]
+    - bias shape [hidden_size]
+    """
+    if layer_idx < 0 or layer_idx >= cfg.num_hidden_layers:
+        raise Error(
+            '{"error_type":"LAYER_INVALID","detail":"invalid layer index: '
+            + String(layer_idx)
+            + " (expected 0.."
+            + String(cfg.num_hidden_layers - 1)
+            + ')","stage":"qkv","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+
+    var prefix = "model.layers." + String(layer_idx) + ".self_attn."
+    var req_wq = prefix + "q_proj.weight"
+    var req_bq = prefix + "q_proj.bias"
+    var req_wk = prefix + "k_proj.weight"
+    var req_bk = prefix + "k_proj.bias"
+    var req_wv = prefix + "v_proj.weight"
+    var req_bv = prefix + "v_proj.bias"
+
+    var required = List[String]()
+    required.append(req_wq)
+    required.append(req_bq)
+    required.append(req_wk)
+    required.append(req_bk)
+    required.append(req_wv)
+    required.append(req_bv)
+
+    for i in range(len(required)):
+        var r = required[i]
+        if r not in weight_map:
+            raise Error(
+                '{"error_type":"WEIGHT_LOAD_FAILED","detail":"required QKV'
+                " tensor not in weight_map: "
+                + r
+                + '","shard":"","tensor_name":"'
+                + r
+                + '"}'
+            )
+
+    var hidden = cfg.hidden_size
+    var w_q = _load_one_tensor_by_name(
+        model_root, weight_map[req_wq], req_wq, hidden, hidden, True, telemetry
+    )
+    var b_q = _load_one_tensor_by_name(
+        model_root, weight_map[req_bq], req_bq, hidden, 1, False, telemetry
+    )
+    var w_k = _load_one_tensor_by_name(
+        model_root, weight_map[req_wk], req_wk, hidden, hidden, True, telemetry
+    )
+    var b_k = _load_one_tensor_by_name(
+        model_root, weight_map[req_bk], req_bk, hidden, 1, False, telemetry
+    )
+    var w_v = _load_one_tensor_by_name(
+        model_root, weight_map[req_wv], req_wv, hidden, hidden, True, telemetry
+    )
+    var b_v = _load_one_tensor_by_name(
+        model_root, weight_map[req_bv], req_bv, hidden, 1, False, telemetry
+    )
+
+    return QKVWeights(w_q^, w_k^, w_v^, b_q^, b_k^, b_v^)
 
 
 def _contains(s: String, sub: String) -> Bool:
@@ -557,6 +820,347 @@ def test_contains() raises:
     assert_true(_contains("abc", "abc"))
     assert_false(_contains("abc", "xyz"))
     assert_false(_contains("ab", "abc"))
+
+
+def test_qkv_project_shape_errors() raises:
+    """Uji deteksi kesalahan shape pada x, w, dan b -> ACT_LOAD_FAILED / WEIGHT_LOAD_FAILED.
+    """
+    var valid_x: List[Float32] = [1.0, 2.0]
+    var short_x: List[Float32] = [1.0]
+    var valid_w: List[Float32] = [1.0, 0.0, 0.0, 1.0]
+    var short_w: List[Float32] = [1.0, 0.0]
+    var valid_b: List[Float32] = [0.0, 0.0]
+    var short_b: List[Float32] = [0.0]
+
+    # x mismatch
+    var raised_x = False
+    try:
+        var _out = qkv_project(short_x, valid_w, valid_b, 1, 2)
+    except:
+        raised_x = True
+    assert_true(raised_x)
+
+    # w mismatch
+    var raised_w = False
+    try:
+        var _out = qkv_project(valid_x, short_w, valid_b, 1, 2)
+    except:
+        raised_w = True
+    assert_true(raised_w)
+
+    # b mismatch
+    var raised_b = False
+    try:
+        var _out = qkv_project(valid_x, valid_w, short_b, 1, 2)
+    except:
+        raised_b = True
+    assert_true(raised_b)
+
+    # seq_len <= 0
+    var raised_seq = False
+    try:
+        var _out = qkv_project(valid_x, valid_w, valid_b, 0, 2)
+    except:
+        raised_seq = True
+    assert_true(raised_seq)
+
+
+def test_qkv_project_nan_inf() raises:
+    """Deteksi nilai non-finite (NaN / Inf) pada input / bobot -> raise error.
+    """
+    var nan_val = Float32(0.0) / Float32(0.0)
+    var inf_val = Float32(1.0) / Float32(0.0)
+
+    var nan_x: List[Float32] = [nan_val, 1.0]
+    var valid_x: List[Float32] = [1.0, 1.0]
+    var valid_w: List[Float32] = [1.0, 0.0, 0.0, 1.0]
+    var valid_b: List[Float32] = [0.0, 0.0]
+
+    var raised_nan_x = False
+    try:
+        var _out = qkv_project(nan_x, valid_w, valid_b, 1, 2)
+    except:
+        raised_nan_x = True
+    assert_true(raised_nan_x)
+
+    var nan_w: List[Float32] = [1.0, 0.0, nan_val, 1.0]
+    var raised_nan_w = False
+    try:
+        var _out = qkv_project(valid_x, nan_w, valid_b, 1, 2)
+    except:
+        raised_nan_w = True
+    assert_true(raised_nan_w)
+
+    var inf_b: List[Float32] = [0.0, inf_val]
+    var raised_inf_b = False
+    try:
+        var _out = qkv_project(valid_x, valid_w, inf_b, 1, 2)
+    except:
+        raised_inf_b = True
+    assert_true(raised_inf_b)
+
+
+def test_qkv_forward_multi_token() raises:
+    """Multi-token QKV forward: pastikan Q, K, V terpisah dan terhitung benar.
+    """
+    var cfg = ModelConfig(4, 1, 2, 64)
+    assert_equal(cfg.head_dim(), 2)
+
+    var x: List[Float32] = [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+    ]  # seq_len = 2, hidden = 4
+
+    var w_q: List[Float32] = [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+    ]
+    var b_q: List[Float32] = [0.1, 0.1, 0.1, 0.1]
+
+    var w_k: List[Float32] = [
+        2.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        2.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        2.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        2.0,
+    ]
+    var b_k: List[Float32] = [0.2, 0.2, 0.2, 0.2]
+
+    var w_v: List[Float32] = [
+        3.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        3.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        3.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        3.0,
+    ]
+    var b_v: List[Float32] = [0.3, 0.3, 0.3, 0.3]
+
+    var weights = QKVWeights(w_q^, w_k^, w_v^, b_q^, b_k^, b_v^)
+    var res = qkv_forward(x, weights, 2, cfg)
+    ref q = res[0]
+    ref k = res[1]
+    ref v = res[2]
+
+    assert_equal(len(q), 8)
+    assert_equal(len(k), 8)
+    assert_equal(len(v), 8)
+
+    # Token 0: x = [1, 0, 0, 0]
+    assert_almost_equal(q[0], 1.1, atol=1e-5)
+    assert_almost_equal(q[1], 0.1, atol=1e-5)
+    assert_almost_equal(k[0], 2.2, atol=1e-5)
+    assert_almost_equal(k[1], 0.2, atol=1e-5)
+    assert_almost_equal(v[0], 3.3, atol=1e-5)
+    assert_almost_equal(v[1], 0.3, atol=1e-5)
+
+    # Token 1: x = [0, 1, 0, 0]
+    assert_almost_equal(q[4], 0.1, atol=1e-5)
+    assert_almost_equal(q[5], 1.1, atol=1e-5)
+    assert_almost_equal(k[4], 0.2, atol=1e-5)
+    assert_almost_equal(k[5], 2.2, atol=1e-5)
+    assert_almost_equal(v[4], 0.3, atol=1e-5)
+    assert_almost_equal(v[5], 3.3, atol=1e-5)
+
+
+def test_qkv_forward_head_dim_config_error() raises:
+    """Config dengan num_attention_heads * head_dim != hidden_size -> CONFIG_ERROR.
+    """
+    var cfg = ModelConfig(5, 1, 2, 64)  # 5 // 2 = 2, 2 * 2 = 4 != 5
+    var x: List[Float32] = [1.0, 2.0, 3.0, 4.0, 5.0]
+    var w = List[Float32]()
+    for _ in range(25):
+        w.append(0.0)
+    var b: List[Float32] = [0.0, 0.0, 0.0, 0.0, 0.0]
+    var weights = QKVWeights(
+        w.copy(), w.copy(), w.copy(), b.copy(), b.copy(), b.copy()
+    )
+    var raised = False
+    try:
+        var _res = qkv_forward(x, weights, 1, cfg)
+    except:
+        raised = True
+    assert_true(raised)
+
+
+def test_validate_attention_bias_in_index_72() raises:
+    """24 layer x 3 bias = 72 bias lengkap -> lolos; 71 bias -> WEIGHT_LOAD_FAILED.
+    """
+    var full_map = Dict[String, String]()
+    for l in range(24):
+        var prefix = "model.layers." + String(l) + ".self_attn."
+        full_map[prefix + "q_proj.bias"] = "shard-0.safetensors"
+        full_map[prefix + "k_proj.bias"] = "shard-0.safetensors"
+        full_map[prefix + "v_proj.bias"] = "shard-0.safetensors"
+    validate_attention_bias_in_index(full_map, 24)
+
+    # Hapus 1 bias (hanya 71 bias)
+    var incomplete_map = Dict[String, String]()
+    for l in range(24):
+        var prefix = "model.layers." + String(l) + ".self_attn."
+        incomplete_map[prefix + "q_proj.bias"] = "shard-0.safetensors"
+        if l != 23:
+            incomplete_map[prefix + "k_proj.bias"] = "shard-0.safetensors"
+        incomplete_map[prefix + "v_proj.bias"] = "shard-0.safetensors"
+    var raised = False
+    try:
+        validate_attention_bias_in_index(incomplete_map, 24)
+    except:
+        raised = True
+    assert_true(raised)
+
+
+def test_property_p2_config_vs_index() raises:
+    """Property P-2 (§2.3): config tidak menulis attention_bias, namun index memiliki 72 bias.
+    """
+    # 1. Verifikasi model_config.json tidak memuat field attention_bias
+    var cfg_bytes = read_small_file("fixtures/m0/model_config.json")
+    var cfg_str = String(from_utf8_lossy=Span(cfg_bytes))
+    assert_false(_contains(cfg_str, "attention_bias"))
+
+    # 2. Verifikasi index asli fixtures/m0_qwen_index.json memiliki tepat 72 tensor bias attention
+    var packed = parse_index("fixtures/m0_qwen_index.json")
+    var nn = 0
+    var cs = packed[0].as_bytes()
+    for ci in range(len(cs)):
+        nn = nn * 10 + (Int(cs[ci]) - 48)
+    assert_equal(nn, 4659)
+
+    var all_names = List[String]()
+    var weight_map = Dict[String, String]()
+    for i in range(nn):
+        var nm = packed[1 + 2 * i]
+        var sf = packed[1 + 2 * i + 1]
+        all_names.append(nm)
+        weight_map[nm] = sf
+
+    var bias_names = collect_attention_bias_names(all_names, 24)
+    assert_equal(len(bias_names), 72)
+    validate_bias_count(bias_names, 24, "fixtures/m0_qwen_index.json")
+    validate_attention_bias_in_index(weight_map, 24)
+
+
+def test_load_layer_qkv_weights_validation() raises:
+    """Validasi load_layer_qkv_weights: layer invalid dan tensor hilang."""
+    var cfg = ModelConfig(64, 24, 2, 512)
+    var empty_map = Dict[String, String]()
+    var telem = LoadMemoryTelemetry()
+
+    # Layer < 0
+    var raised_neg = False
+    try:
+        var _w = load_layer_qkv_weights(-1, "", empty_map, cfg, telem)
+    except:
+        raised_neg = True
+    assert_true(raised_neg)
+
+    # Layer >= num_hidden_layers
+    var raised_high = False
+    try:
+        var _w2 = load_layer_qkv_weights(24, "", empty_map, cfg, telem)
+    except:
+        raised_high = True
+    assert_true(raised_high)
+
+    # Missing tensor in weight map
+    var raised_missing = False
+    try:
+        var _w3 = load_layer_qkv_weights(0, "", empty_map, cfg, telem)
+    except:
+        raised_missing = True
+    assert_true(raised_missing)
+
+
+def test_qkv_project_oracle_slice() raises:
+    """Oracle slice test: memverifikasi proyeksi linear fp32 y = xW^T + b
+    secara presisi terhadap ground truth independen (PyTorch fp32 formula).
+    """
+    var seq_len = 2
+    var hidden = 4
+    # x: [2, 4]
+    var x: List[Float32] = [
+        1.0,
+        2.0,
+        3.0,
+        4.0,
+        0.5,
+        -1.0,
+        2.5,
+        -0.5,
+    ]
+    # W_q: [4, 4] (row-major: W[j, k] * x[k])
+    var w_q: List[Float32] = [
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+        -0.1,
+        0.5,
+        0.0,
+        0.2,
+        0.3,
+        -0.2,
+        0.1,
+        0.0,
+        0.0,
+        0.1,
+        -0.3,
+        0.2,
+    ]
+    # b_q: [4]
+    var b_q: List[Float32] = [0.01, -0.02, 0.03, -0.04]
+
+    var q = qkv_project(x, w_q, b_q, seq_len, hidden)
+    assert_equal(len(q), 8)
+    assert_almost_equal(q[0], Float32(3.01), atol=1e-5)
+    assert_almost_equal(q[1], Float32(1.68), atol=1e-5)
+    assert_almost_equal(q[2], Float32(0.23), atol=1e-5)
+    assert_almost_equal(q[3], Float32(0.06), atol=1e-5)
+    assert_almost_equal(q[4], Float32(0.41), atol=1e-5)
+    assert_almost_equal(q[5], Float32(-0.67), atol=1e-5)
+    assert_almost_equal(q[6], Float32(0.63), atol=1e-5)
+    assert_almost_equal(q[7], Float32(-0.99), atol=1e-5)
 
 
 def test_model_config_head_dim() raises:
