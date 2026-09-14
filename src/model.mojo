@@ -8,6 +8,7 @@
 @see scratch/wave/m2/m2-w1-qkv-bias.md
 @see docs/milestones/M2-attention.md
 @see scratch/wave/m3/m3-w1-router.md
+@see scratch/wave/m3/m3-w2-swiglu.md
 @see docs/milestones/M3-moe.md
 """
 
@@ -1402,9 +1403,14 @@ def _load_one_tensor_by_name(
                 + '"}'
             )
     else:
-        if len(meta.shape) != 1 or meta.shape[0] != dim0:
+        var valid_1d = (len(meta.shape) == 1 and meta.shape[0] == dim0) or (
+            len(meta.shape) == 2
+            and meta.shape[0] == 1
+            and meta.shape[1] == dim0
+        )
+        if not valid_1d:
             raise Error(
-                '{"error_type":"WEIGHT_LOAD_FAILED","detail":"bias shape'
+                '{"error_type":"WEIGHT_LOAD_FAILED","detail":"1D tensor shape'
                 " mismatch: expected ["
                 + String(dim0)
                 + "] got length "
@@ -1965,6 +1971,555 @@ def load_layer_router_weights(
         True,
         telemetry,
     )
+
+
+# =========================================================================
+# MoE SwiGLU & Shared Expert Kernels (M3-W2)
+# =========================================================================
+
+
+def sigmoid_f32(z: Float32) -> Float32:
+    """Fungsi Sigmoid numerik stabil fp32: sigma(z) = 1 / (1 + exp(-z)).
+
+    @spec docs/milestones/M3-moe.md (Scope F8c)
+    Mencegah overflow/underflow float32 pada nilai ekstrem (|z| > 88).
+    """
+    if isnan(z):
+        return Float32(0.0) / Float32(0.0)
+    if z < Float32(-88.0):
+        return Float32(0.0)
+    if z > Float32(88.0):
+        return Float32(1.0)
+    if z < Float32(0.0):
+        var ez = exp(z)
+        return ez / (Float32(1.0) + ez)
+    return Float32(1.0) / (Float32(1.0) + exp(-z))
+
+
+def silu_f32(z: Float32) -> Float32:
+    """Fungsi SiLU (Swish-1) numerik stabil fp32: silu(z) = z * sigma(z).
+
+    @spec docs/milestones/M3-moe.md (Scope F8d)
+    """
+    if isnan(z):
+        return Float32(0.0) / Float32(0.0)
+    if isinf(z):
+        return z if z > Float32(0.0) else Float32(0.0)
+    return z * sigmoid_f32(z)
+
+
+@fieldwise_init
+struct SwigluWeights(Copyable, Movable):
+    """Bobot proyeksi SwiGLU: W_gate, W_up, W_down (F8d)."""
+
+    var w_gate: List[Float32]  # shape: [inter_dim, hidden_dim]
+    var w_up: List[Float32]  # shape: [inter_dim, hidden_dim]
+    var w_down: List[Float32]  # shape: [hidden_dim, inter_dim]
+    var hidden_dim: Int
+    var inter_dim: Int
+
+
+@fieldwise_init
+struct SharedExpertWeights(Copyable, Movable):
+    """Bobot shared expert: SwiGLU + sigmoid gate (F8c)."""
+
+    var swiglu: SwigluWeights  # inter_dim = 5632, hidden_dim = 2048
+    var w_gate_sh: List[Float32]  # shape: [hidden_dim] (1 x hidden_dim)
+
+
+def swiglu_forward(
+    x: List[Float32],
+    weights: SwigluWeights,
+    seq_len: Int,
+    layer_idx: Int = 0,
+    expert_id: Int = -1,
+) raises -> List[Float32]:
+    """Hitung SwiGLU: y = W_down (SiLU(W_gate x) * W_up x).
+
+    @spec scratch/wave/m3/m3-w2-swiglu.md (F8d)
+    Urutan: gate proj -> SiLU -> up proj -> element-wise multiply -> down proj.
+    """
+    var hidden = weights.hidden_dim
+    var inter = weights.inter_dim
+    if seq_len <= 0 or hidden <= 0 or inter <= 0:
+        raise Error(
+            '{"error_type":"EXPERT_ERROR","detail":"dimensions must be'
+            ' positive","stage":"swiglu","layer":'
+            + String(layer_idx)
+            + ',"expert_id":'
+            + String(expert_id)
+            + "}"
+        )
+    if len(x) != seq_len * hidden:
+        raise Error(
+            '{"error_type":"ACT_LOAD_FAILED","detail":"activation length'
+            " mismatch: expected "
+            + String(seq_len * hidden)
+            + " got "
+            + String(len(x))
+            + '","stage":"swiglu","layer":'
+            + String(layer_idx)
+            + ',"expert_id":'
+            + String(expert_id)
+            + "}"
+        )
+    if (
+        len(weights.w_gate) != inter * hidden
+        or len(weights.w_up) != inter * hidden
+    ):
+        raise Error(
+            '{"error_type":"WEIGHT_LOAD_FAILED","detail":"gate/up weight length'
+            ' mismatch","stage":"swiglu","layer":'
+            + String(layer_idx)
+            + ',"expert_id":'
+            + String(expert_id)
+            + "}"
+        )
+    if len(weights.w_down) != hidden * inter:
+        raise Error(
+            '{"error_type":"WEIGHT_LOAD_FAILED","detail":"down weight length'
+            ' mismatch","stage":"swiglu","layer":'
+            + String(layer_idx)
+            + ',"expert_id":'
+            + String(expert_id)
+            + "}"
+        )
+
+    for i in range(len(x)):
+        if isnan(x[i]) or isinf(x[i]):
+            raise Error(
+                '{"error_type":"ACT_LOAD_FAILED","detail":"non-finite value in'
+                ' activation","stage":"swiglu","layer":'
+                + String(layer_idx)
+                + ',"expert_id":'
+                + String(expert_id)
+                + "}"
+            )
+
+    var p_x = x.unsafe_ptr()
+    var p_wg = weights.w_gate.unsafe_ptr()
+    var p_wu = weights.w_up.unsafe_ptr()
+    var p_wd = weights.w_down.unsafe_ptr()
+
+    var out = List[Float32]()
+    out.reserve(seq_len * hidden)
+
+    for t in range(seq_len):
+        var x_row = t * hidden
+        var h = List[Float32]()
+        h.reserve(inter)
+
+        for j in range(inter):
+            var w_row = j * hidden
+
+            # 1. Gate projection: g = W_gate x
+            var g_simd = SIMD[DType.float32, 16](0.0)
+            var k = 0
+            while k + 16 <= hidden:
+                g_simd += p_x.unsafe_load[width=16](
+                    x_row + k
+                ) * p_wg.unsafe_load[width=16](w_row + k)
+                k += 16
+            var g = g_simd.reduce_add()
+            while k < hidden:
+                g += (
+                    p_x[unsafe_offset=x_row + k] * p_wg[unsafe_offset=w_row + k]
+                )
+                k += 1
+
+            if isnan(g) or isinf(g):
+                raise Error(
+                    '{"error_type":"EXPERT_ERROR","detail":"non-finite in gate'
+                    ' projection","stage":"swiglu","layer":'
+                    + String(layer_idx)
+                    + ',"expert_id":'
+                    + String(expert_id)
+                    + "}"
+                )
+
+            # 2. SiLU(g)
+            var g_act = silu_f32(g)
+
+            # 3. Up projection: u = W_up x
+            var u_simd = SIMD[DType.float32, 16](0.0)
+            k = 0
+            while k + 16 <= hidden:
+                u_simd += p_x.unsafe_load[width=16](
+                    x_row + k
+                ) * p_wu.unsafe_load[width=16](w_row + k)
+                k += 16
+            var u = u_simd.reduce_add()
+            while k < hidden:
+                u += (
+                    p_x[unsafe_offset=x_row + k] * p_wu[unsafe_offset=w_row + k]
+                )
+                k += 1
+
+            if isnan(u) or isinf(u):
+                raise Error(
+                    '{"error_type":"EXPERT_ERROR","detail":"non-finite in up'
+                    ' projection","stage":"swiglu","layer":'
+                    + String(layer_idx)
+                    + ',"expert_id":'
+                    + String(expert_id)
+                    + "}"
+                )
+
+            # 4. Element-wise product: h = g_act * u
+            var hj = g_act * u
+            if isnan(hj) or isinf(hj):
+                raise Error(
+                    '{"error_type":"SWIGLU_ERROR","detail":"non-finite in'
+                    ' element-wise product","stage":"swiglu","layer":'
+                    + String(layer_idx)
+                    + ',"expert_id":'
+                    + String(expert_id)
+                    + "}"
+                )
+            h.append(hj)
+
+        # 5. Down projection: y = W_down h
+        var p_h = h.unsafe_ptr()
+        for d in range(hidden):
+            var wd_row = d * inter
+            var d_simd = SIMD[DType.float32, 16](0.0)
+            var m = 0
+            while m + 16 <= inter:
+                d_simd += p_h.unsafe_load[width=16](m) * p_wd.unsafe_load[
+                    width=16
+                ](wd_row + m)
+                m += 16
+            var y_val = d_simd.reduce_add()
+            while m < inter:
+                y_val += p_h[unsafe_offset=m] * p_wd[unsafe_offset=wd_row + m]
+                m += 1
+
+            if isnan(y_val) or isinf(y_val):
+                raise Error(
+                    '{"error_type":"EXPERT_ERROR","detail":"non-finite in down'
+                    ' projection","stage":"swiglu","layer":'
+                    + String(layer_idx)
+                    + ',"expert_id":'
+                    + String(expert_id)
+                    + "}"
+                )
+            out.append(y_val)
+
+    return out^
+
+
+def shared_gate_forward(
+    x: List[Float32],
+    w_shared_gate: List[Float32],
+    seq_len: Int,
+    hidden_dim: Int,
+    layer_idx: Int = 0,
+    gate_mode: String = "sigmoid",
+) raises -> List[Float32]:
+    """Hitung shared expert gate: g = sigma(W_sh_gate x), fp32.
+
+    @spec docs/milestones/M3-moe.md (Invariant keras #2 / jebakan §2.3)
+    WAJIB SIGMOID, bukan softmax dan bukan linear!
+    """
+    if gate_mode != "sigmoid":
+        raise Error(
+            '{"error_type":"GATE_ERROR","detail":"shared expert gate must be'
+            " sigmoid; non-sigmoid gate forbidden (invariant"
+            ' #2)","stage":"shared","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+    if seq_len <= 0 or hidden_dim <= 0:
+        raise Error(
+            '{"error_type":"GATE_ERROR","detail":"dimensions must be'
+            ' positive","stage":"shared","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+    if len(x) != seq_len * hidden_dim:
+        raise Error(
+            '{"error_type":"ACT_LOAD_FAILED","detail":"activation length'
+            ' mismatch","stage":"shared","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+    if len(w_shared_gate) != hidden_dim:
+        raise Error(
+            '{"error_type":"WEIGHT_LOAD_FAILED","detail":"shared gate weight'
+            " length mismatch: expected "
+            + String(hidden_dim)
+            + " got "
+            + String(len(w_shared_gate))
+            + '","stage":"shared","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+
+    var p_x = x.unsafe_ptr()
+    var p_wg = w_shared_gate.unsafe_ptr()
+
+    var scores = List[Float32]()
+    scores.reserve(seq_len)
+
+    for t in range(seq_len):
+        var x_row = t * hidden_dim
+        var acc_simd = SIMD[DType.float32, 16](0.0)
+        var k = 0
+        while k + 16 <= hidden_dim:
+            acc_simd += p_x.unsafe_load[width=16](x_row + k) * p_wg.unsafe_load[
+                width=16
+            ](k)
+            k += 16
+        var logit = acc_simd.reduce_add()
+        while k < hidden_dim:
+            logit += p_x[unsafe_offset=x_row + k] * p_wg[unsafe_offset=k]
+            k += 1
+
+        if isnan(logit) or isinf(logit):
+            raise Error(
+                '{"error_type":"GATE_ERROR","detail":"non-finite shared gate'
+                ' logit","stage":"shared","layer":'
+                + String(layer_idx)
+                + "}"
+            )
+
+        # Invariant keras #2: sigmoid
+        var sig = sigmoid_f32(logit)
+        if isnan(sig) or isinf(sig) or sig < Float32(0.0) or sig > Float32(1.0):
+            raise Error(
+                '{"error_type":"GATE_ERROR","detail":"shared gate score outside'
+                ' (0, 1)","stage":"shared","layer":'
+                + String(layer_idx)
+                + "}"
+            )
+        scores.append(sig)
+
+    return scores^
+
+
+def moe_aggregate_forward(
+    x: List[Float32],
+    routed_outputs: List[List[Float32]],
+    router_probs: List[List[Float32]],
+    shared_output: List[Float32],
+    shared_gate_scores: List[Float32],
+    seq_len: Int,
+    hidden_dim: Int,
+    layer_idx: Int = 0,
+) raises -> List[Float32]:
+    """Agregasi MoE: y = sum_{k in top-4} p_k E_{i_k}(x) + sigma(g_sh) E_sh(x) + x.
+
+    @spec scratch/wave/m3/m3-w2-swiglu.md (F8c)
+    """
+    if seq_len <= 0 or hidden_dim <= 0:
+        raise Error(
+            '{"error_type":"EXPERT_ERROR","detail":"dimensions must be'
+            ' positive","stage":"aggregation","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+    if (
+        len(x) != seq_len * hidden_dim
+        or len(shared_output) != seq_len * hidden_dim
+    ):
+        raise Error(
+            '{"error_type":"EXPERT_ERROR","detail":"length mismatch in'
+            ' aggregation","stage":"aggregation","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+    if len(shared_gate_scores) != seq_len or len(routed_outputs) != seq_len:
+        raise Error(
+            '{"error_type":"EXPERT_ERROR","detail":"sequence length'
+            ' mismatch","stage":"aggregation","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+
+    var out = List[Float32]()
+    out.reserve(seq_len * hidden_dim)
+
+    var p_x = x.unsafe_ptr()
+    var p_sh = shared_output.unsafe_ptr()
+
+    for t in range(seq_len):
+        var x_base = t * hidden_dim
+        var gate_sh = shared_gate_scores[t]
+        ref r_outs = routed_outputs[t]
+        ref probs = router_probs[t]
+        var top_k = len(probs)
+
+        for d in range(hidden_dim):
+            var routed_sum = Float32(0.0)
+            for k in range(top_k):
+                var p = probs[k]
+                var val = r_outs[k * hidden_dim + d]
+                routed_sum += p * val
+
+            var sh_val = gate_sh * p_sh[unsafe_offset=x_base + d]
+            var res_val = p_x[unsafe_offset=x_base + d]
+            var total = routed_sum + sh_val + res_val
+
+            if isnan(total) or isinf(total):
+                raise Error(
+                    '{"error_type":"EXPERT_ERROR","detail":"non-finite in'
+                    ' aggregation output","stage":"aggregation","layer":'
+                    + String(layer_idx)
+                    + "}"
+                )
+            out.append(total)
+
+    return out^
+
+
+def load_layer_routed_expert_weights(
+    layer_idx: Int,
+    expert_id: Int,
+    model_root: String,
+    weight_map: Dict[String, String],
+    cfg: ModelConfig,
+    inter_dim: Int,
+    mut telemetry: LoadMemoryTelemetry,
+) raises -> SwigluWeights:
+    """Memuat bobot SwiGLU untuk satu routed expert (W_gate, W_up, W_down)."""
+    if layer_idx < 0 or layer_idx >= cfg.num_hidden_layers:
+        raise Error(
+            '{"error_type":"LAYER_INVALID","detail":"invalid layer'
+            ' index","stage":"experts","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+    var prefix = (
+        "model.layers."
+        + String(layer_idx)
+        + ".mlp.experts."
+        + String(expert_id)
+        + "."
+    )
+    var req_gate = prefix + "gate_proj.weight"
+    var req_up = prefix + "up_proj.weight"
+    var req_down = prefix + "down_proj.weight"
+    if (
+        req_gate not in weight_map
+        or req_up not in weight_map
+        or req_down not in weight_map
+    ):
+        raise Error(
+            '{"error_type":"WEIGHT_LOAD_FAILED","detail":"expert tensor not in'
+            ' weight_map","stage":"experts","layer":'
+            + String(layer_idx)
+            + ',"expert_id":'
+            + String(expert_id)
+            + "}"
+        )
+
+    var hidden = cfg.hidden_size
+    var w_gate = _load_one_tensor_by_name(
+        model_root,
+        weight_map[req_gate],
+        req_gate,
+        inter_dim,
+        hidden,
+        True,
+        telemetry,
+    )
+    var w_up = _load_one_tensor_by_name(
+        model_root,
+        weight_map[req_up],
+        req_up,
+        inter_dim,
+        hidden,
+        True,
+        telemetry,
+    )
+    var w_down = _load_one_tensor_by_name(
+        model_root,
+        weight_map[req_down],
+        req_down,
+        hidden,
+        inter_dim,
+        True,
+        telemetry,
+    )
+    return SwigluWeights(w_gate^, w_up^, w_down^, hidden, inter_dim)
+
+
+def load_layer_shared_expert_weights(
+    layer_idx: Int,
+    model_root: String,
+    weight_map: Dict[String, String],
+    cfg: ModelConfig,
+    inter_shared: Int,
+    mut telemetry: LoadMemoryTelemetry,
+) raises -> SharedExpertWeights:
+    """Memuat bobot shared expert (W_gate, W_up, W_down) + shared_expert_gate.
+    """
+    if layer_idx < 0 or layer_idx >= cfg.num_hidden_layers:
+        raise Error(
+            '{"error_type":"LAYER_INVALID","detail":"invalid layer'
+            ' index","stage":"shared","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+    var prefix = "model.layers." + String(layer_idx) + ".mlp.shared_expert."
+    var req_gate = prefix + "gate_proj.weight"
+    var req_up = prefix + "up_proj.weight"
+    var req_down = prefix + "down_proj.weight"
+    var req_sh_gate = (
+        "model.layers." + String(layer_idx) + ".mlp.shared_expert_gate.weight"
+    )
+    if (
+        req_gate not in weight_map
+        or req_up not in weight_map
+        or req_down not in weight_map
+        or req_sh_gate not in weight_map
+    ):
+        raise Error(
+            '{"error_type":"WEIGHT_LOAD_FAILED","detail":"shared expert tensor'
+            ' not in weight_map","stage":"shared","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+
+    var hidden = cfg.hidden_size
+    var w_gate = _load_one_tensor_by_name(
+        model_root,
+        weight_map[req_gate],
+        req_gate,
+        inter_shared,
+        hidden,
+        True,
+        telemetry,
+    )
+    var w_up = _load_one_tensor_by_name(
+        model_root,
+        weight_map[req_up],
+        req_up,
+        inter_shared,
+        hidden,
+        True,
+        telemetry,
+    )
+    var w_down = _load_one_tensor_by_name(
+        model_root,
+        weight_map[req_down],
+        req_down,
+        hidden,
+        inter_shared,
+        True,
+        telemetry,
+    )
+    var w_sh_gate = _load_one_tensor_by_name(
+        model_root,
+        weight_map[req_sh_gate],
+        req_sh_gate,
+        hidden,
+        1,
+        False,
+        telemetry,
+    )
+    var swiglu = SwigluWeights(w_gate^, w_up^, w_down^, hidden, inter_shared)
+    return SharedExpertWeights(swiglu^, w_sh_gate^)
 
 
 # === Tests ===
@@ -3534,6 +4089,281 @@ def test_property_p_norm_topk_prob_false() raises:
     var m1_raw = read_small_file("fixtures/m1/model_config.json")
     var m1_str = String(from_utf8_lossy=Span(m1_raw))
     assert_true(_contains(m1_str, '"norm_topk_prob": false'))
+
+
+def test_sigmoid_stable_and_range() raises:
+    """Uji kestabilan dan batasan nilai sigmoid fp32."""
+    var s0 = sigmoid_f32(0.0)
+    assert_true(abs(s0 - 0.5) < 1e-6)
+
+    var s_neg_inf = sigmoid_f32(-100.0)
+    assert_equal(s_neg_inf, 0.0)
+
+    var s_pos_inf = sigmoid_f32(100.0)
+    assert_equal(s_pos_inf, 1.0)
+
+    var test_vals: List[Float32] = [-10.0, -5.0, -1.0, 0.5, 1.0, 5.0, 10.0]
+    for i in range(len(test_vals)):
+        var s = sigmoid_f32(test_vals[i])
+        assert_true(s > 0.0 and s < 1.0)
+
+
+def test_silu_known_values() raises:
+    """Uji nilai terhitung SiLU(z) = z * sigma(z)."""
+    assert_equal(silu_f32(0.0), 0.0)
+
+    var s2 = silu_f32(2.0)
+    # sigma(2.0) = 1 / (1 + exp(-2)) = 0.880797078
+    # 2.0 * 0.880797078 = 1.761594156
+    assert_true(abs(s2 - 1.7615941) < 1e-5)
+
+    var s_neg2 = silu_f32(-2.0)
+    # sigma(-2.0) = 1 - sigma(2.0) = 0.119202922
+    # -2.0 * 0.119202922 = -0.238405844
+    assert_true(abs(s_neg2 - (-0.23840584)) < 1e-5)
+
+
+def test_swiglu_forward_known_values() raises:
+    """Uji SwiGLU forward dengan matriks identitas sederhana."""
+    var hidden = 2
+    var inter = 2
+    # x: [1, 2] = [1.0, 2.0]
+    var x: List[Float32] = [1.0, 2.0]
+    # W_gate: [2, 2] identity
+    var w_gate: List[Float32] = [1.0, 0.0, 0.0, 1.0]
+    # W_up: [2, 2] identity
+    var w_up: List[Float32] = [1.0, 0.0, 0.0, 1.0]
+    # W_down: [2, 2] identity
+    var w_down: List[Float32] = [1.0, 0.0, 0.0, 1.0]
+
+    var weights = SwigluWeights(w_gate^, w_up^, w_down^, hidden, inter)
+    var out = swiglu_forward(x, weights, 1, 0, 0)
+    assert_equal(len(out), 2)
+
+    var exp0 = silu_f32(1.0) * 1.0
+    var exp1 = silu_f32(2.0) * 2.0
+    assert_true(abs(out[0] - exp0) < 1e-5)
+    assert_true(abs(out[1] - exp1) < 1e-5)
+
+
+def test_swiglu_shape_errors() raises:
+    """Uji deteksi kesalahan dimensi pada SwiGLU."""
+    var hidden = 2
+    var inter = 2
+    var w_gate: List[Float32] = [1.0, 0.0, 0.0, 1.0]
+    var w_up: List[Float32] = [1.0, 0.0, 0.0, 1.0]
+    var w_down: List[Float32] = [1.0, 0.0, 0.0, 1.0]
+    var weights = SwigluWeights(w_gate^, w_up^, w_down^, hidden, inter)
+
+    # x length mismatch
+    var raised_x = False
+    try:
+        var bad_x: List[Float32] = [1.0]
+        var _out = swiglu_forward(bad_x, weights, 1, 0, 0)
+    except e:
+        raised_x = True
+    assert_true(raised_x)
+
+
+def test_swiglu_nan_inf() raises:
+    """Uji deteksi nilai non-finite pada input SwiGLU."""
+    var hidden = 2
+    var inter = 2
+    var w_gate: List[Float32] = [1.0, 0.0, 0.0, 1.0]
+    var w_up: List[Float32] = [1.0, 0.0, 0.0, 1.0]
+    var w_down: List[Float32] = [1.0, 0.0, 0.0, 1.0]
+    var weights = SwigluWeights(w_gate^, w_up^, w_down^, hidden, inter)
+
+    var raised_nan = False
+    try:
+        var bad_x: List[Float32] = [Float32(0.0) / Float32(0.0), 1.0]
+        var _out = swiglu_forward(bad_x, weights, 1, 0, 0)
+    except e:
+        raised_nan = True
+    assert_true(raised_nan)
+
+
+def test_shared_gate_sigmoid_property() raises:
+    """Uji properti shared expert gate sigmoid."""
+    var hidden = 2
+    var seq_len = 2
+    # x: [2, 2]
+    var x: List[Float32] = [1.0, 2.0, -1.0, -2.0]
+    # w_gate: [2]
+    var w_gate: List[Float32] = [0.5, 0.5]
+
+    var scores = shared_gate_forward(x, w_gate, seq_len, hidden, 0, "sigmoid")
+    assert_equal(len(scores), 2)
+    # Token 0: 0.5 * 1.0 + 0.5 * 2.0 = 1.5 -> sigmoid(1.5)
+    var exp0 = sigmoid_f32(1.5)
+    assert_true(abs(scores[0] - exp0) < 1e-5)
+    # Token 1: 0.5 * (-1.0) + 0.5 * (-2.0) = -1.5 -> sigmoid(-1.5)
+    var exp1 = sigmoid_f32(-1.5)
+    assert_true(abs(scores[1] - exp1) < 1e-5)
+    # Range (0, 1)
+    assert_true(scores[0] > 0.0 and scores[0] < 1.0)
+    assert_true(scores[1] > 0.0 and scores[1] < 1.0)
+
+
+def test_shared_gate_error_detection() raises:
+    """Invariant Keras #2: gate_mode selain sigmoid WAJIB memicu GATE_ERROR."""
+    var hidden = 2
+    var seq_len = 1
+    var x: List[Float32] = [1.0, 1.0]
+    var w_gate: List[Float32] = [0.5, 0.5]
+
+    # Test linear gate -> rejected
+    var raised_linear = False
+    try:
+        var _s = shared_gate_forward(x, w_gate, seq_len, hidden, 0, "linear")
+    except e:
+        raised_linear = String(e).find("GATE_ERROR") != -1
+    assert_true(raised_linear)
+
+    # Test softmax gate -> rejected
+    var raised_softmax = False
+    try:
+        var _s2 = shared_gate_forward(x, w_gate, seq_len, hidden, 0, "softmax")
+    except e:
+        raised_softmax = String(e).find("GATE_ERROR") != -1
+    assert_true(raised_softmax)
+
+
+def test_moe_aggregate_weighted_sum_and_residual() raises:
+    """Uji agregasi lengkap: y = sum(p_i * E_i(x)) + sigma(g_sh) * E_sh(x) + x.
+    """
+    var seq_len = 1
+    var hidden = 2
+    var x: List[Float32] = [1.0, 2.0]
+
+    # 2 routed outputs for 1 token: top_k=2
+    var r_tok0: List[Float32] = [
+        10.0,
+        20.0,
+        30.0,
+        40.0,
+    ]  # E_0: [10,20], E_1: [30,40]
+    var routed_outputs = List[List[Float32]]()
+    routed_outputs.append(r_tok0^)
+
+    # Router probabilities: p_0 = 0.3, p_1 = 0.2
+    var p_tok0: List[Float32] = [0.3, 0.2]
+    var router_probs = List[List[Float32]]()
+    router_probs.append(p_tok0^)
+
+    # Shared output: [5.0, 6.0]
+    var shared_out: List[Float32] = [5.0, 6.0]
+    # Shared gate score: 0.5
+    var shared_gates: List[Float32] = [0.5]
+
+    var y = moe_aggregate_forward(
+        x,
+        routed_outputs,
+        router_probs,
+        shared_out,
+        shared_gates,
+        seq_len,
+        hidden,
+        0,
+    )
+    assert_equal(len(y), 2)
+
+    # Expected d=0:
+    # routed_sum = 0.3 * 10.0 + 0.2 * 30.0 = 3.0 + 6.0 = 9.0
+    # shared = 0.5 * 5.0 = 2.5
+    # residual = 1.0
+    # total = 9.0 + 2.5 + 1.0 = 12.5
+    assert_true(abs(y[0] - 12.5) < 1e-5)
+
+    # Expected d=1:
+    # routed_sum = 0.3 * 20.0 + 0.2 * 40.0 = 6.0 + 8.0 = 14.0
+    # shared = 0.5 * 6.0 = 3.0
+    # residual = 2.0
+    # total = 14.0 + 3.0 + 2.0 = 19.0
+    assert_true(abs(y[1] - 19.0) < 1e-5)
+
+
+def test_property_sigmoid_gate_monotonicity() raises:
+    """Property test: fungsi sigmoid strictly monoton dan bounded dalam [0, 1].
+    """
+    var prev = Float32(0.0)
+    for i in range(-50, 51):
+        var z = Float32(i) * 0.5
+        var s = sigmoid_f32(z)
+        assert_true(s >= 0.0 and s <= 1.0)
+        if i > -50:
+            assert_true(s >= prev)
+        prev = s
+
+
+def test_load_layer_routed_expert_weights_validation() raises:
+    """Validasi load_layer_routed_expert_weights index bounds dan tensor hilang.
+    """
+    var cfg = ModelConfig(2048, 24, 16, 151936)
+    var empty_map = Dict[String, String]()
+    var telem = LoadMemoryTelemetry()
+
+    var raised_neg = False
+    try:
+        var _w = load_layer_routed_expert_weights(
+            -1, 0, "", empty_map, cfg, 1408, telem
+        )
+    except e:
+        raised_neg = True
+    assert_true(raised_neg)
+
+    var raised_hi = False
+    try:
+        var _w2 = load_layer_routed_expert_weights(
+            24, 0, "", empty_map, cfg, 1408, telem
+        )
+    except e:
+        raised_hi = True
+    assert_true(raised_hi)
+
+    var raised_miss = False
+    try:
+        var _w3 = load_layer_routed_expert_weights(
+            0, 0, "", empty_map, cfg, 1408, telem
+        )
+    except e:
+        raised_miss = True
+    assert_true(raised_miss)
+
+
+def test_load_layer_shared_expert_weights_validation() raises:
+    """Validasi load_layer_shared_expert_weights index bounds dan tensor hilang.
+    """
+    var cfg = ModelConfig(2048, 24, 16, 151936)
+    var empty_map = Dict[String, String]()
+    var telem = LoadMemoryTelemetry()
+
+    var raised_neg = False
+    try:
+        var _w = load_layer_shared_expert_weights(
+            -1, "", empty_map, cfg, 5632, telem
+        )
+    except e:
+        raised_neg = True
+    assert_true(raised_neg)
+
+    var raised_hi = False
+    try:
+        var _w2 = load_layer_shared_expert_weights(
+            24, "", empty_map, cfg, 5632, telem
+        )
+    except e:
+        raised_hi = True
+    assert_true(raised_hi)
+
+    var raised_miss = False
+    try:
+        var _w3 = load_layer_shared_expert_weights(
+            0, "", empty_map, cfg, 5632, telem
+        )
+    except e:
+        raised_miss = True
+    assert_true(raised_miss)
 
 
 def main() raises:

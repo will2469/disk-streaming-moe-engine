@@ -188,3 +188,68 @@ fn property_router_weights_in_index() {
         );
     }
 }
+
+#[test]
+fn property_moe_expert_weights_in_index() {
+    // Property M3-W2 (§ SwiGLU Specification / m3-w2-swiglu.md):
+    // Invariant:
+    // - Tiap layer (0..23) wajib memiliki:
+    //   - 60 routed experts x 3 (gate_proj, up_proj, down_proj) = 180 tensor
+    //   - 1 shared expert x 3 (gate_proj, up_proj, down_proj) = 3 tensor
+    //   - 1 shared expert gate (shared_expert_gate.weight) = 1 tensor
+    // - Seluruh komponen MLP MoE TIDAK memiliki bias (0 bias tensor).
+    let idx = load_index();
+    let wm = idx["weight_map"].as_object().unwrap();
+
+    let mut routed_tensors = 0u32;
+    let mut shared_tensors = 0u32;
+    let mut shared_gate_tensors = 0u32;
+    let mut mlp_bias_count = 0u32;
+
+    for name in wm.keys() {
+        if name.contains(".mlp.") {
+            if name.ends_with(".bias") {
+                mlp_bias_count += 1;
+            }
+            if name.contains(".mlp.experts.") {
+                routed_tensors += 1;
+            } else if name.contains(".mlp.shared_expert.") {
+                shared_tensors += 1;
+            } else if name.contains(".mlp.shared_expert_gate.") {
+                shared_gate_tensors += 1;
+            }
+        }
+    }
+
+    assert_eq!(
+        routed_tensors,
+        24 * 60 * 3,
+        "Jumlah tensor routed experts wajib 24 layer x 60 expert x 3 = 4320"
+    );
+    assert_eq!(
+        shared_tensors,
+        24 * 3,
+        "Jumlah tensor shared expert wajib 24 layer x 3 = 72"
+    );
+    assert_eq!(
+        shared_gate_tensors, 24,
+        "Jumlah tensor shared expert gate wajib tepat 24"
+    );
+    assert_eq!(
+        mlp_bias_count, 0,
+        "Komponen MLP MoE TIDAK boleh memiliki bias sama sekali"
+    );
+
+    for layer in 0..24 {
+        let sh_gate = format!("model.layers.{layer}.mlp.shared_expert_gate.weight");
+        assert!(
+            wm.contains_key(&sh_gate),
+            "Layer {layer} wajib punya shared_expert_gate.weight"
+        );
+        let sh_down = format!("model.layers.{layer}.mlp.shared_expert.down_proj.weight");
+        assert!(
+            wm.contains_key(&sh_down),
+            "Layer {layer} wajib punya shared_expert down_proj"
+        );
+    }
+}
