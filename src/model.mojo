@@ -7,6 +7,8 @@
 @see scratch/wave/m1/m1-w2-embed-lmhead.md
 @see scratch/wave/m2/m2-w1-qkv-bias.md
 @see docs/milestones/M2-attention.md
+@see scratch/wave/m3/m3-w1-router.md
+@see docs/milestones/M3-moe.md
 """
 
 from safetensors import (
@@ -1514,6 +1516,457 @@ def _contains(s: String, sub: String) -> Bool:
     return False
 
 
+# =========================================================================
+# MoE Router Kernels (M3-W1)
+# =========================================================================
+
+
+@fieldwise_init
+struct RouterConfig(Copyable, Movable):
+    """Konfigurasi MoE Router (F8a, F8b).
+
+    Default parameter diturunkan dari Qwen1.5-MoE-A2.7B:
+    - num_experts: 60
+    - num_experts_per_tok: 4 (top-4)
+    - norm_topk_prob: False (tanpa renormalisasi)
+    """
+
+    var num_experts: Int
+    var num_experts_per_tok: Int
+    var norm_topk_prob: Bool
+
+    def validate(self) raises:
+        if self.num_experts <= 0:
+            raise Error(
+                '{"error_type":"CONFIG_ERROR","detail":"num_experts must be'
+                ' positive","stage":"router"}'
+            )
+        if self.num_experts_per_tok <= 0:
+            raise Error(
+                '{"error_type":"CONFIG_ERROR","detail":"num_experts_per_tok'
+                ' must be positive","stage":"router"}'
+            )
+        if self.num_experts_per_tok > self.num_experts:
+            raise Error(
+                '{"error_type":"CONFIG_ERROR","detail":"num_experts_per_tok'
+                ' cannot exceed num_experts","stage":"router"}'
+            )
+        if self.norm_topk_prob:
+            raise Error(
+                '{"error_type":"ROUTER_ERROR","detail":"norm_topk_prob=true'
+                " forbidden in trial configuration; renormalization"
+                ' leak","stage":"router"}'
+            )
+
+
+@fieldwise_init
+struct RoutingInfo(Copyable, Movable):
+    """Hasil seleksi routing untuk batch/sequence token (F8b)."""
+
+    var selected_experts: List[List[Int]]
+    var router_probs: List[List[Float32]]
+    var num_tokens: Int
+    var top_k: Int
+
+    def to_json(self) -> String:
+        """Serialisasi routing_info ke format JSON sesuai spesifikasi M3."""
+        var s = String('{"selected_experts":[')
+        for i in range(self.num_tokens):
+            if i > 0:
+                s += ","
+            s += "["
+            ref exp_row = self.selected_experts[i]
+            for j in range(len(exp_row)):
+                if j > 0:
+                    s += ","
+                s += String(exp_row[j])
+            s += "]"
+        s += '],"router_probs":['
+        for i in range(self.num_tokens):
+            if i > 0:
+                s += ","
+            s += "["
+            ref prob_row = self.router_probs[i]
+            for j in range(len(prob_row)):
+                if j > 0:
+                    s += ","
+                s += String(prob_row[j])
+            s += "]"
+        s += "]}"
+        return s
+
+
+def router_project(
+    x: List[Float32],
+    w_gate: List[Float32],
+    seq_len: Int,
+    hidden_dim: Int,
+    num_experts: Int,
+    layer_idx: Int = 0,
+) raises -> List[Float32]:
+    """Proyeksi linear router logits: z = x W_r^T, fp32.
+
+    @spec scratch/wave/m3/m3-w1-router.md (F8a)
+    Dimensi:
+      x: [seq_len, hidden_dim]
+      w_gate: [num_experts, hidden_dim]
+      output: [seq_len, num_experts]
+    """
+    if seq_len <= 0 or hidden_dim <= 0 or num_experts <= 0:
+        raise Error(
+            '{"error_type":"ACT_LOAD_FAILED","detail":"dimensions must be'
+            ' positive","stage":"router","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+    if len(x) != seq_len * hidden_dim:
+        raise Error(
+            '{"error_type":"ACT_LOAD_FAILED","detail":"activation length'
+            " mismatch: expected "
+            + String(seq_len * hidden_dim)
+            + " got "
+            + String(len(x))
+            + '","stage":"router","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+    if len(w_gate) != num_experts * hidden_dim:
+        raise Error(
+            '{"error_type":"WEIGHT_LOAD_FAILED","detail":"weight length'
+            " mismatch: expected "
+            + String(num_experts * hidden_dim)
+            + " got "
+            + String(len(w_gate))
+            + '","stage":"router","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+
+    for i in range(len(x)):
+        if isnan(x[i]) or isinf(x[i]):
+            raise Error(
+                '{"error_type":"ACT_LOAD_FAILED","detail":"non-finite value in'
+                ' activation","stage":"router","layer":'
+                + String(layer_idx)
+                + "}"
+            )
+    for i in range(len(w_gate)):
+        if isnan(w_gate[i]) or isinf(w_gate[i]):
+            raise Error(
+                '{"error_type":"WEIGHT_LOAD_FAILED","detail":"non-finite value'
+                ' in router weight","stage":"router","layer":'
+                + String(layer_idx)
+                + "}"
+            )
+
+    var out = List[Float32]()
+    out.reserve(seq_len * num_experts)
+
+    var p_x = x.unsafe_ptr()
+    var p_w = w_gate.unsafe_ptr()
+
+    for t in range(seq_len):
+        var x_row = t * hidden_dim
+        for e in range(num_experts):
+            var w_row = e * hidden_dim
+            var acc_simd = SIMD[DType.float32, 16](0.0)
+            var k = 0
+            while k + 16 <= hidden_dim:
+                acc_simd += p_x.unsafe_load[width=16](
+                    x_row + k
+                ) * p_w.unsafe_load[width=16](w_row + k)
+                k += 16
+            var acc = acc_simd.reduce_add()
+            while k < hidden_dim:
+                acc += (
+                    p_x[unsafe_offset=x_row + k] * p_w[unsafe_offset=w_row + k]
+                )
+                k += 1
+            if isnan(acc) or isinf(acc):
+                raise Error(
+                    '{"error_type":"ROUTER_ERROR","detail":"non-finite value in'
+                    ' router projection","stage":"router","layer":'
+                    + String(layer_idx)
+                    + "}"
+                )
+            out.append(acc)
+    return out^
+
+
+def router_softmax(
+    logits: List[Float32],
+    seq_len: Int,
+    num_experts: Int,
+    layer_idx: Int = 0,
+) raises -> List[Float32]:
+    """Softmax stabil numerik untuk router: p = softmax(z), fp32.
+
+    @spec scratch/wave/m3/m3-w1-router.md (F8a)
+    Menerapkan pergeseran nilai maksimum z - max(z) per token untuk mencegah
+    overflow nilai float32.
+    """
+    if seq_len <= 0 or num_experts <= 0:
+        raise Error(
+            '{"error_type":"ROUTER_ERROR","detail":"invalid'
+            ' dimensions","stage":"router","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+    if len(logits) != seq_len * num_experts:
+        raise Error(
+            '{"error_type":"ROUTER_ERROR","detail":"logits length'
+            " mismatch: expected "
+            + String(seq_len * num_experts)
+            + " got "
+            + String(len(logits))
+            + '","stage":"router","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+
+    var probs = List[Float32]()
+    probs.reserve(seq_len * num_experts)
+    var p_logits = logits.unsafe_ptr()
+
+    for t in range(seq_len):
+        var base = t * num_experts
+        var max_val = p_logits[unsafe_offset=base]
+        for e in range(num_experts):
+            var val = p_logits[unsafe_offset=base + e]
+            if isnan(val) or isinf(val):
+                raise Error(
+                    '{"error_type":"ROUTER_ERROR","detail":"non-finite value in'
+                    ' router logits","stage":"router","layer":'
+                    + String(layer_idx)
+                    + "}"
+                )
+            if val > max_val:
+                max_val = val
+
+        var sum_exp = Float32(0.0)
+        var row_exp = List[Float32]()
+        row_exp.reserve(num_experts)
+
+        for e in range(num_experts):
+            var shifted = p_logits[unsafe_offset=base + e] - max_val
+            var ev = exp(shifted)
+            if isnan(ev) or isinf(ev):
+                raise Error(
+                    '{"error_type":"ROUTER_ERROR","detail":"overflow in router'
+                    ' softmax exponential","stage":"router","layer":'
+                    + String(layer_idx)
+                    + "}"
+                )
+            row_exp.append(ev)
+            sum_exp += ev
+
+        if sum_exp <= Float32(0.0) or isnan(sum_exp) or isinf(sum_exp):
+            raise Error(
+                '{"error_type":"ROUTER_ERROR","detail":"invalid router softmax'
+                ' denominator","stage":"router","layer":'
+                + String(layer_idx)
+                + "}"
+            )
+
+        for e in range(num_experts):
+            probs.append(row_exp[e] / sum_exp)
+
+    return probs^
+
+
+def select_topk(
+    probs: List[Float32],
+    seq_len: Int,
+    num_experts: Int,
+    top_k: Int = 4,
+    norm_topk_prob: Bool = False,
+    layer_idx: Int = 0,
+) raises -> RoutingInfo:
+    """Seleksi top-k expert TANPA renormalisasi.
+
+    @spec scratch/wave/m3/m3-w1-router.md (F8b)
+    Aturan keras:
+    - norm_topk_prob=false dihormati (bocor renorm -> ROUTER_ERROR)
+    - Pengurutan stabil: nilai probabilitas tertinggi pertama (descending).
+    - Tie-breaking: indeks expert terkecil diprioritaskan jika probabilitas identik.
+    """
+    if norm_topk_prob:
+        raise Error(
+            '{"error_type":"ROUTER_ERROR","detail":"norm_topk_prob=true'
+            " forbidden in trial configuration; renormalization"
+            ' leak","stage":"router","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+    if seq_len <= 0 or num_experts <= 0 or top_k <= 0 or top_k > num_experts:
+        raise Error(
+            '{"error_type":"ROUTER_ERROR","detail":"invalid dimensions or'
+            ' top_k","stage":"router","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+    if len(probs) != seq_len * num_experts:
+        raise Error(
+            '{"error_type":"ROUTER_ERROR","detail":"probs length'
+            " mismatch: expected "
+            + String(seq_len * num_experts)
+            + " got "
+            + String(len(probs))
+            + '","stage":"router","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+
+    var all_selected = List[List[Int]]()
+    var all_probs = List[List[Float32]]()
+    all_selected.reserve(seq_len)
+    all_probs.reserve(seq_len)
+
+    var p_probs = probs.unsafe_ptr()
+
+    for t in range(seq_len):
+        var base = t * num_experts
+
+        var ids = List[Int]()
+        var vals = List[Float32]()
+        ids.reserve(num_experts)
+        vals.reserve(num_experts)
+        var sum_all = Float32(0.0)
+
+        for e in range(num_experts):
+            var pv = p_probs[unsafe_offset=base + e]
+            ids.append(e)
+            vals.append(pv)
+            sum_all += pv
+
+        # Selection sort descending untuk top_k elemen
+        for i in range(top_k):
+            var max_idx = i
+            var max_val = vals[i]
+            for j in range(i + 1, num_experts):
+                if vals[j] > max_val:
+                    max_val = vals[j]
+                    max_idx = j
+                elif vals[j] == max_val and ids[j] < ids[max_idx]:
+                    max_val = vals[j]
+                    max_idx = j
+            if max_idx != i:
+                var tmp_v = vals[i]
+                vals[i] = vals[max_idx]
+                vals[max_idx] = tmp_v
+                var tmp_id = ids[i]
+                ids[i] = ids[max_idx]
+                ids[max_idx] = tmp_id
+
+        var top_ids = List[Int]()
+        var top_vals = List[Float32]()
+        top_ids.reserve(top_k)
+        top_vals.reserve(top_k)
+        var sum_topk = Float32(0.0)
+
+        for i in range(top_k):
+            top_ids.append(ids[i])
+            top_vals.append(vals[i])
+            sum_topk += vals[i]
+
+        # Invariant norm_topk_prob=false: sum <= 1.0 (bukan == 1.0 jika sisa > 0)
+        if sum_topk > Float32(1.00001):
+            raise Error(
+                '{"error_type":"ROUTER_ERROR","detail":"sum of top-k'
+                ' probabilities exceeds 1.0","stage":"router","layer":'
+                + String(layer_idx)
+                + "}"
+            )
+
+        if top_k < num_experts:
+            var sum_remaining = sum_all - sum_topk
+            if sum_remaining > Float32(1e-5) and abs(
+                sum_topk - Float32(1.0)
+            ) < Float32(1e-6):
+                raise Error(
+                    '{"error_type":"ROUTER_ERROR","detail":"renormalization'
+                    " leak detected: sum of top-k probabilities is"
+                    ' 1.0","stage":"router","layer":'
+                    + String(layer_idx)
+                    + "}"
+                )
+
+        all_selected.append(top_ids^)
+        all_probs.append(top_vals^)
+
+    return RoutingInfo(all_selected^, all_probs^, seq_len, top_k)
+
+
+def router_forward(
+    x: List[Float32],
+    w_router: List[Float32],
+    seq_len: Int,
+    hidden_dim: Int,
+    cfg: RouterConfig,
+    layer_idx: Int = 0,
+) raises -> RoutingInfo:
+    """Pipeline forward router lengkap: x -> router_project -> router_softmax -> select_topk.
+    """
+    cfg.validate()
+    var logits = router_project(
+        x, w_router, seq_len, hidden_dim, cfg.num_experts, layer_idx
+    )
+    var probs = router_softmax(logits, seq_len, cfg.num_experts, layer_idx)
+    return select_topk(
+        probs,
+        seq_len,
+        cfg.num_experts,
+        cfg.num_experts_per_tok,
+        cfg.norm_topk_prob,
+        layer_idx,
+    )
+
+
+def load_layer_router_weights(
+    layer_idx: Int,
+    model_root: String,
+    weight_map: Dict[String, String],
+    cfg: ModelConfig,
+    router_cfg: RouterConfig,
+    mut telemetry: LoadMemoryTelemetry,
+) raises -> List[Float32]:
+    """Memuat bobot gate router (W_r) untuk satu layer dari shard safetensors.
+
+    @spec scratch/wave/m3/m3-w1-router.md
+    Tensor name: model.layers.{layer_idx}.mlp.gate.weight
+    Shape: [num_experts, hidden_size] = [60, 2048]
+    """
+    if layer_idx < 0 or layer_idx >= cfg.num_hidden_layers:
+        raise Error(
+            '{"error_type":"LAYER_INVALID","detail":"invalid layer index: '
+            + String(layer_idx)
+            + " (expected 0.."
+            + String(cfg.num_hidden_layers - 1)
+            + ')","stage":"router","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+    var tensor_name = "model.layers." + String(layer_idx) + ".mlp.gate.weight"
+    if tensor_name not in weight_map:
+        raise Error(
+            '{"error_type":"WEIGHT_LOAD_FAILED","detail":"required router gate'
+            " tensor not in weight_map: "
+            + tensor_name
+            + '","shard":"","tensor_name":"'
+            + tensor_name
+            + '"}'
+        )
+    return _load_one_tensor_by_name(
+        model_root,
+        weight_map[tensor_name],
+        tensor_name,
+        router_cfg.num_experts,
+        cfg.hidden_size,
+        True,
+        telemetry,
+    )
+
+
 # === Tests ===
 
 
@@ -2724,6 +3177,363 @@ def test_validate_logits_ok_and_fails() raises:
     except e:
         raised_nan = True
     assert_true(raised_nan)
+
+
+# =========================================================================
+# Router Unit & Property Tests (M3-W1)
+# =========================================================================
+
+
+def test_router_config_validation() raises:
+    """Validasi parameter RouterConfig."""
+    var valid_cfg = RouterConfig(60, 4, False)
+    valid_cfg.validate()
+
+    var zero_experts = RouterConfig(0, 4, False)
+    var raised_zero = False
+    try:
+        zero_experts.validate()
+    except e:
+        raised_zero = True
+    assert_true(raised_zero)
+
+    var invalid_topk = RouterConfig(60, 0, False)
+    var raised_topk = False
+    try:
+        invalid_topk.validate()
+    except e:
+        raised_topk = True
+    assert_true(raised_topk)
+
+    var exceed_topk = RouterConfig(60, 61, False)
+    var raised_exceed = False
+    try:
+        exceed_topk.validate()
+    except e:
+        raised_exceed = True
+    assert_true(raised_exceed)
+
+    var renorm_cfg = RouterConfig(60, 4, True)
+    var raised_renorm = False
+    try:
+        renorm_cfg.validate()
+    except e:
+        raised_renorm = True
+    assert_true(raised_renorm)
+
+
+def test_routing_info_to_json() raises:
+    """Format serialisasi JSON dari RoutingInfo."""
+    var sel = List[List[Int]]()
+    var p1 = List[Int]()
+    p1.append(5)
+    p1.append(12)
+    sel.append(p1^)
+
+    var probs = List[List[Float32]]()
+    var pr1 = List[Float32]()
+    pr1.append(Float32(0.35))
+    pr1.append(Float32(0.25))
+    probs.append(pr1^)
+
+    var info = RoutingInfo(sel^, probs^, 1, 2)
+    var json_str = info.to_json()
+    assert_true(_contains(json_str, '"selected_experts":[[5,12]]'))
+    assert_true(_contains(json_str, '"router_probs":[['))
+
+
+def test_router_project_known_values() raises:
+    """Proyeksi linear z = x W_r^T dengan nilai terdefinisi."""
+    var seq_len = 2
+    var hidden = 2
+    var num_experts = 3
+    # x: [2, 2] = [[1, 2], [3, 4]]
+    var x: List[Float32] = [1.0, 2.0, 3.0, 4.0]
+    # W_r: [3, 2] = [[1, 0], [0, 1], [1, 1]]
+    var w: List[Float32] = [1.0, 0.0, 0.0, 1.0, 1.0, 1.0]
+
+    var logits = router_project(x, w, seq_len, hidden, num_experts)
+    assert_equal(len(logits), 6)
+    # Token 0: [1*1+2*0, 1*0+2*1, 1*1+2*1] = [1.0, 2.0, 3.0]
+    assert_almost_equal(logits[0], Float32(1.0), atol=1e-5)
+    assert_almost_equal(logits[1], Float32(2.0), atol=1e-5)
+    assert_almost_equal(logits[2], Float32(3.0), atol=1e-5)
+    # Token 1: [3*1+4*0, 3*0+4*1, 3*1+4*1] = [3.0, 4.0, 7.0]
+    assert_almost_equal(logits[3], Float32(3.0), atol=1e-5)
+    assert_almost_equal(logits[4], Float32(4.0), atol=1e-5)
+    assert_almost_equal(logits[5], Float32(7.0), atol=1e-5)
+
+
+def test_router_project_shape_errors() raises:
+    """Penolakan error dimensi pada router_project."""
+    var valid_x: List[Float32] = [1.0, 2.0]
+    var valid_w: List[Float32] = [1.0, 2.0, 3.0, 4.0]
+    var short_x: List[Float32] = [1.0]
+    var short_w: List[Float32] = [1.0, 2.0]
+
+    var raised = False
+    try:
+        var _out = router_project(short_x, valid_w, 1, 2, 2)
+    except e:
+        raised = True
+    assert_true(raised)
+
+    raised = False
+    try:
+        var _out2 = router_project(valid_x, short_w, 1, 2, 2)
+    except e:
+        raised = True
+    assert_true(raised)
+
+    raised = False
+    try:
+        var _out3 = router_project(valid_x, valid_w, 0, 2, 2)
+    except e:
+        raised = True
+    assert_true(raised)
+
+
+def test_router_project_nan_inf() raises:
+    """Penolakan nilai NaN atau Inf pada aktivasi dan bobot router."""
+    var nan_x: List[Float32] = [Float32(0.0) / Float32(0.0), 1.0]
+    var valid_x: List[Float32] = [1.0, 2.0]
+    var valid_w: List[Float32] = [1.0, 0.0, 0.0, 1.0]
+    var nan_w: List[Float32] = [1.0, Float32(0.0) / Float32(0.0), 0.0, 1.0]
+
+    var raised = False
+    try:
+        var _out = router_project(nan_x, valid_w, 1, 2, 2)
+    except e:
+        raised = True
+    assert_true(raised)
+
+    raised = False
+    try:
+        var _out2 = router_project(valid_x, nan_w, 1, 2, 2)
+    except e:
+        raised = True
+    assert_true(raised)
+
+
+def test_router_softmax_stable_max_shift() raises:
+    """Invariansi pergeseran maksimum router softmax: softmax(z + c) == softmax(z).
+    """
+    var z: List[Float32] = [1.0, 2.0, 5.0, 3.0]
+    var z_shifted: List[Float32] = [1001.0, 1002.0, 1005.0, 1003.0]
+
+    var p1 = router_softmax(z, 1, 4)
+    var p2 = router_softmax(z_shifted, 1, 4)
+
+    assert_equal(len(p1), 4)
+    assert_equal(len(p2), 4)
+    for i in range(4):
+        assert_almost_equal(p1[i], p2[i], atol=1e-5)
+
+
+def test_router_softmax_sum_to_one() raises:
+    """Probabilitas softmax router wajib berjumlah tepat 1.0 per token."""
+    var z: List[Float32] = [-2.0, 0.5, 3.0, 1.2, -0.4]
+    var p = router_softmax(z, 1, 5)
+
+    var sum_p = Float32(0.0)
+    for i in range(5):
+        assert_true(p[i] > Float32(0.0))
+        sum_p += p[i]
+    assert_almost_equal(sum_p, Float32(1.0), atol=1e-5)
+
+
+def test_router_softmax_nan_inf() raises:
+    """Penolakan NaN/Inf pada logits di router_softmax."""
+    var nan_z: List[Float32] = [1.0, Float32(0.0) / Float32(0.0), 2.0]
+    var raised = False
+    try:
+        var _p = router_softmax(nan_z, 1, 3)
+    except e:
+        raised = True
+    assert_true(raised)
+
+
+def test_select_topk_ranking() raises:
+    """Top-k memilih probabilitas tertinggi secara terurut menurun dan stabil.
+    """
+    var probs: List[Float32] = [0.05, 0.40, 0.10, 0.30, 0.15]
+    var info = select_topk(probs, 1, 5, top_k=3, norm_topk_prob=False)
+
+    assert_equal(info.num_tokens, 1)
+    assert_equal(info.top_k, 3)
+    ref exp_row = info.selected_experts[0]
+    ref prob_row = info.router_probs[0]
+
+    # Urutan seharusnya: expert 1 (0.40), expert 3 (0.30), expert 4 (0.15)
+    assert_equal(exp_row[0], 1)
+    assert_equal(exp_row[1], 3)
+    assert_equal(exp_row[2], 4)
+
+    assert_almost_equal(prob_row[0], Float32(0.40), atol=1e-5)
+    assert_almost_equal(prob_row[1], Float32(0.30), atol=1e-5)
+    assert_almost_equal(prob_row[2], Float32(0.15), atol=1e-5)
+
+
+def test_select_topk_no_renorm_sum_less_than_one() raises:
+    """Property norm_topk_prob=false: jumlah probabilitas top-4 < 1.0."""
+    var num_experts = 60
+    var probs = List[Float32]()
+    probs.reserve(num_experts)
+    for _ in range(num_experts):
+        probs.append(Float32(1.0) / Float32(num_experts))
+
+    var info = select_topk(probs, 1, num_experts, top_k=4, norm_topk_prob=False)
+    ref prob_row = info.router_probs[0]
+
+    var sum_topk = Float32(0.0)
+    for k in range(4):
+        sum_topk += prob_row[k]
+
+    # 4/60 = ~0.0667, strictly < 1.0
+    assert_almost_equal(sum_topk, Float32(4.0) / Float32(60.0), atol=1e-5)
+    assert_true(sum_topk < Float32(1.0))
+
+
+def test_select_topk_renorm_leak_rejected() raises:
+    """Deteksi kebocoran renormalisasi memicu ROUTER_ERROR."""
+    var probs: List[Float32] = [0.25, 0.25, 0.25, 0.25, 0.0]
+
+    # Jika norm_topk_prob=true di-pass
+    var raised_cfg = False
+    try:
+        var _info = select_topk(probs, 1, 5, top_k=2, norm_topk_prob=True)
+    except e:
+        raised_cfg = True
+    assert_true(raised_cfg)
+
+    # Jika top-k sengaja direnormalisasi (jumlah = 1.0) padahal unselected ada bobot
+    var leaked_probs: List[Float32] = [0.6, 0.4, 0.05, 0.05]
+    # top-2 = 0.6 + 0.4 = 1.0, sedangkan sisa = 0.10 > 0.0
+    var raised_leak = False
+    try:
+        var _info2 = select_topk(
+            leaked_probs, 1, 4, top_k=2, norm_topk_prob=False
+        )
+    except e:
+        raised_leak = True
+    assert_true(raised_leak)
+
+
+def test_select_topk_shape_errors() raises:
+    """Validasi input dimensi pada select_topk."""
+    var probs: List[Float32] = [0.5, 0.5]
+    var raised = False
+    try:
+        var _info = select_topk(probs, 1, 2, top_k=3)
+    except e:
+        raised = True
+    assert_true(raised)
+
+
+def test_router_forward_pipeline() raises:
+    """Pipeline forward router lengkap dari aktivasi token hingga RoutingInfo.
+    """
+    var cfg = RouterConfig(5, 2, False)
+    var seq_len = 2
+    var hidden = 3
+    # x: [2, 3]
+    var x: List[Float32] = [1.0, 0.5, -0.5, 0.0, 2.0, 1.0]
+    # w: [5, 3]
+    var w: List[Float32] = [
+        0.1,
+        0.2,
+        0.3,
+        -0.1,
+        0.5,
+        0.0,
+        0.3,
+        -0.2,
+        0.1,
+        0.0,
+        0.1,
+        -0.3,
+        0.2,
+        0.0,
+        0.4,
+    ]
+
+    var info = router_forward(x, w, seq_len, hidden, cfg)
+    assert_equal(info.num_tokens, 2)
+    assert_equal(info.top_k, 2)
+
+    for t in range(2):
+        ref exp_row = info.selected_experts[t]
+        ref prob_row = info.router_probs[t]
+        assert_equal(len(exp_row), 2)
+        assert_equal(len(prob_row), 2)
+        # Probabilitas menurun
+        assert_true(prob_row[0] >= prob_row[1])
+        # Probabilitas positif dan tanpa renorm (< 1.0)
+        assert_true(prob_row[0] + prob_row[1] <= Float32(1.0))
+
+
+def test_load_layer_router_weights_validation() raises:
+    """Validasi load_layer_router_weights: layer invalid dan tensor hilang."""
+    var cfg = ModelConfig(2048, 24, 16, 151936)
+    var router_cfg = RouterConfig(60, 4, False)
+    var empty_map = Dict[String, String]()
+    var telem = LoadMemoryTelemetry()
+
+    var raised_neg = False
+    try:
+        var _w = load_layer_router_weights(
+            -1, "", empty_map, cfg, router_cfg, telem
+        )
+    except e:
+        raised_neg = True
+    assert_true(raised_neg)
+
+    var raised_hi = False
+    try:
+        var _w2 = load_layer_router_weights(
+            24, "", empty_map, cfg, router_cfg, telem
+        )
+    except e:
+        raised_hi = True
+    assert_true(raised_hi)
+
+    var raised_miss = False
+    try:
+        var _w3 = load_layer_router_weights(
+            0, "", empty_map, cfg, router_cfg, telem
+        )
+    except e:
+        raised_miss = True
+    assert_true(raised_miss)
+
+
+def test_load_layer_router_weights_fixture_m1() raises:
+    """Memuat bobot router nyata dari fixture M1 safetensors."""
+    var path_idx = "fixtures/m1/model.safetensors.index.json"
+    var weight_map = parse_index_to_dict(path_idx)
+
+    # Fixture M1: hidden_size=64, num_hidden_layers=2, num_experts=8
+    var cfg = ModelConfig(64, 2, 2, 512)
+    var router_cfg = RouterConfig(8, 2, False)
+    var telem = LoadMemoryTelemetry()
+
+    var w_router = load_layer_router_weights(
+        0, "fixtures/m1", weight_map, cfg, router_cfg, telem
+    )
+    assert_equal(len(w_router), 8 * 64)
+    for i in range(len(w_router)):
+        assert_true(isfinite(w_router[i]))
+
+
+def test_property_p_norm_topk_prob_false() raises:
+    """Property P: konfigurasi model harus norm_topk_prob=false."""
+    var m0_raw = read_small_file("fixtures/m0/model_config.json")
+    var m0_str = String(from_utf8_lossy=Span(m0_raw))
+    assert_true(_contains(m0_str, '"norm_topk_prob": false'))
+
+    var m1_raw = read_small_file("fixtures/m1/model_config.json")
+    var m1_str = String(from_utf8_lossy=Span(m1_raw))
+    assert_true(_contains(m1_str, '"norm_topk_prob": false'))
 
 
 def main() raises:

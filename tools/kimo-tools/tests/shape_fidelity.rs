@@ -126,3 +126,65 @@ fn property_p2_config_vs_index_bias() {
         );
     }
 }
+
+#[test]
+fn property_router_weights_in_index() {
+    // Property M3-W1 (§ Scope F8 / m3-w1-router.md):
+    // Invariant: 24 layer wajib memiliki tepat 24 tensor router gate (model.layers.{layer}.mlp.gate.weight).
+    // Router Qwen1.5-MoE TIDAK memiliki bias (mlp.gate.bias tidak boleh ada).
+    // Config model wajib menyatakan norm_topk_prob=false.
+    let m0_cfg_p = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/m0/model_config.json"
+    );
+    let m0_cfg: Value = serde_json::from_str(&std::fs::read_to_string(m0_cfg_p).unwrap()).unwrap();
+    assert_eq!(
+        m0_cfg.get("norm_topk_prob").and_then(|v| v.as_bool()),
+        Some(false),
+        "config.json m0 wajib norm_topk_prob=false"
+    );
+
+    let m1_cfg_p = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/m1/model_config.json"
+    );
+    let m1_cfg: Value = serde_json::from_str(&std::fs::read_to_string(m1_cfg_p).unwrap()).unwrap();
+    assert_eq!(
+        m1_cfg.get("norm_topk_prob").and_then(|v| v.as_bool()),
+        Some(false),
+        "config.json m1 wajib norm_topk_prob=false"
+    );
+
+    let idx = load_index();
+    let wm = idx["weight_map"].as_object().unwrap();
+
+    let mut router_gate_tensors = BTreeSet::new();
+    let mut router_bias_count = 0u32;
+
+    for name in wm.keys() {
+        if name.contains("mlp.gate.weight") {
+            router_gate_tensors.insert(name.clone());
+        }
+        if name.contains("mlp.gate.bias") {
+            router_bias_count += 1;
+        }
+    }
+
+    assert_eq!(
+        router_gate_tensors.len(),
+        24,
+        "Jumlah tensor router mlp.gate.weight di index wajib tepat 24 (1 per layer)"
+    );
+    assert_eq!(
+        router_bias_count, 0,
+        "Router mlp.gate TIDAK boleh memiliki bias pada Qwen1.5-MoE-A2.7B"
+    );
+
+    for layer in 0..24 {
+        let gate = format!("model.layers.{layer}.mlp.gate.weight");
+        assert!(
+            router_gate_tensors.contains(&gate),
+            "Layer {layer} wajib punya mlp.gate.weight di index"
+        );
+    }
+}
