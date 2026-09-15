@@ -105,3 +105,26 @@ def err_layer_json(
 def fail_layer(code: String, detail: String, stage: String, layer: Int) raises:
     eprint_json(err_layer_json(code, detail, stage, layer))
     exit(2)
+
+
+def err_routing_violation_json(
+    detail: String, stage: String, layer: Int, token_index: Int
+) -> String:
+    return String(
+        '{"error_type":"ROUTING_VIOLATION","detail":"',
+        json_escape(detail),
+        '","stage":"',
+        json_escape(stage),
+        '","layer":',
+        String(layer),
+        ',"token_index":',
+        String(token_index),
+        "}",
+    )
+
+
+def fail_routing_violation(
+    detail: String, stage: String, layer: Int, token_index: Int
+) raises:
+    eprint_json(err_routing_violation_json(detail, stage, layer, token_index))
+    exit(1)

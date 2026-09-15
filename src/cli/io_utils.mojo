@@ -121,13 +121,14 @@ def load_and_validate_activation(
     layer_idx: Int,
     expected_tokens: Int,
     hidden_dim: Int,
+    stage: String = "attention",
 ) raises -> List[Float32]:
     var real = c_realpath(path)
     if real == "":
         fail_layer(
             "FILE_NOT_FOUND",
             "activation file not found: " + path,
-            "attention",
+            stage,
             layer_idx,
         )
 
@@ -138,7 +139,7 @@ def load_and_validate_activation(
         fail_layer(
             "ACT_LOAD_FAILED",
             "cannot read activation file: " + String(e),
-            "attention",
+            stage,
             layer_idx,
         )
 
@@ -157,7 +158,7 @@ def load_and_validate_activation(
                 "]), got ",
                 len(raw_bytes),
             ),
-            "attention",
+            stage,
             layer_idx,
         )
 
@@ -173,7 +174,7 @@ def load_and_validate_activation(
                 "ACT_LOAD_FAILED",
                 "activation contains non-finite values (NaN or Inf) at index "
                 + String(i),
-                "attention",
+                stage,
                 layer_idx,
             )
         if abs(v) > Float32(1e6):
@@ -181,14 +182,14 @@ def load_and_validate_activation(
                 "ACT_LOAD_FAILED",
                 "activation value out of reasonable range at index "
                 + String(i),
-                "attention",
+                stage,
                 layer_idx,
             )
         out.append(v)
     return out^
 
 
-def atomic_write_attn_output(
+def atomic_write_layer_output(
     target_path: String, output: List[Float32], layer_idx: Int
 ) raises:
     var tmp_path = String("")
@@ -216,6 +217,18 @@ def atomic_write_attn_output(
                 layer_idx,
             )
         )
+
+
+def atomic_write_attn_output(
+    target_path: String, output: List[Float32], layer_idx: Int
+) raises:
+    atomic_write_layer_output(target_path, output, layer_idx)
+
+
+def atomic_write_moe_output(
+    target_path: String, output: List[Float32], layer_idx: Int
+) raises:
+    atomic_write_layer_output(target_path, output, layer_idx)
 
 
 def check_layer_output_sanity(
@@ -247,6 +260,33 @@ def check_layer_output_sanity(
     if max_diff == Float32(0.0):
         fail_layer(
             "ATTENTION_ERROR",
+            "residual check failed: output is identical to input",
+            "residual",
+            layer_val,
+        )
+
+
+def check_moe_output_sanity(
+    out_act: List[Float32], act: List[Float32], layer_val: Int, hidden_size: Int
+) raises:
+    if len(out_act) != 16 * hidden_size:
+        fail_layer("EXPERT_ERROR", "output size mismatch", "output", layer_val)
+    var max_diff = Float32(0.0)
+    for idx in range(len(out_act)):
+        var val = out_act[idx]
+        if isnan(val) or isinf(val):
+            fail_layer(
+                "EXPERT_ERROR",
+                "output contains non-finite values at index " + String(idx),
+                "output",
+                layer_val,
+            )
+        var diff = abs(val - act[idx])
+        if diff > max_diff:
+            max_diff = diff
+    if max_diff == Float32(0.0):
+        fail_layer(
+            "EXPERT_ERROR",
             "residual check failed: output is identical to input",
             "residual",
             layer_val,

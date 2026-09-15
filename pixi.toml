@@ -26,3 +26,5 @@ test-m2-cli = "bash tests/integration/test_m2_w4_layer_cli.sh"
 test-m2-compare = "bash tests/integration/test_m2_w5_compare.sh"
 bench-m2 = "uv run python tools/bench/bench_m2_real.py"
 test-m2 = { depends-on = ["build", "test-compare", "test-m1-model", "test-m2-cli", "test-m2-compare"] }
+test-m3-cli = "bash tests/integration/test_m3_w3_moe_cli.sh"
+test-m3 = { depends-on = ["build", "test-m3-cli"] }

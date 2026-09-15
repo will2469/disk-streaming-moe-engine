@@ -33,6 +33,7 @@ from layers.moe import (
     moe_aggregate_forward,
     shared_gate_forward,
 )
+from layers.moe_block import forward_moe_block
 from layers.moe_loader import (
     SharedExpertWeights,
     load_layer_routed_expert_weights,

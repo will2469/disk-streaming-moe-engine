@@ -474,7 +474,38 @@ def parse_model_config(path: String) raises -> Tuple[ModelConfig, Float32]:
             '"stage":"config"}'
         )
 
+    var num_experts = _find_config_int_optional(fields, "num_experts", 60)
+    var num_experts_per_tok = _find_config_int_optional(
+        fields, "num_experts_per_tok", 4
+    )
+    var moe_intermediate_size = _find_config_int_optional(
+        fields, "moe_intermediate_size", 1408
+    )
+    var shared_expert_intermediate_size = _find_config_int_optional(
+        fields, "shared_expert_intermediate_size", 5632
+    )
+    var norm_topk_prob = False
+    if "norm_topk_prob" in fields:
+        var val = fields["norm_topk_prob"]
+        if val == "true":
+            norm_topk_prob = True
+        elif val == "false":
+            norm_topk_prob = False
+        else:
+            raise Error(
+                '{"error_type":"CONFIG_ERROR","detail":"norm_topk_prob must be'
+                ' boolean","stage":"config"}'
+            )
+
     var cfg = ModelConfig(
-        hidden_size, num_hidden_layers, num_attention_heads, vocab_size
+        hidden_size,
+        num_hidden_layers,
+        num_attention_heads,
+        vocab_size,
+        num_experts,
+        num_experts_per_tok,
+        moe_intermediate_size,
+        shared_expert_intermediate_size,
+        norm_topk_prob,
     )
     return (cfg^, eps)

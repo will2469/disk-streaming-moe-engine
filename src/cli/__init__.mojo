@@ -15,12 +15,15 @@ from cli.errors import (
     err_layer_json,
     fail,
     fail_layer,
+    fail_routing_violation,
 )
 from cli.io_utils import (
     atomic_write_attn_output,
     atomic_write_logits,
+    atomic_write_moe_output,
     load_and_validate_activation,
 )
+from cli.oracle_parser import OracleRoutingData, parse_oracle_routing_json
 from cli.sys_utils import (
     c_realpath,
     c_rename,
