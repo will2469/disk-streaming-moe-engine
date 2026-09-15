@@ -6,15 +6,47 @@
 from std.collections import List
 
 
+def _hex_digit(d: Int) -> UInt8:
+    if d < 10:
+        return UInt8(48 + d)
+    return UInt8(87 + d)
+
+
 def json_escape(s: String) -> String:
-    """Escape karakter khusus untuk serialisasi JSON."""
+    # Invariant protokol: SEMUA string dinamis wajib lewat sini sebelum masuk
+    # JSON. Escape '"', '\\', dan SEMUA kontrol < 0x20 (nama file Linux bisa
+    # memuat newline/tab; tanpa ini output JSON invalid).
     var sl = s.as_bytes()
     var out = List[UInt8]()
     for i in range(len(sl)):
         var b = Int(sl[i])
         if b == 34 or b == 92:
             out.append(92)
-        out.append(UInt8(b))
+            out.append(UInt8(b))
+        elif b == 10:
+            out.append(92)
+            out.append(110)
+        elif b == 13:
+            out.append(92)
+            out.append(114)
+        elif b == 9:
+            out.append(92)
+            out.append(116)
+        elif b == 8:
+            out.append(92)
+            out.append(98)
+        elif b == 12:
+            out.append(92)
+            out.append(102)
+        elif b < 32:
+            out.append(92)
+            out.append(117)
+            out.append(48)
+            out.append(48)
+            out.append(_hex_digit(b // 16))
+            out.append(_hex_digit(b % 16))
+        else:
+            out.append(UInt8(b))
     return String(from_utf8_lossy=Span(out))
 
 

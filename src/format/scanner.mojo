@@ -24,6 +24,10 @@ struct Scanner(Movable):
         return self.pos >= len(self.buf)
 
     def peek(self) -> Int:
+        # -1 saat EOF (bukan panic): semua caller memperlakukan -1 sebagai
+        # byte tak-cocok sehingga input truncated menjadi structured error.
+        if self.eof():
+            return -1
         return Int(self.buf[self.pos])
 
     def skip_ws(mut self):

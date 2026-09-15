@@ -5,18 +5,35 @@
 
 from format.types import json_escape
 from std.collections import List
+from std.ffi import external_call
 from std.sys.terminate import exit
 
 
 def eprint_json(msg: String) raises:
+    # Kontrak machine-readable: stdout = protocol/result saja; error JSON
+    # TIDAK PERNAH ke stdout (konsumen result=$(kimo ...) wajib steril).
     # /dev/stderr dibuka append (tanpa truncate: O_TRUNC di pipe -> ENXIO).
-    # Bila device tak ada, fallback stdout agar error tetap terlihat.
+    # Bila /dev tak ada (chroot dsb) tapi fd 2 masih terbuka, tulis langsung
+    # via write(2). Dua-duanya gagal → diam; exit code caller tetap
+    # mensinyalkan failure. Selalu akhiri satu newline.
+    var out = msg
+    var mb = msg.as_bytes()
+    if len(mb) == 0 or mb[len(mb) - 1] != 10:
+        out = String(msg, "\n")
     try:
         var e = open("/dev/stderr", "a")
-        e.write_all(msg.as_bytes())
+        e.write_all(out.as_bytes())
         e.close()
+        return
     except:
-        print(msg)
+        pass
+    # write(2) tak raise; gagal → abaikan (caller tetap exit non-nol).
+    var ob = out.as_bytes()
+    var n = len(ob)
+    var buf = List[UInt8]()
+    for i in range(n):
+        buf.append(ob[i])
+    _ = external_call["write", Int](2, buf.unsafe_ptr(), n)
 
 
 def err_json(

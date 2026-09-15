@@ -3,12 +3,13 @@
 # See LICENSE for details.
 """Unit tests untuk ModelConfig, LoadMemoryTelemetry, dan RMSNorm."""
 
+from cli.config_parser import _parse_strict_float
 from core.config import LoadMemoryTelemetry, ModelConfig, _contains
 from core.tensor_loader import load_tensor_f32_chunked
 from format.reader import read_header
 from layers.rmsnorm import rmsnorm
 from std.collections import List
-from std.math import sqrt
+from std.math import isinf, isnan, sqrt
 from std.testing import (
     TestSuite,
     assert_almost_equal,
@@ -81,14 +82,76 @@ def test_rmsnorm_gamma_one_normalized() raises:
 
 
 def test_rmsnorm_eps_rejected() raises:
-    """Kontrak eps: 0 / negatif → CONFIG_ERROR, tanpa default diam-diam."""
+    """Kontrak eps: 0 / negatif / NaN / Inf → CONFIG_ERROR."""
     var x: List[Float32] = [1.0, 2.0]
     var g: List[Float32] = [1.0, 1.0]
-    var bad: List[Float32] = [Float32(0.0), Float32(-1e-6)]
+    var inf_v = Float32(1e30) * Float32(1e30)
+    assert_true(isinf(inf_v))
+    var nan_v = inf_v - inf_v
+    assert_true(isnan(nan_v))
+    var bad: List[Float32] = [Float32(0.0), Float32(-1e-6), nan_v, inf_v]
     for i in range(len(bad)):
         var raised = False
         try:
             var _y = rmsnorm(x, g, bad[i])
+        except e:
+            raised = True
+        assert_true(raised)
+
+
+def test_strict_float_accepts() raises:
+    """Grammar angka JSON valid → nilai tepat (atof aman pasca-validasi)."""
+    var cases = List[String]()
+    cases.append("0")
+    cases.append("-0")
+    cases.append("2")
+    cases.append("3.25")
+    cases.append("-0.5")
+    cases.append("1e-06")
+    cases.append("1E+10")
+    cases.append("100.001")
+    var want: List[Float32] = [
+        0.0,
+        0.0,
+        2.0,
+        3.25,
+        -0.5,
+        Float32(1e-06),
+        Float32(1e10),
+        Float32(100.001),
+    ]
+    for i in range(len(cases)):
+        var v = _parse_strict_float(cases[i], "rms_norm_eps")
+        assert_almost_equal(v, want[i], atol=1e-6)
+
+
+def test_strict_float_rejects() raises:
+    """Trailing garbage / NaN-Infinity / grammar non-JSON / overflow → raise."""
+    var bad = List[String]()
+    bad.append("1.0garbage")
+    bad.append("nan")
+    bad.append("NaN")
+    bad.append("inf")
+    bad.append("-Infinity")
+    bad.append("INFINITY")
+    bad.append("")
+    bad.append("-")
+    bad.append("1.")
+    bad.append(".5")
+    bad.append("01")
+    bad.append("1e")
+    bad.append("1e+")
+    bad.append("+1.0")
+    bad.append("0x10")
+    bad.append("1_000")
+    bad.append(" 1.0")
+    bad.append("1.0 ")
+    bad.append("1e999")
+    bad.append("-1e999")
+    for i in range(len(bad)):
+        var raised = False
+        try:
+            var _v = _parse_strict_float(bad[i], "rms_norm_eps")
         except e:
             raised = True
         assert_true(raised)
@@ -140,6 +203,8 @@ def add_tests_to_suite(mut suite: TestSuite):
     suite.test[test_rmsnorm_scale_invariant]()
     suite.test[test_rmsnorm_gamma_one_normalized]()
     suite.test[test_rmsnorm_eps_rejected]()
+    suite.test[test_strict_float_accepts]()
+    suite.test[test_strict_float_rejects]()
     suite.test[test_rmsnorm_shape_errors]()
     suite.test[test_load_tensor_chunked]()
 

@@ -4,9 +4,11 @@
 """POSIX C FFI dan utilitas sistem untuk Kimo CLI."""
 
 from cli.errors import basename, dirname, eprint_json, fail, fail_layer
+from format.types import json_escape
 from std.collections import Dict, List
 from std.ffi import external_call
 from std.sys.terminate import exit
+from std.time import perf_counter_ns
 
 
 def c_rename(oldpath: String, newpath: String) -> Int:
@@ -32,6 +34,57 @@ def c_unlink(path: String) -> Int:
         p_z.append(p[i])
     p_z.append(0)
     return Int(external_call["unlink", Int32](p_z.unsafe_ptr()))
+
+
+# Flags open(2) Linux (<fcntl.h>, bits/fcntl-linux.h):
+# O_WRONLY=1, O_CREAT=64, O_EXCL=128, O_NOFOLLOW=131072.
+# Kombinasi O_CREAT|O_EXCL|O_NOFOLLOW untuk tmp file:
+# - menolak symlink pre-planted (gagal ELOOP, tidak follow),
+# - menolak timpa file existing (gagal EEXIST, tidak truncate).
+# Mode 0600=384: tmp hanya r/w owner sampai rename atomik.
+def c_getpid() -> Int:
+    return Int(external_call["getpid", Int32]())
+
+
+def c_open_tmp_excl(path: String) -> Int:
+    # openat(AT_FDCWD, ...) == open() tapi menghindari bentrok signature
+    # external_call["open", ...] milik stdlib. AT_FDCWD=-100.
+    var sb = path.as_bytes()
+    var z = List[UInt8]()
+    for i in range(len(sb)):
+        z.append(sb[i])
+    z.append(0)
+    var fd = external_call["openat", Int32](-100, z.unsafe_ptr(), 131265, 384)
+    return Int(fd)
+
+
+def c_write_f32_fd_all(fd: Int, data: List[Float32]) -> Bool:
+    # Single write(2) fail-closed: ke regular file yang baru dibuat,
+    # kernel transfer penuh atau gagal (ENOSPC/EINTR/dsb) — caller unlink
+    # tmp dan lapor OUTPUT_WRITE_FAILED. Tanpa aritmetika pointer.
+    var n_bytes = len(data) * 4
+    if n_bytes == 0:
+        return True
+    var p_u8 = data.unsafe_ptr().unsafe_bitcast[UInt8]()
+    var ret = external_call["write", Int](fd, p_u8, n_bytes)
+    return Int(ret) == n_bytes
+
+
+def c_fsync_fd(fd: Int) -> Int:
+    return Int(external_call["fsync", Int32](Int32(fd)))
+
+
+def c_close_fd(fd: Int) -> Int:
+    return Int(external_call["close", Int32](Int32(fd)))
+
+
+def make_unique_tmp_path(target_path: String, attempt: Int) -> String:
+    # target.tmp.<pid>.<ns>.<attempt>: unik per proses (pid), per waktu
+    # (ns), dan per retry (attempt). Attacker tak bisa prediksi nama untuk
+    # pre-plant symlink; dua proses konkuren ke target sama tak saling timpa.
+    var pid = c_getpid()
+    var ns = perf_counter_ns()
+    return String(target_path, ".tmp.", pid, ".", ns, ".", attempt)
 
 
 def c_realpath(path: String) -> String:
@@ -106,9 +159,28 @@ def _in_list(list: List[String], item: String) -> Bool:
     return False
 
 
+def _is_within_workdir(parent_canon: String, workdir_canon: String) -> Bool:
+    # Component-aware containment: realpath(3) output sudah canonical
+    # (tanpa trailing slash kecuali root "/"), jadi boundary komponen
+    # adalah kesamaan persis atau prefix "workdir + /".
+    # Ini menolak sibling prefix seperti /tmp/workevil untuk root /tmp/work.
+    if parent_canon == workdir_canon:
+        return True
+    if workdir_canon == "/":
+        return parent_canon.startswith("/")
+    var prefix = String(workdir_canon, "/")
+    return parent_canon.startswith(prefix)
+
+
 def resolve_target_output(
     output_file: String, workdir: String, layer_idx: Int = -1
 ) raises -> Tuple[String, String]:
+    # SECURITY: pola check-then-use (realpath → banding string → open).
+    # O_EXCL|O_NOFOLLOW + nama tmp unik menutup symlink-plant dan
+    # tabrakan konkuren; residual = parent dir diganti (swap/symlink) di
+    # jendela mikrodetik antara validasi dan create — diterima untuk threat
+    # model CLI (filesystem lokal non-hostile). Filesystem hostile/shared
+    # butuh operasi FD penuh (openat2 RESOLVE_BENEATH + renameat).
     var workdir_canon = c_realpath(workdir if workdir != "" else ".")
     if workdir_canon == "":
         if layer_idx >= 0:
@@ -136,7 +208,9 @@ def resolve_target_output(
     if out_parent == "":
         out_parent = workdir_canon
     var parent_canon = c_realpath(out_parent)
-    if parent_canon == "" or not parent_canon.startswith(workdir_canon):
+    if parent_canon == "" or not _is_within_workdir(
+        parent_canon, workdir_canon
+    ):
         if layer_idx >= 0:
             fail_layer(
                 "OUTPUT_WRITE_FAILED",
@@ -196,16 +270,18 @@ def validate_shards_coverage(
                     expected_shards.append(sh_name)
 
     if len(missing_tensors) > 0:
+        # Invariant escape global: tiap string dinamis (nama tensor/shard
+        # dari file eksternal) lewat json_escape sebelum masuk JSON.
         var mt_json = String("")
         for mi in range(len(missing_tensors)):
             if mi > 0:
                 mt_json += ","
-            mt_json += String('"', missing_tensors[mi], '"')
+            mt_json += String('"', json_escape(missing_tensors[mi]), '"')
         var es_json = String("")
         for ei in range(len(expected_shards)):
             if ei > 0:
                 es_json += ","
-            es_json += String('"', expected_shards[ei], '"')
+            es_json += String('"', json_escape(expected_shards[ei]), '"')
         var err: String
         if layer_idx >= 0:
             err = String(
@@ -260,13 +336,16 @@ def resolve_layer_model_root(
         )
     var r0 = dirname(supplied_shards[0])
     var r0_dir = r0 if r0 != "" else "."
+    # Bandingkan canonical path seperti cmd_head: lexical "a/../a" vs "a"
+    # sama; symlink tampak-sama dibedakan. "" == "" lolos ke FILE_NOT_FOUND.
+    var r0c = c_realpath(r0_dir)
     for k in range(len(supplied_shards)):
         var rk = dirname(supplied_shards[k])
-        if (rk if rk != "" else ".") != r0_dir:
+        if c_realpath(rk if rk != "" else ".") != r0c:
             fail_layer(
                 "FILE_NOT_FOUND",
                 "all supplied shards must reside in the same directory",
                 "attention",
                 layer_val,
             )
-    return (r0_dir, False)
+    return (r0c if r0c != "" else r0_dir, False)

@@ -7,8 +7,8 @@ from cli.config_parser import parse_model_config
 from cli.errors import dirname, fail_layer
 from cli.io_utils import (
     atomic_write_attn_output,
+    check_layer_output_sanity,
     load_and_validate_activation,
-    validate_layer_output,
 )
 from cli.sys_utils import (
     c_realpath,
@@ -27,6 +27,14 @@ from layers.qkv_bias import validate_attention_bias_in_index
 from std.collections import List
 from std.sys.terminate import exit
 from std.time import perf_counter_ns
+
+
+def _is_m2_probe_layer(layer_val: Int) -> Bool:
+    # Kebijakan milestone M2: hanya layer terverifikasi oracle (awal/tengah/
+    # akhir) yang boleh di-probe. BUKAN invariant engine universal — perluas
+    # di SATU tempat ini saat milestone berubah. Rentang vs
+    # config.num_hidden_layers dicek terpisah pasca-load config di bawah.
+    return layer_val == 0 or layer_val == 12 or layer_val == 23
 
 
 def _parse_layer_index(layer_str: String) raises -> Int:
@@ -63,10 +71,10 @@ def _parse_layer_index(layer_str: String) raises -> Int:
         layer_val = layer_val * 10 + (c - 48)
     if is_neg:
         layer_val = -layer_val
-    if layer_val != 0 and layer_val != 12 and layer_val != 23:
+    if not _is_m2_probe_layer(layer_val):
         fail_layer(
             "LAYER_INVALID",
-            "layer number invalid (must be 0, 12, or 23 for M2): "
+            "layer number invalid (M2 probe set: 0, 12, or 23): "
             + String(layer_val),
             "attention",
             layer_val,
@@ -143,6 +151,16 @@ def cmd_layer(args: List[String]) raises:
     var supplied_shards = List[String]()
     for si in range(1, len(positionals)):
         supplied_shards.append(positionals[si])
+
+    # CLI strict: --model-dir melarang shard positional (sebelumnya diabaikan
+    # diam-diam oleh cabang is_model_dir_mode).
+    if model_dir != "" and len(supplied_shards) > 0:
+        fail_layer(
+            "USAGE",
+            "ambiguous invocation: --model-dir forbids positional shards",
+            "attention",
+            layer_val,
+        )
 
     var target_pair = resolve_target_output(output_file, workdir, layer_val)
     var target_output = target_pair[0]
@@ -230,6 +248,9 @@ def cmd_layer(args: List[String]) raises:
             supplied_shards, req_list, weight_map, "attention", layer_val
         )
 
+    # Kontrak probe M2 (bukan invariant engine): 16 token aktivasi,
+    # RoPE base Qwen 1e6, offset posisi 0. Pindah ke config saat model
+    # berikutnya butuh nilai lain.
     var act = load_and_validate_activation(
         activation_path, layer_val, 16, cfg.hidden_size
     )
@@ -241,6 +262,7 @@ def cmd_layer(args: List[String]) raises:
     var parse_time_ms = Float64(perf_counter_ns() - t_parse0) / 1000000.0
 
     var t_comp0 = perf_counter_ns()
+    # Lihat kontrak probe M2 di atas: 16 token, RoPE base 1e6, offset 0.
     var out_act = forward_attention_block(
         act,
         weights,
@@ -253,7 +275,7 @@ def cmd_layer(args: List[String]) raises:
     )
     var compute_time_ms = Float64(perf_counter_ns() - t_comp0) / 1000000.0
 
-    validate_layer_output(out_act, act, layer_val, cfg.hidden_size)
+    check_layer_output_sanity(out_act, act, layer_val, cfg.hidden_size)
     atomic_write_attn_output(target_output, out_act, layer_val)
 
     print(

@@ -9,6 +9,7 @@ from format.file_io import read_small_file
 from format.scanner import Scanner
 from format.types import STError
 from std.collections import List
+from std.math import isinf, isnan
 
 
 def _parse_signed_int_array(mut sc: Scanner) raises -> List[Int]:
@@ -21,9 +22,26 @@ def _parse_signed_int_array(mut sc: Scanner) raises -> List[Int]:
     while True:
         sc.skip_ws()
         var is_neg = False
-        if not sc.eof() and sc.peek() == 45:
+        if sc.eof():
+            raise Error(
+                '{"error_type":"JSON_PARSE_ERROR","detail":"unterminated'
+                ' array","shard":"'
+                + sc.shard
+                + '","tensor_name":""}'
+            )
+        if sc.peek() == 45:
             is_neg = True
             sc.pos += 1
+        # Grammar integer JSON: tanpa '+', tanpa leading zero.
+        if not sc.eof() and sc.peek() == 48 and sc.pos + 1 < len(sc.buf):
+            var c1 = Int(sc.buf[sc.pos + 1])
+            if c1 >= 48 and c1 <= 57:
+                raise Error(
+                    '{"error_type":"JSON_PARSE_ERROR","detail":"leading zero'
+                    ' in integer","shard":"'
+                    + sc.shard
+                    + '","tensor_name":""}'
+                )
         var v = sc.parse_uint()
         if is_neg:
             out.append(-v)
@@ -60,6 +78,7 @@ def _parse_signed_int_array(mut sc: Scanner) raises -> List[Int]:
 
 
 def parse_tokens_json(path: String, vocab_size: Int) raises -> List[Int]:
+    # Kontrak probe M2 (bukan invariant engine): tepat 3 prompt × 16 token.
     var raw: List[UInt8]
     try:
         raw = read_small_file(path)
@@ -86,6 +105,13 @@ def parse_tokens_json(path: String, vocab_size: Int) raises -> List[Int]:
     var prompt_idx = 0
     while True:
         sc.skip_ws()
+        if sc.eof():
+            raise Error(
+                '{"error_type":"JSON_PARSE_ERROR","detail":"unterminated'
+                ' tokens.json","shard":"'
+                + path
+                + '","tensor_name":""}'
+            )
         if sc.peek() == 93:
             sc.pos += 1
             break
@@ -130,6 +156,13 @@ def parse_tokens_json(path: String, vocab_size: Int) raises -> List[Int]:
             all_tokens.append(tid)
         prompt_idx += 1
         sc.skip_ws()
+        if sc.eof():
+            raise Error(
+                '{"error_type":"JSON_PARSE_ERROR","detail":"unterminated'
+                ' tokens.json","shard":"'
+                + path
+                + '","tensor_name":""}'
+            )
         if sc.peek() == 93:
             sc.pos += 1
             break
@@ -148,115 +181,263 @@ def parse_tokens_json(path: String, vocab_size: Int) raises -> List[Int]:
             + String(prompt_idx)
             + '","stage":"embedding"}'
         )
+    # Setelah ']' penutup hanya whitespace yang sah; sampah trailing ditolak
+    # (sebelumnya [[...],[...],[...]]GARBAGE diterima diam-diam).
+    sc.skip_ws()
+    if not sc.eof():
+        raise Error(
+            '{"error_type":"JSON_PARSE_ERROR","detail":"trailing characters'
+            ' after tokens array","shard":"'
+            + path
+            + '","tensor_name":""}'
+        )
     return all_tokens^
 
 
-def _find_config_int(raw: String, field: String) raises -> Int:
-    var key = String('"', field, '"')
-    var idx = raw.find(key)
-    if idx < 0:
+def _fail_config(detail: String) raises:
+    raise Error(
+        '{"error_type":"CONFIG_ERROR","detail":"'
+        + detail
+        + '","stage":"config"}'
+    )
+
+
+def _skip_cfg_ws(raw: String, pos: Int) -> Int:
+    var rb = raw.as_bytes()
+    var p = pos
+    while p < len(rb) and (
+        rb[p] == 32 or rb[p] == 9 or rb[p] == 10 or rb[p] == 13
+    ):
+        p += 1
+    return p
+
+
+def _scan_cfg_string(raw: String, pos: Int) raises -> Int:
+    # pos menunjuk byte '"'; return indeks setelah '"' penutup.
+    var rb = raw.as_bytes()
+    var p = pos + 1
+    while True:
+        if p >= len(rb):
+            _fail_config("unterminated string in config")
+        var c = rb[p]
+        if c == 34:
+            return p + 1
+        if c == 92:
+            p += 1
+            if p >= len(rb):
+                _fail_config("unterminated string in config")
+            p += 1
+        elif c < 32:
+            _fail_config("raw control character in config string")
+        else:
+            p += 1
+
+
+def _scan_cfg_composite(raw: String, pos: Int) raises -> Int:
+    # Lewati nilai objek/array tak dikenal (depth-balanced, string-aware).
+    # Hanya untuk skip: ketidakseimbangan apa pun → CONFIG_ERROR (fail-closed).
+    var rb = raw.as_bytes()
+    var depth = 0
+    var p = pos
+    while p < len(rb):
+        var c = rb[p]
+        if c == 34:
+            p = _scan_cfg_string(raw, p)
+        elif c == 123 or c == 91:
+            depth += 1
+            p += 1
+        elif c == 125 or c == 93:
+            depth -= 1
+            p += 1
+            if depth == 0:
+                return p
+        else:
+            p += 1
+    _fail_config("unterminated composite in config")
+    return p
+
+
+def _scan_cfg_value_end(raw: String, pos: Int) raises -> Int:
+    var rb = raw.as_bytes()
+    var c = rb[pos]
+    if c == 34:
+        return _scan_cfg_string(raw, pos)
+    if c == 123 or c == 91:
+        return _scan_cfg_composite(raw, pos)
+    var end = pos
+    while end < len(rb) and (
+        rb[end] != 44
+        and rb[end] != 125
+        and rb[end] != 32
+        and rb[end] != 9
+        and rb[end] != 10
+        and rb[end] != 13
+    ):
+        end += 1
+    return end
+
+
+def _parse_config_object(raw: String) raises -> Dict[String, String]:
+    # Parse objek JSON top-level → {key: substring nilai mentah}.
+    # Hanya kunci depth-1 yang diakui: {"foo": {"hidden_size": 1}} TIDAK
+    # mengeset hidden_size. Kunci duplikat → error (bukan occurrence
+    # pertama/terakhir diam-diam). Sampah setelah '}' → error.
+    var fields = Dict[String, String]()
+    var rb = raw.as_bytes()
+    var p = 0
+    if len(rb) >= 3 and rb[0] == 239 and rb[1] == 187 and rb[2] == 191:
+        p = 3
+    p = _skip_cfg_ws(raw, p)
+    if p >= len(rb) or rb[p] != 123:
+        _fail_config("config must be a JSON object")
+    p += 1
+    p = _skip_cfg_ws(raw, p)
+    if p < len(rb) and rb[p] == 125:
+        p += 1
+    else:
+        while True:
+            p = _skip_cfg_ws(raw, p)
+            if p >= len(rb) or rb[p] != 34:
+                _fail_config("expected string key in config")
+            var kend = _scan_cfg_string(raw, p)
+            var key = String(raw[byte = p + 1 : kend - 1])
+            p = _skip_cfg_ws(raw, kend)
+            if p >= len(rb) or rb[p] != 58:
+                _fail_config("expected : in config")
+            p = _skip_cfg_ws(raw, p + 1)
+            if p >= len(rb):
+                _fail_config("unexpected end in config")
+            var vend = _scan_cfg_value_end(raw, p)
+            if key in fields:
+                _fail_config("duplicate field in config")
+            fields[key] = String(raw[byte=p:vend])
+            p = _skip_cfg_ws(raw, vend)
+            if p >= len(rb):
+                _fail_config("unterminated object in config")
+            if rb[p] == 44:
+                p += 1
+            elif rb[p] == 125:
+                p += 1
+                break
+            else:
+                _fail_config("expected , or } in config")
+    p = _skip_cfg_ws(raw, p)
+    if p != len(rb):
+        _fail_config("trailing characters after config object")
+    return fields^
+
+
+def _find_config_int(fields: Dict[String, String], field: String) raises -> Int:
+    if field not in fields:
         raise Error(
             '{"error_type":"CONFIG_ERROR","detail":"missing required field: '
             + field
             + '","stage":"config"}'
         )
-    var after = idx + len(key.as_bytes())
-    var colon = raw.find(":", after)
-    if colon < 0:
-        raise Error(
-            '{"error_type":"CONFIG_ERROR","detail":"malformed config near '
-            + field
-            + '","stage":"config"}'
-        )
-    var rb = raw.as_bytes()
-    var start = colon + 1
-    while start < len(rb) and (
-        rb[start] == 32 or rb[start] == 9 or rb[start] == 10 or rb[start] == 13
-    ):
-        start += 1
-    var end = start
-    while end < len(rb) and (rb[end] >= 48 and rb[end] <= 57):
-        end += 1
-    if end == start:
+    var val = fields[field]
+    var vb = val.as_bytes()
+    if len(vb) == 0:
         raise Error(
             '{"error_type":"CONFIG_ERROR","detail":"non-integer value for '
             + field
             + '","stage":"config"}'
         )
-    var val_str = raw[byte=start:end]
-    return Int(val_str)
+    for i in range(len(vb)):
+        if vb[i] < 48 or vb[i] > 57:
+            raise Error(
+                '{"error_type":"CONFIG_ERROR","detail":"non-integer value for '
+                + field
+                + '","stage":"config"}'
+            )
+    try:
+        return Int(val)
+    except:
+        raise Error(
+            '{"error_type":"CONFIG_ERROR","detail":"non-integer value for '
+            + field
+            + '","stage":"config"}'
+        )
 
 
 def _find_config_int_optional(
-    raw: String, field: String, default_val: Int
-) -> Int:
-    var key = String('"', field, '"')
-    var idx = raw.find(key)
-    if idx < 0:
+    fields: Dict[String, String], field: String, default_val: Int
+) raises -> Int:
+    # Tidak ada → default. Ada tapi invalid → error (fail-closed, bukan
+    # pretend-missing).
+    if field not in fields:
         return default_val
-    var after = idx + len(key.as_bytes())
-    var colon = raw.find(":", after)
-    if colon < 0:
-        return default_val
-    var rb = raw.as_bytes()
-    var start = colon + 1
-    while start < len(rb) and (
-        rb[start] == 32 or rb[start] == 9 or rb[start] == 10 or rb[start] == 13
-    ):
-        start += 1
-    var end = start
-    while end < len(rb) and (rb[end] >= 48 and rb[end] <= 57):
-        end += 1
-    if end == start:
-        return default_val
-    var val_str = raw[byte=start:end]
-    try:
-        return Int(val_str)
-    except:
-        return default_val
+    return _find_config_int(fields, field)
 
 
-def _find_config_float(raw: String, field: String) raises -> Float32:
-    var key = String('"', field, '"')
-    var idx = raw.find(key)
-    if idx < 0:
-        raise Error(
-            '{"error_type":"CONFIG_ERROR","detail":"missing required field: '
-            + field
-            + '","stage":"config"}'
-        )
-    var after = idx + len(key.as_bytes())
-    var colon = raw.find(":", after)
-    if colon < 0:
-        raise Error(
-            '{"error_type":"CONFIG_ERROR","detail":"malformed config near '
-            + field
-            + '","stage":"config"}'
-        )
-    var rb = raw.as_bytes()
-    var start = colon + 1
-    while start < len(rb) and (
-        rb[start] == 32 or rb[start] == 9 or rb[start] == 10 or rb[start] == 13
-    ):
-        start += 1
-    var end = start
-    while end < len(rb) and (
-        rb[end] != 44
-        and rb[end] != 125
-        and rb[end] != 32
-        and rb[end] != 10
-        and rb[end] != 13
-    ):
-        end += 1
-    if end == start:
+def _skip_ascii_digits(val_str: String, pos: Int) -> Int:
+    var b = val_str.as_bytes()
+    var p = pos
+    while p < len(b) and b[p] >= 48 and b[p] <= 57:
+        p += 1
+    return p
+
+
+def _parse_strict_float(val_str: String, field: String) raises -> Float32:
+    # Grammar angka JSON strict: -?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?
+    # harus konsumsi SELURUH token. Ini menolak "1.0garbage" (atof diam-diam
+    # memotongnya jadi 1.0) dan literal non-JSON "nan"/"inf"/"Infinity".
+    # atof hanya dipakai SETELAH grammar valid, lalu hasil wajib finite:
+    # "1e999" grammatically valid tapi overflow jadi +inf.
+    var b = val_str.as_bytes()
+    var n = len(b)
+    var pos = 0
+    if pos < n and b[pos] == 45:
+        pos += 1
+    var ok = True
+    if pos >= n:
+        ok = False
+    elif b[pos] == 48:
+        pos += 1
+    elif b[pos] >= 49 and b[pos] <= 57:
+        pos = _skip_ascii_digits(val_str, pos)
+    else:
+        ok = False
+    if ok and pos < n and b[pos] == 46:
+        pos += 1
+        var fstart = pos
+        pos = _skip_ascii_digits(val_str, pos)
+        if pos == fstart:
+            ok = False
+    if ok and pos < n and (b[pos] == 101 or b[pos] == 69):
+        pos += 1
+        if pos < n and (b[pos] == 43 or b[pos] == 45):
+            pos += 1
+        var estart = pos
+        pos = _skip_ascii_digits(val_str, pos)
+        if pos == estart:
+            ok = False
+    if not ok or pos != n:
         raise Error(
             '{"error_type":"CONFIG_ERROR","detail":"non-numeric float value for'
             " "
             + field
             + '","stage":"config"}'
         )
-    var val_str = String(raw[byte=start:end])
-    return str_to_float(val_str)
+    var v = str_to_float(val_str)
+    if isnan(v) or isinf(v):
+        raise Error(
+            '{"error_type":"CONFIG_ERROR","detail":"non-finite float value for '
+            + field
+            + '","stage":"config"}'
+        )
+    return v
+
+
+def _find_config_float(
+    fields: Dict[String, String], field: String
+) raises -> Float32:
+    if field not in fields:
+        raise Error(
+            '{"error_type":"CONFIG_ERROR","detail":"missing required field: '
+            + field
+            + '","stage":"config"}'
+        )
+    return _parse_strict_float(fields[field], field)
 
 
 def parse_model_config(path: String) raises -> Tuple[ModelConfig, Float32]:
@@ -271,20 +452,25 @@ def parse_model_config(path: String) raises -> Tuple[ModelConfig, Float32]:
             + '","stage":"config"}'
         )
     var raw = String(from_utf8_lossy=Span(raw_bytes))
+    var fields = _parse_config_object(raw)
 
-    var hidden_size = _find_config_int(raw, "hidden_size")
-    var vocab_size = _find_config_int(raw, "vocab_size")
+    var hidden_size = _find_config_int(fields, "hidden_size")
+    var vocab_size = _find_config_int(fields, "vocab_size")
     var num_hidden_layers = _find_config_int_optional(
-        raw, "num_hidden_layers", 28
+        fields, "num_hidden_layers", 28
     )
     var num_attention_heads = _find_config_int_optional(
-        raw, "num_attention_heads", 16
+        fields, "num_attention_heads", 16
     )
-    var eps = _find_config_float(raw, "rms_norm_eps")
+    var eps = _find_config_float(fields, "rms_norm_eps")
 
-    if eps <= Float32(0.0):
+    # NaN <= 0 adalah false, jadi tanpa isnan/isinf eksplisit NaN lolos.
+    # (Unreachable setelah _parse_strict_float, tapi dipertahankan eksplisit
+    # sebagai defense-in-depth di titik validasi.)
+    if isnan(eps) or isinf(eps) or eps <= Float32(0.0):
         raise Error(
-            '{"error_type":"CONFIG_ERROR","detail":"rms_norm_eps must be > 0",'
+            '{"error_type":"CONFIG_ERROR","detail":"rms_norm_eps must be'
+            ' finite and > 0",'
             '"stage":"config"}'
         )
 

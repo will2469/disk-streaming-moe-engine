@@ -3,6 +3,7 @@
 # See LICENSE for details.
 """Unit tests untuk MHA causal mask, softmax row stable, o_proj, dan forward_attention_block (M2-W3)."""
 
+from cli.io_utils import _decode_f32_le
 from core.config import ModelConfig
 from layers.attention import (
     AttentionWeights,
@@ -17,7 +18,7 @@ from layers.mha import (
 from layers.qkv import QKVWeights
 from layers.residual import add_residual
 from std.collections import List
-from std.math import abs, isinf
+from std.math import abs, isinf, isnan
 from std.testing import (
     TestSuite,
     assert_almost_equal,
@@ -281,6 +282,23 @@ def test_forward_attention_block_oracle_slice() raises:
     assert_almost_equal(y_final[7], Float32(-0.6550304), atol=1e-5)
 
 
+def test_decode_f32_le_exact() raises:
+    """Decode LE eksplisit: bit-pattern → nilai tepat, tanpa bitcast."""
+    assert_almost_equal(_decode_f32_le(0, 0, 128, 63), Float32(1.0), atol=1e-9)
+    assert_almost_equal(_decode_f32_le(0, 0, 32, 192), Float32(-2.5), atol=1e-9)
+    assert_almost_equal(_decode_f32_le(0, 0, 0, 0), Float32(0.0), atol=1e-9)
+    # Subnormal minimum 0x00000001: non-nol, mungil, dan /2 underflow ke nol.
+    # (Literal Float32(1.4e-45) tak bisa jadi ekspektasi: konversi literal
+    # Mojo mem-flush subnormal ke nol.)
+    var smin = _decode_f32_le(1, 0, 0, 0)
+    assert_true(smin > Float32(0.0))
+    assert_true(smin < Float32(1e-38))
+    assert_true(smin / Float32(2.0) == Float32(0.0))
+    # +inf / NaN terdeteksi downstream via isinf/isnan.
+    assert_true(isinf(_decode_f32_le(0, 0, 128, 127)))
+    assert_true(isnan(_decode_f32_le(0, 0, 192, 127)))
+
+
 def add_tests_to_suite(mut suite: TestSuite):
     suite.test[test_causal_mask_triangular_structure]()
     suite.test[test_causal_mask_autoregressive_property]()
@@ -290,6 +308,7 @@ def add_tests_to_suite(mut suite: TestSuite):
     suite.test[test_mha_forward_known_oracle]()
     suite.test[test_o_project_matmul_and_bias]()
     suite.test[test_add_residual]()
+    suite.test[test_decode_f32_le_exact]()
     suite.test[test_forward_attention_block_oracle_slice]()
 
 

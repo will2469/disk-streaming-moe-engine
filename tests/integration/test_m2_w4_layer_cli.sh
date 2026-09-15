@@ -394,8 +394,8 @@ err=$("$KIMO" layer --layer 0 "$ACT_VALID" --model-dir "$FX_DIR" --workdir "$RO_
 rc=$?
 chmod 755 "$RO_DIR"
 if [ $rc -eq 2 ] && echo "$err" | grep -q '"error_type":"OUTPUT_WRITE_FAILED"'; then
-    # Verify no .tmp file left
-    tmp_count=$(find "$RO_DIR" -name "*.tmp.bin" | wc -l)
+    # Verify no .tmp file left (tmp pattern: <target>.tmp.<pid>.<ns>.<attempt>)
+    tmp_count=$(find "$RO_DIR" -name "*.tmp.*" | wc -l)
     if [ "$tmp_count" -eq 0 ]; then
         echo "PASS: atomic write failed cleanly with rollback (exit 2, 0 tmp files)"
     else
@@ -404,6 +404,16 @@ if [ $rc -eq 2 ] && echo "$err" | grep -q '"error_type":"OUTPUT_WRITE_FAILED"'; 
     fi
 else
     echo "FAIL: unwritable output dir not handled: rc=$rc, err=$err"
+    fail=1
+fi
+
+# Ambiguous invocation: --model-dir forbids positional shards
+err=$("$KIMO" layer --layer 0 "$ACT_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" "$FX_DIR/shard-00001-of-00002.safetensors" 2>&1)
+rc=$?
+if [ $rc -eq 2 ] && echo "$err" | grep -q '"error_type":"USAGE"'; then
+    echo "PASS: ambiguous --model-dir + positional shards rejected (exit 2)"
+else
+    echo "FAIL: ambiguous invocation not handled: rc=$rc, err=$err"
     fail=1
 fi
 

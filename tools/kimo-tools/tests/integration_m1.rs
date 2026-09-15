@@ -313,10 +313,13 @@ fn test_5_atomic_write_failure() {
     let _ = fs::set_permissions(&ro_dir, restore_perms);
 
     assert!(!out_bin.exists(), "Leftover partial file found!");
-    assert!(
-        !ro_dir.join("logits.bin.tmp.bin").exists(),
-        "Leftover tmp file found!"
-    );
+    // Tmp pattern: <target>.tmp.<pid>.<ns>.<attempt> — fail on any leftover.
+    let leftover_tmp = fs::read_dir(&ro_dir)
+        .expect("read ro_dir")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .any(|n| n.starts_with("logits.bin.tmp."));
+    assert!(!leftover_tmp, "Leftover tmp file found!");
 }
 
 #[test]

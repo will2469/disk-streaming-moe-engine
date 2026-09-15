@@ -15,6 +15,18 @@
 # 12. Output path escapes workdir via ../
 # 13. Output path escapes workdir via symlink
 # 14. Atomic write rollback on unwritable directory
+# 15. Config error (NaN rms_norm_eps slips past naive <= 0 check)
+# 16. Config error (overflow rms_norm_eps 1e999 -> +inf)
+# 17. Config error (trailing garbage after float)
+# 18. Config error (nested hidden_size is not top-level)
+# 19. Config error (duplicate key)
+# 20. Config error (optional field garbage is not silent default)
+# 21. Tokens error (trailing garbage after array)
+# 22. Tokens error (truncated input, no panic)
+# 23. Tokens error (leading zero integer)
+# 24. Error channel contract (stdout sterile, stderr newline-terminated)
+# 25. Ambiguous invocation (--model-dir + positional shards rejected)
+# 26. Same directory via different lexical spellings accepted
 
 set -u
 
@@ -327,11 +339,211 @@ if [ $status -ne 2 ]; then
     fail=1
 fi
 grep -q '"error_type":"OUTPUT_WRITE_FAILED"' "$ERR_TXT" || { echo "FAIL: error_type not OUTPUT_WRITE_FAILED"; fail=1; }
-# Verify no partial or tmp file exists
+# Verify no partial or tmp file exists (tmp pattern: <target>.tmp.<pid>.<ns>.<attempt>)
 chmod 777 "$RO_DIR"
-if [ -f "$RO_DIR/out.bin" ] || [ -f "$RO_DIR/out.bin.tmp.bin" ]; then
+if [ -f "$RO_DIR/out.bin" ] || compgen -G "$RO_DIR/out.bin.tmp.*" > /dev/null; then
     echo "FAIL: leftover file in readonly directory!"
     fail=1
+fi
+
+echo "== 15. Config error: NaN rms_norm_eps (NaN <= 0 is false) =="
+NAN_CFG_DIR="$TEST_DIR/nan_cfg"
+mkdir -p "$NAN_CFG_DIR"
+cp "$FX_DIR"/* "$NAN_CFG_DIR/"
+python3 -c "
+p = '$NAN_CFG_DIR/model_config.json'
+raw = open(p).read()
+assert '1e-06' in raw
+open(p, 'w').write(raw.replace('1e-06', 'NaN'))
+"
+ERR_TXT="$TEST_DIR/err_cfg_nan.txt"
+"$KIMO" head "$TOKENS_VALID" --model-dir "$NAN_CFG_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+status=$?
+if [ $status -ne 2 ]; then
+    echo "FAIL: expected exit 2 on NaN rms_norm_eps, got $status"
+    fail=1
+fi
+grep -q '"error_type":"CONFIG_ERROR"' "$ERR_TXT" || { echo "FAIL: error_type not CONFIG_ERROR"; fail=1; }
+grep -q '"stage":"config"' "$ERR_TXT" || { echo "FAIL: stage not config"; fail=1; }
+
+echo "== 16. Config error: overflow rms_norm_eps 1e999 (-> +inf) =="
+INF_CFG_DIR="$TEST_DIR/inf_cfg"
+mkdir -p "$INF_CFG_DIR"
+cp "$FX_DIR"/* "$INF_CFG_DIR/"
+python3 -c "
+p = '$INF_CFG_DIR/model_config.json'
+raw = open(p).read()
+assert '1e-06' in raw
+open(p, 'w').write(raw.replace('1e-06', '1e999'))
+"
+ERR_TXT="$TEST_DIR/err_cfg_inf.txt"
+"$KIMO" head "$TOKENS_VALID" --model-dir "$INF_CFG_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+status=$?
+if [ $status -ne 2 ]; then
+    echo "FAIL: expected exit 2 on overflow rms_norm_eps, got $status"
+    fail=1
+fi
+grep -q '"error_type":"CONFIG_ERROR"' "$ERR_TXT" || { echo "FAIL: error_type not CONFIG_ERROR"; fail=1; }
+
+echo "== 17. Config error: trailing garbage after float =="
+GARB_CFG_DIR="$TEST_DIR/garb_cfg"
+mkdir -p "$GARB_CFG_DIR"
+cp "$FX_DIR"/* "$GARB_CFG_DIR/"
+python3 -c "
+p = '$GARB_CFG_DIR/model_config.json'
+raw = open(p).read()
+assert '1e-06' in raw
+open(p, 'w').write(raw.replace('1e-06', '1.0garbage'))
+"
+ERR_TXT="$TEST_DIR/err_cfg_garb.txt"
+"$KIMO" head "$TOKENS_VALID" --model-dir "$GARB_CFG_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+status=$?
+if [ $status -ne 2 ]; then
+    echo "FAIL: expected exit 2 on garbage rms_norm_eps, got $status"
+    fail=1
+fi
+grep -q '"error_type":"CONFIG_ERROR"' "$ERR_TXT" || { echo "FAIL: error_type not CONFIG_ERROR"; fail=1; }
+
+echo "== 18. Config error: nested hidden_size is not top-level =="
+NEST_CFG_DIR="$TEST_DIR/nest_cfg"
+mkdir -p "$NEST_CFG_DIR"
+cp "$FX_DIR"/* "$NEST_CFG_DIR/"
+python3 -c "
+import json
+p = '$NEST_CFG_DIR/model_config.json'
+d = {'foo': {'hidden_size': 123}, 'vocab_size': 512, 'rms_norm_eps': 1e-6}
+json.dump(d, open(p, 'w'))
+"
+ERR_TXT="$TEST_DIR/err_cfg_nest.txt"
+"$KIMO" head "$TOKENS_VALID" --model-dir "$NEST_CFG_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+status=$?
+if [ $status -ne 2 ]; then
+    echo "FAIL: expected exit 2 on nested hidden_size, got $status"
+    fail=1
+fi
+grep -q '"error_type":"CONFIG_ERROR"' "$ERR_TXT" || { echo "FAIL: error_type not CONFIG_ERROR"; fail=1; }
+
+echo "== 19. Config error: duplicate key =="
+DUP_CFG_DIR="$TEST_DIR/dup_cfg"
+mkdir -p "$DUP_CFG_DIR"
+cp "$FX_DIR"/* "$DUP_CFG_DIR/"
+python3 -c "
+p = '$DUP_CFG_DIR/model_config.json'
+open(p, 'w').write('{\"hidden_size\": 64, \"hidden_size\": 999999, \"vocab_size\": 512, \"rms_norm_eps\": 1e-6}')
+"
+ERR_TXT="$TEST_DIR/err_cfg_dup.txt"
+"$KIMO" head "$TOKENS_VALID" --model-dir "$DUP_CFG_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+status=$?
+if [ $status -ne 2 ]; then
+    echo "FAIL: expected exit 2 on duplicate key, got $status"
+    fail=1
+fi
+grep -q '"error_type":"CONFIG_ERROR"' "$ERR_TXT" || { echo "FAIL: error_type not CONFIG_ERROR"; fail=1; }
+
+echo "== 20. Config error: optional field garbage is not silent default =="
+BOPT_CFG_DIR="$TEST_DIR/bopt_cfg"
+mkdir -p "$BOPT_CFG_DIR"
+cp "$FX_DIR"/* "$BOPT_CFG_DIR/"
+python3 -c "
+import json
+p = '$BOPT_CFG_DIR/model_config.json'
+with open(p) as f: d = json.load(f)
+d['num_hidden_layers'] = 'garbage'
+json.dump(d, open(p, 'w'))
+"
+ERR_TXT="$TEST_DIR/err_cfg_bopt.txt"
+"$KIMO" head "$TOKENS_VALID" --model-dir "$BOPT_CFG_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+status=$?
+if [ $status -ne 2 ]; then
+    echo "FAIL: expected exit 2 on garbage optional field, got $status"
+    fail=1
+fi
+grep -q '"error_type":"CONFIG_ERROR"' "$ERR_TXT" || { echo "FAIL: error_type not CONFIG_ERROR"; fail=1; }
+
+echo "== 21. Tokens error: trailing garbage after array =="
+TOK_GARB="$TEST_DIR/tokens_garbage.json"
+python3 -c "
+import json
+with open('$TOKENS_VALID') as f: s = f.read()
+open('$TOK_GARB', 'w').write(s + 'GARBAGE')
+"
+ERR_TXT="$TEST_DIR/err_tok_garb.txt"
+"$KIMO" head "$TOK_GARB" --model-dir "$FX_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+status=$?
+if [ $status -ne 2 ]; then
+    echo "FAIL: expected exit 2 on tokens trailing garbage, got $status"
+    fail=1
+fi
+grep -q '"error_type":"JSON_PARSE_ERROR"' "$ERR_TXT" || { echo "FAIL: error_type not JSON_PARSE_ERROR"; fail=1; }
+
+echo "== 22. Tokens error: truncated input without panic =="
+TOK_TRUNC="$TEST_DIR/tokens_trunc.json"
+printf '[' > "$TOK_TRUNC"
+ERR_TXT="$TEST_DIR/err_tok_trunc.txt"
+"$KIMO" head "$TOK_TRUNC" --model-dir "$FX_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+status=$?
+if [ $status -ne 2 ]; then
+    echo "FAIL: expected exit 2 on truncated tokens, got $status (panic?)"
+    fail=1
+fi
+grep -q '"error_type":"JSON_PARSE_ERROR"' "$ERR_TXT" || { echo "FAIL: error_type not JSON_PARSE_ERROR"; fail=1; }
+
+echo "== 23. Tokens error: leading zero integer =="
+TOK_ZERO="$TEST_DIR/tokens_zero.json"
+python3 -c "
+with open('$TOKENS_VALID') as f: s = f.read()
+open('$TOK_ZERO', 'w').write(s.replace('[0,', '[00,', 1))
+"
+ERR_TXT="$TEST_DIR/err_tok_zero.txt"
+"$KIMO" head "$TOK_ZERO" --model-dir "$FX_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+status=$?
+if [ $status -ne 2 ]; then
+    echo "FAIL: expected exit 2 on leading zero token, got $status"
+    fail=1
+fi
+grep -q '"error_type":"JSON_PARSE_ERROR"' "$ERR_TXT" || { echo "FAIL: error_type not JSON_PARSE_ERROR"; fail=1; }
+
+echo "== 24. Error channel contract: stdout sterile, stderr newline =="
+CHAN_OUT="$TEST_DIR/chan_stdout.txt"
+ERR_TXT="$TEST_DIR/err_chan.txt"
+"$KIMO" head "$TOKENS_VALID" --model-dir "$NAN_CFG_DIR" --workdir "$WORKDIR" > "$CHAN_OUT" 2> "$ERR_TXT"
+status=$?
+if [ $status -ne 2 ]; then
+    echo "FAIL: expected exit 2, got $status"
+    fail=1
+fi
+if [ -s "$CHAN_OUT" ]; then
+    echo "FAIL: stdout polluted on error path"
+    fail=1
+fi
+grep -q '"error_type":"CONFIG_ERROR"' "$ERR_TXT" || { echo "FAIL: error_type not CONFIG_ERROR"; fail=1; }
+if [ -n "$(tail -c 1 "$ERR_TXT")" ]; then
+    echo "FAIL: stderr error JSON not newline-terminated"
+    fail=1
+fi
+
+echo "== 25. Ambiguous invocation: --model-dir + positional shards =="
+ERR_TXT="$TEST_DIR/err_ambig.txt"
+"$KIMO" head "$TOKENS_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" "$FX_DIR/fixture-00001-of-00003.safetensors" > "$ERR_TXT" 2>&1
+status=$?
+if [ $status -ne 2 ]; then
+    echo "FAIL: expected exit 2 on ambiguous invocation, got $status"
+    fail=1
+fi
+grep -q '"error_type":"USAGE"' "$ERR_TXT" || { echo "FAIL: error_type not USAGE"; fail=1; }
+
+echo "== 26. Same directory via different lexical spellings =="
+OUT_SPELL="$OUT_DIR/logits_spell.bin"
+"$KIMO" head "$TOKENS_VALID" "$FX_DIR/fixture-00001-of-00003.safetensors" "$FX_DIR/../fixture/fixture-00002-of-00003.safetensors" --workdir "$WORKDIR" --output "$OUT_SPELL" > /dev/null 2>&1
+status=$?
+if [ $status -ne 0 ]; then
+    echo "FAIL: same directory different spelling rejected, exit $status"
+    fail=1
+else
+    if ! cmp -s "$OUT_BIN" "$OUT_SPELL"; then
+        echo "FAIL: spelling-variant output differs"
+        fail=1
+    fi
 fi
 
 if [ "$fail" -eq 0 ]; then

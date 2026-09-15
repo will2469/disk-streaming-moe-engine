@@ -276,6 +276,20 @@ def test_escape_roundtrip() raises:
     assert_equal(got, String('a\\"b\\\\c'))
 
 
+def test_escape_controls() raises:
+    # Invariant global: kontrol < 0x20 (newline/tab di nama file Linux)
+    # wajib di-escape agar output JSON tetap valid.
+    var raw = List[UInt8]()
+    raw.append(97)
+    raw.append(10)
+    raw.append(9)
+    raw.append(13)
+    raw.append(1)
+    raw.append(98)
+    var got = json_escape(String(from_utf8_lossy=Span(raw)))
+    assert_equal(got, String("a\\n\\t\\r\\u0001b"))
+
+
 def test_prop_random_valid() raises:
     var rng = LCG(42)
     for trial in range(20):

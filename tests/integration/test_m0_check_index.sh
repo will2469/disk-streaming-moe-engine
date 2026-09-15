@@ -1,5 +1,6 @@
 #!/bin/bash
-# E2E check-index: happy (0), subset, hilang (2), duplikat (1), salah-tempat (1).
+# E2E check-index: happy (0), subset, hilang (2), duplikat (1), salah-tempat (1),
+# impostor cross-directory (1), quote-filename JSON validity.
 set -u
 KIMO="${KIMO:-./kimo}"
 FX="fixtures/m0"
@@ -31,5 +32,35 @@ cp "$FX/fixture-00002-of-00003.safetensors" "$WRG/fixture-00001-of-00003.safeten
 "$KIMO" check-index "$WRG"/fixture-0000*.safetensors >/tmp/kimo-wrong-out.txt 2>&1 && { echo "salah-tempat exit FAIL"; fail=1; } || [ $? -eq 1 ] || { echo "salah-tempat exit FAIL"; fail=1; }
 grep -q WRONG_SHARD /tmp/kimo-wrong-out.txt || { echo "salah-tempat tipe FAIL"; fail=1; }
 rm -rf "$WRG" /tmp/kimo-wrong-out.txt
+echo "== impostor cross-directory (basename sama, payload beda -> exit 1, WRONG_SHARD) =="
+IMP=/tmp/kimo-iso-impostor
+rm -rf "$IMP" && mkdir -p "$IMP/model" "$IMP/other"
+cp "$FX"/fixture-0000*.safetensors "$FX/model.safetensors.index.json" "$IMP/model/"
+python3 -c "
+import struct
+p = '$IMP/model/fixture-00002-of-00003.safetensors'
+data = open(p, 'rb').read()
+n = struct.unpack('<Q', data[:8])[0]
+hdr, payload = data[8:8+n], bytearray(data[8+n:])
+for i in range(0, len(payload), 64):
+    payload[i] ^= 0xFF
+open('$IMP/other/fixture-00002-of-00003.safetensors', 'wb').write(data[:8] + hdr + bytes(payload))
+"
+"$KIMO" check-index "$IMP/model/fixture-00001-of-00003.safetensors" "$IMP/other/fixture-00002-of-00003.safetensors" "$IMP/model/fixture-00003-of-00003.safetensors" >/tmp/kimo-impostor-out.txt 2>&1 && { echo "impostor exit FAIL"; fail=1; } || [ $? -eq 1 ] || { echo "impostor exit FAIL"; fail=1; }
+grep -q WRONG_SHARD /tmp/kimo-impostor-out.txt || { echo "impostor tipe FAIL"; fail=1; }
+grep -q '"scope":"subset"' /tmp/kimo-impostor-out.txt || { echo "impostor scope FAIL"; fail=1; }
+rm -rf "$IMP" /tmp/kimo-impostor-out.txt
+echo "== quote-filename (output tetap JSON valid) =="
+QTE=/tmp/kimo-iso-quote
+rm -rf "$QTE" && mkdir -p "$QTE"
+cp "$FX/model.safetensors.index.json" "$QTE/"
+cp "$FX/fixture-00001-of-00003.safetensors" "$QTE/evil\".safetensors"
+"$KIMO" check-index "$QTE/evil\".safetensors" >/tmp/kimo-quote-out.txt 2>&1
+python3 -c "
+import json
+d = json.load(open('/tmp/kimo-quote-out.txt'))
+assert d['supplied_shards'] == ['evil\".safetensors'], d['supplied_shards']
+" || { echo "quote JSON FAIL"; fail=1; }
+rm -rf "$QTE" /tmp/kimo-quote-out.txt
 [ "$fail" -eq 0 ] && echo "e2e: hijau"
 exit $fail

@@ -85,6 +85,16 @@ def cmd_head(args: List[String]) raises:
             supplied_shards.append(a)
             i += 1
 
+    # CLI strict: --model-dir melarang shard positional (sebelumnya diabaikan
+    # diam-diam) dan sebaliknya sudah ditolak di bawah bila keduanya kosong.
+    if model_dir != "" and len(supplied_shards) > 0:
+        fail(
+            "USAGE",
+            "ambiguous invocation: --model-dir forbids positional shards",
+            "",
+            "",
+        )
+
     var target_pair = resolve_target_output(output_file, workdir)
     var target_output = target_pair[0]
     var workdir_canon = target_pair[1]
@@ -105,18 +115,22 @@ def cmd_head(args: List[String]) raises:
         var r0 = dirname(supplied_shards[0])
         if r0 == "":
             r0 = "."
+        # Bandingkan canonical path, bukan string lexical: "a/../a" vs "a"
+        # sama; symlink yang tampak sama tapi target beda dibedakan.
+        # Dua-duanya "" (tak-resolve) lolos ke FILE_NOT_FOUND downstream.
+        var r0c = c_realpath(r0)
         for k in range(len(supplied_shards)):
             var rk = dirname(supplied_shards[k])
             if rk == "":
                 rk = "."
-            if rk != r0:
+            if c_realpath(rk) != r0c:
                 fail(
                     "FILE_NOT_FOUND",
                     "all supplied shards must reside in the same directory",
                     supplied_shards[k],
                     "",
                 )
-        model_root = r0
+        model_root = r0c if r0c != "" else r0
 
     var t_parse0 = perf_counter_ns()
 
@@ -247,6 +261,7 @@ def cmd_head(args: List[String]) raises:
 
     var t_comp0 = perf_counter_ns()
     var logits = forward_head(tokens, weights, cfg, eps)
+    # Kontrak probe M2: 3 prompt × 16 token (sinkron dengan parse_tokens_json).
     validate_logits(logits, 3, 16, cfg.vocab_size)
     var compute_time_ms = Float64(perf_counter_ns() - t_comp0) / 1000000.0
 

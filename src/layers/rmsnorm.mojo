@@ -4,7 +4,7 @@
 """RMSNorm Layer (F6) — Root Mean Square Normalization fp32."""
 
 from std.collections import List
-from std.math import sqrt
+from std.math import isinf, isnan, sqrt
 
 
 def rmsnorm(
@@ -17,7 +17,8 @@ def rmsnorm(
     @spec scratch/wave/m1/m1-w1-rmsnorm.md (F6)
     Kontrak eps: parameter wajib tanpa default diam-diam. Sumber kanonis =
     field `rms_norm_eps` di `fixtures/m1/model_config.json` (artefak W4);
-    kernel ini menerima nilainya sebagai argumen. eps <= 0 → CONFIG_ERROR;
+    kernel ini menerima nilainya sebagai argumen. eps NaN/Inf/<= 0 →
+    CONFIG_ERROR (NaN <= 0 adalah false, jadi isnan/isinf wajib eksplisit);
     input kosong / panjang mismatch → NORM_ERROR.
     """
     var n = len(x)
@@ -31,9 +32,10 @@ def rmsnorm(
             '{"error_type":"NORM_ERROR","detail":"length'
             ' mismatch","stage":"rmsnorm"}'
         )
-    if eps <= Float32(0.0):
+    if isnan(eps) or isinf(eps) or eps <= Float32(0.0):
         raise Error(
-            '{"error_type":"CONFIG_ERROR","detail":"rms_norm_eps must be > 0",'
+            '{"error_type":"CONFIG_ERROR","detail":"rms_norm_eps must be'
+            ' finite and > 0",'
             '"stage":"config"}'
         )
     var acc = Float32(0.0)
