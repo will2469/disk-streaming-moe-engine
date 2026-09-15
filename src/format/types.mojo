@@ -104,6 +104,71 @@ def _fail(code: String, detail: String, shard: String, tensor: String) raises:
     raise Error(String(STError(code, detail, shard, tensor)))
 
 
+def error_json(
+    error_type: String, detail: String, shard: String, tensor_name: String
+) -> String:
+    # SATU-SATUNYA cara membangun error JSON 4-field: keempat string dinamis
+    # selalu di-escape di sini. Jangan susun JSON error manual per-fungsi
+    # (bug class: nama tensor/path eksternal merusak JSON).
+    return String(
+        '{"error_type":"',
+        json_escape(error_type),
+        '","detail":"',
+        json_escape(detail),
+        '","shard":"',
+        json_escape(shard),
+        '","tensor_name":"',
+        json_escape(tensor_name),
+        '"}',
+    )
+
+
+def decode_f32_le(b0: UInt8, b1: UInt8, b2: UInt8, b3: UInt8) -> Float32:
+    # SATU-SATUNYA primitive decode byte representation: 4 byte
+    # little-endian → Float32. Kontrak format = LE IEEE (konvensi
+    # safetensors); tanpa bitcast pointer sehingga tanpa asumsi alignment
+    # buffer maupun endianness host. Eksak: tiap nilai f32 terwakili persis
+    # di f64 dan scaling 2^k persis (tanpa overflow/underflow di rentang f64).
+    var bits = (
+        UInt32(b0) | (UInt32(b1) << 8) | (UInt32(b2) << 16) | (UInt32(b3) << 24)
+    )
+    var sign = Float64(1.0)
+    if (bits >> 31) != UInt32(0):
+        sign = Float64(-1.0)
+    var exp = Int((bits >> 23) & UInt32(255))
+    var frac = Float64(bits & UInt32(8388607))
+    if exp == 255:
+        if frac == Float64(0.0):
+            return Float32(sign * (Float64(1e308) * Float64(10.0)))
+        return Float32(Float64(0.0) / Float64(0.0))
+    var mant = frac
+    var e = -126 - 23
+    if exp != 0:
+        mant = frac + Float64(8388608.0)
+        e = exp - 127 - 23
+    var v = sign * mant
+    var k = e
+    while k >= 10:
+        v *= Float64(1024.0)
+        k -= 10
+    while k <= -10:
+        v /= Float64(1024.0)
+        k += 10
+    while k > 0:
+        v *= Float64(2.0)
+        k -= 1
+    while k < 0:
+        v /= Float64(2.0)
+        k += 1
+    return Float32(v)
+
+
+def decode_bf16_le(lo: UInt8, hi: UInt8) -> Float32:
+    # BF16 LE (2 byte) = paruh atas representasi f32: bit f32 = [hi lo 00 00].
+    # Setiap nilai BF16 terwakili persis di f32 → komposisi ini eksak.
+    return decode_f32_le(0, 0, lo, hi)
+
+
 def _dtype_size(dtype: String) -> Int:
     """Ukuran elemen tipe data dalam byte."""
     if dtype == "BF16" or dtype == "F16":

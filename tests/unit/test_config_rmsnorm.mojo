@@ -4,7 +4,7 @@
 """Unit tests untuk ModelConfig, LoadMemoryTelemetry, dan RMSNorm."""
 
 from cli.config_parser import _parse_strict_float
-from core.config import LoadMemoryTelemetry, ModelConfig, _contains
+from core.config import LoadMemoryTelemetry, ModelConfig
 from core.tensor_loader import load_tensor_f32_chunked
 from format.reader import read_header
 from layers.rmsnorm import rmsnorm
@@ -15,6 +15,7 @@ from std.testing import (
     assert_almost_equal,
     assert_equal,
     assert_false,
+    assert_raises,
     assert_true,
 )
 
@@ -22,13 +23,6 @@ from std.testing import (
 def test_model_config_head_dim() raises:
     var cfg = ModelConfig(2048, 24, 16, 151936)
     assert_equal(cfg.head_dim(), 128)
-
-
-def test_contains() raises:
-    assert_true(_contains("hello world", "world"))
-    assert_true(_contains("abc", "abc"))
-    assert_false(_contains("abc", "xyz"))
-    assert_false(_contains("ab", "abc"))
 
 
 def test_rmsnorm_known_vector() raises:
@@ -195,9 +189,43 @@ def test_load_tensor_chunked() raises:
     assert_true(found)
 
 
+def test_load_tensor_offset_gates() raises:
+    """Meta korup ditolak SEBELUM reserve(): tanpa panic/alokasi liar."""
+    var path = "fixtures/m0/fixture-00001-of-00003.safetensors"
+    var st = read_header(path)
+    var gi = 0
+    for i in range(len(st.entries)):
+        ref e = st.entries[i]
+        if e.name == "model.embed_tokens.weight":
+            gi = i
+    var good = st.entries[gi].copy()
+    var shared = LoadMemoryTelemetry()
+    var m1 = good.copy()
+    m1.begin = good.end
+    m1.end = good.begin
+    with assert_raises(contains="OFFSET_OVERFLOW"):
+        _ = load_tensor_f32_chunked(path, st.data_base, m1, shared)
+    var m2 = good.copy()
+    m2.end = st.filesize
+    with assert_raises(contains="OFFSET_OVERFLOW"):
+        _ = load_tensor_f32_chunked(path, st.data_base, m2, shared)
+    var m3 = good.copy()
+    m3.end = m3.begin + 1
+    with assert_raises(contains="LAYOUT_MISMATCH"):
+        _ = load_tensor_f32_chunked(path, st.data_base, m3, shared)
+    var m4 = good.copy()
+    m4.dtype = "F16"
+    with assert_raises(contains="UNKNOWN_DTYPE"):
+        _ = load_tensor_f32_chunked(path, st.data_base, m4, shared)
+    # Load gagal tak boleh mencemari telemetri bersama.
+    assert_equal(shared.resident_target_bytes, 0)
+    var t = load_tensor_f32_chunked(path, st.data_base, good.copy(), shared)
+    assert_equal(len(t), 512 * 64)
+    assert_equal(shared.resident_target_bytes, 512 * 64 * 4)
+
+
 def add_tests_to_suite(mut suite: TestSuite):
     suite.test[test_model_config_head_dim]()
-    suite.test[test_contains]()
     suite.test[test_rmsnorm_known_vector]()
     suite.test[test_rmsnorm_gamma_scales]()
     suite.test[test_rmsnorm_scale_invariant]()
@@ -206,6 +234,7 @@ def add_tests_to_suite(mut suite: TestSuite):
     suite.test[test_strict_float_accepts]()
     suite.test[test_strict_float_rejects]()
     suite.test[test_rmsnorm_shape_errors]()
+    suite.test[test_load_tensor_offset_gates]()
     suite.test[test_load_tensor_chunked]()
 
 

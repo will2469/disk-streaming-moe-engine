@@ -17,6 +17,7 @@ from cli.sys_utils import (
     validate_shards_coverage,
 )
 from core.config import LoadMemoryTelemetry, ModelConfig
+from core.tensor_loader import ShardHeaderCache
 from format.index import parse_index_to_dict
 from format.types import json_escape
 from layers.attention import (
@@ -137,9 +138,10 @@ def run_layer_attn(
         activation_path, layer_val, 16, cfg.hidden_size, "attention"
     )
 
+    var cache = ShardHeaderCache()
     var telemetry = LoadMemoryTelemetry()
     var weights = load_layer_attention_weights(
-        layer_val, model_root, weight_map, cfg, telemetry
+        layer_val, model_root, weight_map, cfg, cache, telemetry
     )
     var parse_time_ms = Float64(perf_counter_ns() - t_parse0) / 1000000.0
 

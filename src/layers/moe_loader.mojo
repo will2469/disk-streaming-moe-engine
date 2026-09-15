@@ -4,7 +4,7 @@
 """Loader bobot MoE expert (routed dan shared) dari safetensors shards."""
 
 from core.config import LoadMemoryTelemetry, ModelConfig
-from core.tensor_loader import _load_one_tensor_by_name
+from core.tensor_loader import ShardHeaderCache, _load_one_tensor_by_name
 from layers.swiglu import SwigluWeights
 from std.collections import Dict, List
 
@@ -24,6 +24,7 @@ def load_layer_routed_expert_weights(
     weight_map: Dict[String, String],
     cfg: ModelConfig,
     inter_dim: Int,
+    mut cache: ShardHeaderCache,
     mut telemetry: LoadMemoryTelemetry,
 ) raises -> SwigluWeights:
     """Memuat bobot SwiGLU untuk satu routed expert (W_gate, W_up, W_down)."""
@@ -60,6 +61,7 @@ def load_layer_routed_expert_weights(
 
     var hidden = cfg.hidden_size
     var w_gate = _load_one_tensor_by_name(
+        cache,
         model_root,
         weight_map[req_gate],
         req_gate,
@@ -69,6 +71,7 @@ def load_layer_routed_expert_weights(
         telemetry,
     )
     var w_up = _load_one_tensor_by_name(
+        cache,
         model_root,
         weight_map[req_up],
         req_up,
@@ -78,6 +81,7 @@ def load_layer_routed_expert_weights(
         telemetry,
     )
     var w_down = _load_one_tensor_by_name(
+        cache,
         model_root,
         weight_map[req_down],
         req_down,
@@ -95,6 +99,7 @@ def load_layer_shared_expert_weights(
     weight_map: Dict[String, String],
     cfg: ModelConfig,
     inter_shared: Int,
+    mut cache: ShardHeaderCache,
     mut telemetry: LoadMemoryTelemetry,
 ) raises -> SharedExpertWeights:
     """Memuat bobot shared expert (W_gate, W_up, W_down) + shared_expert_gate.
@@ -128,6 +133,7 @@ def load_layer_shared_expert_weights(
 
     var hidden = cfg.hidden_size
     var w_gate = _load_one_tensor_by_name(
+        cache,
         model_root,
         weight_map[req_gate],
         req_gate,
@@ -137,6 +143,7 @@ def load_layer_shared_expert_weights(
         telemetry,
     )
     var w_up = _load_one_tensor_by_name(
+        cache,
         model_root,
         weight_map[req_up],
         req_up,
@@ -146,6 +153,7 @@ def load_layer_shared_expert_weights(
         telemetry,
     )
     var w_down = _load_one_tensor_by_name(
+        cache,
         model_root,
         weight_map[req_down],
         req_down,
@@ -155,6 +163,7 @@ def load_layer_shared_expert_weights(
         telemetry,
     )
     var w_sh_gate = _load_one_tensor_by_name(
+        cache,
         model_root,
         weight_map[req_sh_gate],
         req_sh_gate,

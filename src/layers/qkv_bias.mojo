@@ -3,7 +3,7 @@
 # See LICENSE for details.
 """Validasi tensor bias attention untuk Qwen2MoE (M2-W1, Invariant P-2)."""
 
-from core.config import _contains
+from format.types import json_escape
 from std.collections import Dict, List
 
 
@@ -26,7 +26,7 @@ def validate_bias_count(
             + " got "
             + String(actual)
             + '","stage":"attention","layer":0,"shard":"'
-            + shard
+            + json_escape(shard)
             + '","tensor_name":""}'
         )
 
@@ -89,11 +89,11 @@ def collect_attention_bias_names(
                 and Int(nb[len(nb) - 1]) == 115
             )
             if is_bias:
-                var has_attn = _contains(name, "self_attn")
+                var has_attn = name.find("self_attn") >= 0
                 var has_proj = (
-                    _contains(name, "q_proj")
-                    or _contains(name, "k_proj")
-                    or _contains(name, "v_proj")
+                    name.find("q_proj") >= 0
+                    or name.find("k_proj") >= 0
+                    or name.find("v_proj") >= 0
                 )
                 if has_attn and has_proj:
                     result.append(name)

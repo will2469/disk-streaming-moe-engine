@@ -3,7 +3,7 @@
 # See LICENSE for details.
 """Utilitas penanganan error JSON dan path string untuk Kimo CLI."""
 
-from format.types import json_escape
+from format.types import error_json, json_escape
 from std.collections import List
 from std.ffi import external_call
 from std.sys.terminate import exit
@@ -39,18 +39,8 @@ def eprint_json(msg: String) raises:
 def err_json(
     code: String, detail: String, shard: String, tensor: String
 ) -> String:
-    # SEMUA field lolos json_escape (detail/shard/tensor bisa dari path CLI).
-    return String(
-        '{"error_type":"',
-        json_escape(code),
-        '","detail":"',
-        json_escape(detail),
-        '","shard":"',
-        json_escape(shard),
-        '","tensor_name":"',
-        json_escape(tensor),
-        '"}',
-    )
+    # Delegasi ke helper kanonik (satu implementasi escaping, di format).
+    return error_json(code, detail, shard, tensor)
 
 
 def basename(path: String) -> String:

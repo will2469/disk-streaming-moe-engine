@@ -4,7 +4,7 @@
 """MoE Router: Proyeksi gate, softmax fp32 stabil, dan top-k no-renorm (M3-W1)."""
 
 from core.config import LoadMemoryTelemetry, ModelConfig
-from core.tensor_loader import _load_one_tensor_by_name
+from core.tensor_loader import ShardHeaderCache, _load_one_tensor_by_name
 from layers.router_types import RouterConfig, RoutingInfo
 from layers.topk import select_topk
 from std.builtin.dtype import DType
@@ -216,6 +216,7 @@ def load_layer_router_weights(
     weight_map: Dict[String, String],
     cfg: ModelConfig,
     router_cfg: RouterConfig,
+    mut cache: ShardHeaderCache,
     mut telemetry: LoadMemoryTelemetry,
 ) raises -> List[Float32]:
     """Memuat bobot gate router (W_r) untuk satu layer dari shard safetensors.
@@ -241,6 +242,7 @@ def load_layer_router_weights(
             + '"}'
         )
     return _load_one_tensor_by_name(
+        cache,
         model_root,
         weight_map[tensor_name],
         tensor_name,

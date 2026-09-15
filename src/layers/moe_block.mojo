@@ -4,6 +4,7 @@
 """Pipeline MoE block: router, routed experts SwiGLU, shared expert, dan agregasi."""
 
 from core.config import LoadMemoryTelemetry, ModelConfig
+from core.tensor_loader import ShardHeaderCache
 from layers.moe import moe_aggregate_forward, shared_gate_forward
 from layers.moe_loader import (
     SharedExpertWeights,
@@ -23,6 +24,7 @@ def forward_moe_block(
     model_root: String,
     weight_map: Dict[String, String],
     cfg: ModelConfig,
+    mut cache: ShardHeaderCache,
     mut telemetry: LoadMemoryTelemetry,
 ) raises -> Tuple[List[Float32], RoutingInfo]:
     """Menjalankan full forward satu layer MoE:
@@ -36,7 +38,7 @@ def forward_moe_block(
         cfg.num_experts, cfg.num_experts_per_tok, cfg.norm_topk_prob
     )
     var w_router = load_layer_router_weights(
-        layer_idx, model_root, weight_map, cfg, router_cfg, telemetry
+        layer_idx, model_root, weight_map, cfg, router_cfg, cache, telemetry
     )
     var routing = router_forward(
         x, w_router, seq_len, cfg.hidden_size, router_cfg, layer_idx
@@ -67,6 +69,7 @@ def forward_moe_block(
             weight_map,
             cfg,
             cfg.moe_intermediate_size,
+            cache,
             telemetry,
         )
         loaded_experts.append(w^)
@@ -105,6 +108,7 @@ def forward_moe_block(
         weight_map,
         cfg,
         cfg.shared_expert_intermediate_size,
+        cache,
         telemetry,
     )
     var shared_out = swiglu_forward(

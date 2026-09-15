@@ -4,11 +4,19 @@
 """Pemuatan tensor chunked dari file safetensors (BF16/F32 -> F32 resident)."""
 
 from core.config import CHUNK_MAX_BYTES, LoadMemoryTelemetry
-from format import TensorMeta, read_header
-from std.builtin.dtype import DType
-from std.collections import List
+from format import (
+    STHeader,
+    TensorMeta,
+    _numel_or_fail,
+    decode_bf16_le,
+    decode_f32_le,
+    error_json,
+    read_header,
+)
+from format.file_io import resolve_within_root
+from std.collections import Dict, List
 from std.math import min
-from std.os import SEEK_SET
+from std.os import SEEK_END, SEEK_SET
 
 
 def load_tensor_f32_chunked(
@@ -18,53 +26,120 @@ def load_tensor_f32_chunked(
     mut telemetry: LoadMemoryTelemetry,
 ) raises -> List[Float32]:
     """Pemuatan tensor chunked BF16/F32 -> F32 resident tanpa double-residency.
-
-    @spec m1-w2-embed-lmhead.md (§ Anggaran memori M1)
+    Invariants: filesize actual check, byte-size match, no overflow.
     """
-    var total_bytes = meta.end - meta.begin
-    var num_elements: Int
     var element_size: Int
     if meta.dtype == "BF16":
         element_size = 2
-        num_elements = total_bytes // 2
     elif meta.dtype == "F32":
         element_size = 4
-        num_elements = total_bytes // 4
     else:
         raise Error(
-            '{"error_type":"UNKNOWN_DTYPE","detail":"unsupported dtype: '
-            + meta.dtype
-            + '","shard":"'
-            + shard_path
-            + '","tensor_name":"'
-            + meta.name
-            + '"}'
+            error_json(
+                "UNKNOWN_DTYPE",
+                String("unsupported dtype: ", meta.dtype),
+                shard_path,
+                meta.name,
+            )
+        )
+
+    var f = open(shard_path, "r")
+    var filesize = Int(f.seek(0, SEEK_END))
+    if meta.begin < 0 or meta.end < meta.begin:
+        f.close()
+        raise Error(
+            error_json(
+                "OFFSET_OVERFLOW",
+                String("BEGIN/END invalid: ", meta.begin, "..", meta.end),
+                shard_path,
+                meta.name,
+            )
+        )
+    if data_base < 0 or data_base > filesize:
+        f.close()
+        raise Error(
+            error_json(
+                "OFFSET_OVERFLOW",
+                "data_base di luar filesize",
+                shard_path,
+                meta.name,
+            )
+        )
+    if meta.end > filesize - data_base:
+        f.close()
+        raise Error(
+            error_json(
+                "OFFSET_OVERFLOW",
+                "akhir buffer + data_base melebihi filesize",
+                shard_path,
+                meta.name,
+            )
+        )
+    var total_bytes = meta.end - meta.begin
+    if total_bytes % element_size != 0:
+        f.close()
+        raise Error(
+            error_json(
+                "LAYOUT_MISMATCH",
+                "panjang buffer bukan kelipatan element_size",
+                shard_path,
+                meta.name,
+            )
+        )
+    var num_elements = total_bytes // element_size
+    # product(shape)*es == total_bytes via bentuk DIVISI (tanpa multiply
+    # yang bisa overflow): _numel_or_fail menolak dim negatif/overflow.
+    # Reader menjamin ini untuk meta-nya; gate ini untuk meta rakitan.
+    var numel = _numel_or_fail(meta.shape, shard_path, meta.name)
+    if numel != num_elements:
+        f.close()
+        raise Error(
+            error_json(
+                "LAYOUT_MISMATCH",
+                "shape/product mismatch tensor bytes",
+                shard_path,
+                meta.name,
+            )
         )
 
     var out = List[Float32]()
     out.reserve(num_elements)
-    telemetry.resident_target_bytes += num_elements * 4
 
-    var f = open(shard_path, "r")
     _ = f.seek(data_base + meta.begin, SEEK_SET)
 
     var bytes_remaining = total_bytes
     while bytes_remaining > 0:
-        var to_read = min(bytes_remaining, CHUNK_MAX_BYTES)
-        to_read = (to_read // element_size) * element_size
+        # Invariant: bytes_remaining selalu kelipatan element_size (gate
+        # modulo di atas untuk nilai awal; tiap iterasi mengurangkan
+        # len(chunk_bytes) == to_read yang kelipatan element_size, karena
+        # short read selalu raise). Pembulatan ke bawah di sini hanya
+        # membatasi ukuran chunk baca — tak pernah menyembunyikan metadata
+        # invalid. Bila invariant jebol (to_read == 0) → gagal tertutup,
+        # bukan baca chunk tak-selaras.
+        var to_read = (
+            min(bytes_remaining, CHUNK_MAX_BYTES) // element_size
+        ) * element_size
         if to_read == 0:
-            to_read = bytes_remaining
+            f.close()
+            raise Error(
+                error_json(
+                    "LAYOUT_MISMATCH",
+                    "chunk tak-selaras: invariant kelipatan element_size jebol",
+                    shard_path,
+                    meta.name,
+                )
+            )
 
         var chunk_bytes = f.read_bytes(to_read)
         if len(chunk_bytes) < to_read:
             f.close()
             raise Error(
-                '{"error_type":"INVALID_HEADER","detail":"truncated tensor'
-                ' data","shard":"'
-                + shard_path
-                + '","tensor_name":"'
-                + meta.name
-                + '"}'
+                error_json(
+                    "INVALID_HEADER",
+                    "truncated tensor data",
+                    shard_path,
+                    meta.name,
+                )
             )
 
         if len(chunk_bytes) > telemetry.source_buffer_bytes:
@@ -75,24 +150,78 @@ def load_tensor_f32_chunked(
         if conv_bytes > telemetry.conversion_buffer_bytes:
             telemetry.conversion_buffer_bytes = conv_bytes
 
+        # Satu primitive decode (format.types): tanpa bitcast pointer,
+        # tanpa asumsi alignment/endianness host. Eksak untuk BF16/F32.
         if meta.dtype == "BF16":
-            var p_u8 = chunk_bytes.unsafe_ptr()
-            var p_bf = p_u8.unsafe_bitcast[Scalar[DType.bfloat16]]()
             for i in range(chunk_elements):
-                out.append(p_bf[unsafe_offset=i].cast[DType.float32]())
+                var o = i * 2
+                out.append(decode_bf16_le(chunk_bytes[o], chunk_bytes[o + 1]))
         else:
-            var p_u8 = chunk_bytes.unsafe_ptr()
-            var p_f32 = p_u8.unsafe_bitcast[Scalar[DType.float32]]()
             for i in range(chunk_elements):
-                out.append(p_f32[unsafe_offset=i])
+                var o = i * 4
+                out.append(
+                    decode_f32_le(
+                        chunk_bytes[o],
+                        chunk_bytes[o + 1],
+                        chunk_bytes[o + 2],
+                        chunk_bytes[o + 3],
+                    )
+                )
 
         bytes_remaining -= len(chunk_bytes)
 
+    # Akuntansi resident HANYA setelah read/konversi sukses penuh, sebesar
+    # output aktual. Klaim sebelum read berbohong bila tensor truncated
+    # (claimed allocation vs actual resident).
+    telemetry.resident_target_bytes += len(out) * 4
     f.close()
     return out^
 
 
+struct ShardHeaderCache(Movable):
+    """Header shard yang sudah dibaca: satu file dibaca+parse sekali lalu
+    dipakai N tensor (anti IO amplification untuk disk-streaming engine).
+
+    Lifecycle: load shard → read header once → lookup → load N tensor.
+    Scope = satu invocation (dibuat di command handler, di-thread via `mut`
+    seperti telemetry). maps sejajar headers: HeaderIndex tensor_name →
+    entry, tanpa linear scan per tensor.
+    """
+
+    var files: List[String]
+    var headers: List[STHeader]
+    var maps: List[Dict[String, Int]]
+
+    def __init__(out self):
+        self.files = List[String]()
+        self.headers = List[STHeader]()
+        self.maps = List[Dict[String, Int]]()
+
+    def get_or_read(mut self, shard_path: String) raises -> Int:
+        for i in range(len(self.files)):
+            if self.files[i] == shard_path:
+                return i
+        var st = read_header(shard_path)
+        var pos = Dict[String, Int]()
+        for k in range(len(st.entries)):
+            pos[st.entries[k].name] = k
+        self.files.append(shard_path)
+        self.maps.append(pos^)
+        self.headers.append(st^)
+        return len(self.files) - 1
+
+
+def read_shard_header(
+    model_root: String, shard_file: String
+) raises -> STHeader:
+    # SATU-SATUNYA jalan membentuk path shard dari (model_root, nama index):
+    # resolve aman (containment) + baca. Join lexical dilarang.
+    var shard_path = resolve_within_root(model_root, shard_file)
+    return read_header(shard_path)
+
+
 def _load_one_tensor_by_name(
+    mut cache: ShardHeaderCache,
     model_root: String,
     shard_file: String,
     tensor_name: String,
@@ -102,29 +231,24 @@ def _load_one_tensor_by_name(
     mut telemetry: LoadMemoryTelemetry,
 ) raises -> List[Float32]:
     """Helper pemuatan satu tensor dengan verifikasi bentuk 1D/2D dan telemetri.
+
+    Header dibaca sekali per file via cache (bukan per tensor).
     """
-    var shard_path = (
-        String(model_root, "/", shard_file) if model_root != "" else shard_file
-    )
-    var header = read_header(shard_path)
-    var found = False
-    var meta = TensorMeta("", "", List[Int](), 0, 0)
-    for i in range(len(header.entries)):
-        ref e = header.entries[i]
-        if e.name == tensor_name:
-            meta = e.copy()
-            found = True
-            break
-    if not found:
+    var shard_path = resolve_within_root(model_root, shard_file)
+    var idx = cache.get_or_read(shard_path)
+    ref hdr = cache.headers[idx]
+    ref pos = cache.maps[idx]
+    if tensor_name not in pos:
         raise Error(
-            '{"error_type":"WEIGHT_LOAD_FAILED","detail":"tensor '
-            + tensor_name
-            + ' not found in shard header","shard":"'
-            + shard_path
-            + '","tensor_name":"'
-            + tensor_name
-            + '"}'
+            error_json(
+                "WEIGHT_LOAD_FAILED",
+                String("tensor ", tensor_name, " not found in shard header"),
+                shard_path,
+                tensor_name,
+            )
         )
+    var gi = pos[tensor_name]
+    ref meta = hdr.entries[gi]
     if is_2d:
         if (
             len(meta.shape) != 2
@@ -132,18 +256,19 @@ def _load_one_tensor_by_name(
             or meta.shape[1] != dim1
         ):
             raise Error(
-                '{"error_type":"WEIGHT_LOAD_FAILED","detail":"weight shape'
-                " mismatch: expected ["
-                + String(dim0)
-                + ", "
-                + String(dim1)
-                + "] got length "
-                + String(len(meta.shape))
-                + '","shard":"'
-                + shard_path
-                + '","tensor_name":"'
-                + tensor_name
-                + '"}'
+                error_json(
+                    "WEIGHT_LOAD_FAILED",
+                    String(
+                        "weight shape mismatch: expected [",
+                        dim0,
+                        ", ",
+                        dim1,
+                        "] got length ",
+                        len(meta.shape),
+                    ),
+                    shard_path,
+                    tensor_name,
+                )
             )
     else:
         var valid_1d = (len(meta.shape) == 1 and meta.shape[0] == dim0) or (
@@ -153,17 +278,18 @@ def _load_one_tensor_by_name(
         )
         if not valid_1d:
             raise Error(
-                '{"error_type":"WEIGHT_LOAD_FAILED","detail":"1D tensor shape'
-                " mismatch: expected ["
-                + String(dim0)
-                + "] got length "
-                + String(len(meta.shape))
-                + '","shard":"'
-                + shard_path
-                + '","tensor_name":"'
-                + tensor_name
-                + '"}'
+                error_json(
+                    "WEIGHT_LOAD_FAILED",
+                    String(
+                        "1D tensor shape mismatch: expected [",
+                        dim0,
+                        "] got length ",
+                        len(meta.shape),
+                    ),
+                    shard_path,
+                    tensor_name,
+                )
             )
     return load_tensor_f32_chunked(
-        shard_path, header.data_base, meta, telemetry
+        shard_path, hdr.data_base, meta.copy(), telemetry
     )

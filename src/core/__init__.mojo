@@ -7,6 +7,10 @@ from core.config import (
     CHUNK_MAX_BYTES,
     LoadMemoryTelemetry,
     ModelConfig,
-    _contains,
 )
-from core.tensor_loader import _load_one_tensor_by_name, load_tensor_f32_chunked
+from core.tensor_loader import (
+    ShardHeaderCache,
+    _load_one_tensor_by_name,
+    load_tensor_f32_chunked,
+    read_shard_header,
+)

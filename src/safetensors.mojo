@@ -16,6 +16,7 @@ from format import (
     _dtype_size,
     _fail,
     _numel_or_fail,
+    error_json,
     json_escape,
     parse_index,
     parse_index_to_dict,

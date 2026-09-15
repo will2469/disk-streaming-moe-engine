@@ -4,7 +4,7 @@
 """Unit tests parser safetensors + F15 (M0-W1). Jalankan: mojo run tests/test_safetensors.mojo."""
 
 from std.testing import assert_equal, assert_raises, TestSuite
-from safetensors import json_escape, read_header
+from safetensors import error_json, json_escape, read_header
 
 
 def write_shard_bytes(
@@ -288,6 +288,19 @@ def test_escape_controls() raises:
     raw.append(98)
     var got = json_escape(String(from_utf8_lossy=Span(raw)))
     assert_equal(got, String("a\\n\\t\\r\\u0001b"))
+
+
+def test_error_json_escapes() raises:
+    # Helper kanonik: keempat field dinamis selalu di-escape (nama tensor
+    # 'foo"bar' dari header eksternal tak boleh merusak JSON).
+    var got = error_json("E", String("a", '"', "b"), String("s", '"', "h"), "t")
+    assert_equal(
+        got,
+        String(
+            '{"error_type":"E","detail":"a\\"b","shard":"s\\"h",'
+            '"tensor_name":"t"}'
+        ),
+    )
 
 
 def test_prop_random_valid() raises:

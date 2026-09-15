@@ -3,7 +3,6 @@
 # See LICENSE for details.
 """Unit tests untuk RouterConfig, RoutingInfo, router_project, dan router_softmax (M3-W1)."""
 
-from core.config import _contains
 from layers.router import router_project, router_softmax
 from layers.router_types import RouterConfig, RoutingInfo
 from std.collections import List
@@ -69,8 +68,8 @@ def test_routing_info_to_json() raises:
 
     var info = RoutingInfo(sel^, probs^, 1, 2)
     var json_str = info.to_json()
-    assert_true(_contains(json_str, '"selected_experts":[[5,12]]'))
-    assert_true(_contains(json_str, '"router_probs":[['))
+    assert_true(json_str.find('"selected_experts":[[5,12]]') >= 0)
+    assert_true(json_str.find('"router_probs":[[') >= 0)
 
 
 def test_router_project_known_values() raises:

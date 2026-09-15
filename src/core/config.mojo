@@ -3,6 +3,8 @@
 # See LICENSE for details.
 """Konfigurasi model dan telemetri pemuatan memori (C1, G-M1-2)."""
 
+from format.types import error_json
+
 comptime CHUNK_MAX_BYTES = 16 * 1024 * 1024  # 16 MiB
 
 
@@ -30,7 +32,60 @@ struct ModelConfig(Copyable, Movable):
         moe_intermediate_size: Int = 1408,
         shared_expert_intermediate_size: Int = 5632,
         norm_topk_prob: Bool = False,
-    ):
+    ) raises:
+        # Invariant arsitektur: konstruktor menolak konfigurasi absurd
+        # (fail hard, bukan default diam-diam). Default parameter hanya
+        # untuk field ABSENT di parser (field present-but-malformed sudah
+        # ditolak parser) — dua lapis tak pernah berkata "nggak apa-apa"
+        # untuk input yang sama.
+        if (
+            hidden_size <= 0
+            or num_hidden_layers <= 0
+            or num_attention_heads <= 0
+            or vocab_size <= 0
+        ):
+            raise Error(
+                error_json(
+                    "CONFIG_ERROR",
+                    "invalid model dimensions: all sizes must be > 0",
+                    "",
+                    "",
+                )
+            )
+        if hidden_size % num_attention_heads != 0:
+            raise Error(
+                error_json(
+                    "CONFIG_ERROR",
+                    "hidden_size must be divisible by num_attention_heads",
+                    "",
+                    "",
+                )
+            )
+        if (
+            num_experts <= 0
+            or num_experts_per_tok <= 0
+            or num_experts_per_tok > num_experts
+        ):
+            raise Error(
+                error_json(
+                    "CONFIG_ERROR",
+                    (
+                        "invalid MoE topology: 0 < num_experts_per_tok <="
+                        " num_experts"
+                    ),
+                    "",
+                    "",
+                )
+            )
+        if moe_intermediate_size <= 0 or shared_expert_intermediate_size <= 0:
+            raise Error(
+                error_json(
+                    "CONFIG_ERROR",
+                    "invalid MoE intermediate sizes: must be > 0",
+                    "",
+                    "",
+                )
+            )
         self.hidden_size = hidden_size
         self.num_hidden_layers = num_hidden_layers
         self.num_attention_heads = num_attention_heads
@@ -59,22 +114,3 @@ struct LoadMemoryTelemetry(Copyable, Movable):
         self.conversion_buffer_bytes = 0
         self.source_buffer_bytes = 0
         self.vmhwm_bytes = 0
-
-
-def _contains(s: String, sub: String) -> Bool:
-    """Cek apakah string s mengandung substring sub."""
-    var sb = s.as_bytes()
-    var ub = sub.as_bytes()
-    var slen = len(sb)
-    var ulen = len(ub)
-    if ulen > slen:
-        return False
-    for i in range(slen - ulen + 1):
-        var found: Bool = True
-        for j in range(ulen):
-            if sb[i + j] != ub[j]:
-                found = False
-                break
-        if found:
-            return True
-    return False

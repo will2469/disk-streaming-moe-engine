@@ -4,7 +4,7 @@
 """QKV projection layer dan validasi bias attention (M2-W1)."""
 
 from core.config import LoadMemoryTelemetry, ModelConfig
-from core.tensor_loader import _load_one_tensor_by_name
+from core.tensor_loader import ShardHeaderCache, _load_one_tensor_by_name
 from layers.qkv_bias import (
     collect_attention_bias_names,
     validate_attention_bias_in_index,
@@ -148,6 +148,7 @@ def load_layer_qkv_weights(
     model_root: String,
     weight_map: Dict[String, String],
     cfg: ModelConfig,
+    mut cache: ShardHeaderCache,
     mut telemetry: LoadMemoryTelemetry,
 ) raises -> QKVWeights:
     """Memuat bobot QKV (w_q, w_k, w_v + b_q, b_k, b_v) untuk satu layer dari shard safetensors.
@@ -195,22 +196,64 @@ def load_layer_qkv_weights(
 
     var hidden = cfg.hidden_size
     var w_q = _load_one_tensor_by_name(
-        model_root, weight_map[req_wq], req_wq, hidden, hidden, True, telemetry
+        cache,
+        model_root,
+        weight_map[req_wq],
+        req_wq,
+        hidden,
+        hidden,
+        True,
+        telemetry,
     )
     var b_q = _load_one_tensor_by_name(
-        model_root, weight_map[req_bq], req_bq, hidden, 1, False, telemetry
+        cache,
+        model_root,
+        weight_map[req_bq],
+        req_bq,
+        hidden,
+        1,
+        False,
+        telemetry,
     )
     var w_k = _load_one_tensor_by_name(
-        model_root, weight_map[req_wk], req_wk, hidden, hidden, True, telemetry
+        cache,
+        model_root,
+        weight_map[req_wk],
+        req_wk,
+        hidden,
+        hidden,
+        True,
+        telemetry,
     )
     var b_k = _load_one_tensor_by_name(
-        model_root, weight_map[req_bk], req_bk, hidden, 1, False, telemetry
+        cache,
+        model_root,
+        weight_map[req_bk],
+        req_bk,
+        hidden,
+        1,
+        False,
+        telemetry,
     )
     var w_v = _load_one_tensor_by_name(
-        model_root, weight_map[req_wv], req_wv, hidden, hidden, True, telemetry
+        cache,
+        model_root,
+        weight_map[req_wv],
+        req_wv,
+        hidden,
+        hidden,
+        True,
+        telemetry,
     )
     var b_v = _load_one_tensor_by_name(
-        model_root, weight_map[req_bv], req_bv, hidden, 1, False, telemetry
+        cache,
+        model_root,
+        weight_map[req_bv],
+        req_bv,
+        hidden,
+        1,
+        False,
+        telemetry,
     )
 
     return QKVWeights(w_q^, w_k^, w_v^, b_q^, b_k^, b_v^)

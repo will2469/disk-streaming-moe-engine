@@ -179,17 +179,17 @@ def test_qkv_forward_multi_token() raises:
 def test_qkv_forward_head_dim_config_error() raises:
     """Config dengan num_attention_heads * head_dim != hidden_size -> CONFIG_ERROR.
     """
-    var cfg = ModelConfig(5, 1, 2, 64)  # 5 // 2 = 2, 2 * 2 = 4 != 5
-    var x: List[Float32] = [1.0, 2.0, 3.0, 4.0, 5.0]
-    var w = List[Float32]()
-    for _ in range(25):
-        w.append(0.0)
-    var b: List[Float32] = [0.0, 0.0, 0.0, 0.0, 0.0]
-    var weights = QKVWeights(
-        w.copy(), w.copy(), w.copy(), b.copy(), b.copy(), b.copy()
-    )
     var raised = False
     try:
+        var cfg = ModelConfig(5, 1, 2, 64)  # 5 // 2 = 2, 2 * 2 = 4 != 5
+        var x: List[Float32] = [1.0, 2.0, 3.0, 4.0, 5.0]
+        var w = List[Float32]()
+        for _ in range(25):
+            w.append(0.0)
+        var b: List[Float32] = [0.0, 0.0, 0.0, 0.0, 0.0]
+        var weights = QKVWeights(
+            w.copy(), w.copy(), w.copy(), b.copy(), b.copy(), b.copy()
+        )
         var _res = qkv_forward(x, weights, 1, cfg)
     except:
         raised = True

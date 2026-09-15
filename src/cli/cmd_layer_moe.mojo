@@ -18,6 +18,7 @@ from cli.sys_utils import (
     validate_shards_coverage,
 )
 from core.config import LoadMemoryTelemetry, ModelConfig
+from core.tensor_loader import ShardHeaderCache
 from format.index import parse_index_to_dict
 from format.types import json_escape
 from layers.moe_block import forward_moe_block
@@ -212,9 +213,10 @@ def run_layer_moe(
     var parse_time_ms = Float64(perf_counter_ns() - t_parse0) / 1000000.0
 
     var t_comp0 = perf_counter_ns()
+    var cache = ShardHeaderCache()
     var telemetry = LoadMemoryTelemetry()
     var block_res = forward_moe_block(
-        act, layer_val, 16, model_root, weight_map, cfg, telemetry
+        act, layer_val, 16, model_root, weight_map, cfg, cache, telemetry
     )
     var out_act = block_res[0].copy()
     var routing = block_res[1].copy()

@@ -4,6 +4,7 @@
 """Unit tests untuk SwiGLU, shared expert sigmoid gate, dan MoE aggregation (M3-W2)."""
 
 from core.config import LoadMemoryTelemetry, ModelConfig
+from core.tensor_loader import ShardHeaderCache
 from layers.moe import moe_aggregate_forward, shared_gate_forward
 from layers.moe_loader import (
     load_layer_routed_expert_weights,
@@ -192,12 +193,13 @@ def test_load_layer_routed_expert_weights_validation() raises:
     """
     var cfg = ModelConfig(2048, 24, 16, 151936)
     var empty_map = Dict[String, String]()
+    var cache = ShardHeaderCache()
     var telem = LoadMemoryTelemetry()
 
     var raised_neg = False
     try:
         var _w = load_layer_routed_expert_weights(
-            -1, 0, "", empty_map, cfg, 1408, telem
+            -1, 0, "", empty_map, cfg, 1408, cache, telem
         )
     except e:
         raised_neg = True
@@ -206,7 +208,7 @@ def test_load_layer_routed_expert_weights_validation() raises:
     var raised_hi = False
     try:
         var _w2 = load_layer_routed_expert_weights(
-            24, 0, "", empty_map, cfg, 1408, telem
+            24, 0, "", empty_map, cfg, 1408, cache, telem
         )
     except e:
         raised_hi = True
@@ -215,7 +217,7 @@ def test_load_layer_routed_expert_weights_validation() raises:
     var raised_miss = False
     try:
         var _w3 = load_layer_routed_expert_weights(
-            0, 0, "", empty_map, cfg, 1408, telem
+            0, 0, "", empty_map, cfg, 1408, cache, telem
         )
     except e:
         raised_miss = True
@@ -227,12 +229,13 @@ def test_load_layer_shared_expert_weights_validation() raises:
     """
     var cfg = ModelConfig(2048, 24, 16, 151936)
     var empty_map = Dict[String, String]()
+    var cache = ShardHeaderCache()
     var telem = LoadMemoryTelemetry()
 
     var raised_neg = False
     try:
         var _w = load_layer_shared_expert_weights(
-            -1, "", empty_map, cfg, 5632, telem
+            -1, "", empty_map, cfg, 5632, cache, telem
         )
     except e:
         raised_neg = True
@@ -241,7 +244,7 @@ def test_load_layer_shared_expert_weights_validation() raises:
     var raised_hi = False
     try:
         var _w2 = load_layer_shared_expert_weights(
-            24, "", empty_map, cfg, 5632, telem
+            24, "", empty_map, cfg, 5632, cache, telem
         )
     except e:
         raised_hi = True
@@ -250,7 +253,7 @@ def test_load_layer_shared_expert_weights_validation() raises:
     var raised_miss = False
     try:
         var _w3 = load_layer_shared_expert_weights(
-            0, "", empty_map, cfg, 5632, telem
+            0, "", empty_map, cfg, 5632, cache, telem
         )
     except e:
         raised_miss = True

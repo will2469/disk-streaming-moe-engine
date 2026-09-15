@@ -15,6 +15,7 @@ from cli.sys_utils import (
     make_unique_tmp_path,
 )
 from format.file_io import read_small_file
+from format.types import decode_f32_le
 from std.collections import List
 from std.math import abs, isinf, isnan
 
@@ -76,46 +77,6 @@ def atomic_write_logits(target_path: String, logits: List[Float32]) raises:
         )
 
 
-def _decode_f32_le(b0: UInt8, b1: UInt8, b2: UInt8, b3: UInt8) -> Float32:
-    # Decode eksplisit 4 byte little-endian → Float32. Kontrak format
-    # aktivasi = LE fp32 (konvensi safetensors); tanpa bitcast pointer
-    # sehingga tanpa asumsi alignment buffer maupun endianness host.
-    # Eksak: tiap nilai f32 terwakili persis di f64 dan scaling 2^k persis
-    # (tanpa overflow/underflow di rentang f64).
-    var bits = (
-        UInt32(b0) | (UInt32(b1) << 8) | (UInt32(b2) << 16) | (UInt32(b3) << 24)
-    )
-    var sign = Float64(1.0)
-    if (bits >> 31) != UInt32(0):
-        sign = Float64(-1.0)
-    var exp = Int((bits >> 23) & UInt32(255))
-    var frac = Float64(bits & UInt32(8388607))
-    if exp == 255:
-        if frac == Float64(0.0):
-            return Float32(sign * (Float64(1e308) * Float64(10.0)))
-        return Float32(Float64(0.0) / Float64(0.0))
-    var mant = frac
-    var e = -126 - 23
-    if exp != 0:
-        mant = frac + Float64(8388608.0)
-        e = exp - 127 - 23
-    var v = sign * mant
-    var k = e
-    while k >= 10:
-        v *= Float64(1024.0)
-        k -= 10
-    while k <= -10:
-        v /= Float64(1024.0)
-        k += 10
-    while k > 0:
-        v *= Float64(2.0)
-        k -= 1
-    while k < 0:
-        v /= Float64(2.0)
-        k += 1
-    return Float32(v)
-
-
 def load_and_validate_activation(
     path: String,
     layer_idx: Int,
@@ -166,7 +127,7 @@ def load_and_validate_activation(
     out.reserve(expected_elements)
     for i in range(expected_elements):
         var o = i * 4
-        var v = _decode_f32_le(
+        var v = decode_f32_le(
             raw_bytes[o], raw_bytes[o + 1], raw_bytes[o + 2], raw_bytes[o + 3]
         )
         if isnan(v) or isinf(v):

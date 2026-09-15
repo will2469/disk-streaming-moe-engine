@@ -3,7 +3,8 @@
 # See LICENSE for details.
 """Unit tests untuk validasi attention bias dan oracle slice QKV (M2-W1)."""
 
-from core.config import LoadMemoryTelemetry, ModelConfig, _contains
+from core.config import LoadMemoryTelemetry, ModelConfig
+from core.tensor_loader import ShardHeaderCache
 from format.file_io import read_small_file
 from format.index import parse_index
 from layers.qkv import load_layer_qkv_weights, qkv_project
@@ -94,7 +95,7 @@ def test_property_p2_config_vs_index() raises:
     # 1. Verifikasi model_config.json tidak memuat field attention_bias
     var cfg_bytes = read_small_file("fixtures/m0/model_config.json")
     var cfg_str = String(from_utf8_lossy=Span(cfg_bytes))
-    assert_false(_contains(cfg_str, "attention_bias"))
+    assert_false(cfg_str.find("attention_bias") >= 0)
 
     # 2. Verifikasi index asli fixtures/m0_qwen_index.json memiliki tepat 72 tensor bias attention
     var packed = parse_index("fixtures/m0_qwen_index.json")
@@ -122,12 +123,13 @@ def test_load_layer_qkv_weights_validation() raises:
     """Validasi load_layer_qkv_weights: layer invalid dan tensor hilang."""
     var cfg = ModelConfig(64, 24, 2, 512)
     var empty_map = Dict[String, String]()
+    var cache = ShardHeaderCache()
     var telem = LoadMemoryTelemetry()
 
     # Layer < 0
     var raised_neg = False
     try:
-        var _w = load_layer_qkv_weights(-1, "", empty_map, cfg, telem)
+        var _w = load_layer_qkv_weights(-1, "", empty_map, cfg, cache, telem)
     except:
         raised_neg = True
     assert_true(raised_neg)
@@ -135,7 +137,7 @@ def test_load_layer_qkv_weights_validation() raises:
     # Layer >= num_hidden_layers
     var raised_high = False
     try:
-        var _w2 = load_layer_qkv_weights(24, "", empty_map, cfg, telem)
+        var _w2 = load_layer_qkv_weights(24, "", empty_map, cfg, cache, telem)
     except:
         raised_high = True
     assert_true(raised_high)
@@ -143,7 +145,7 @@ def test_load_layer_qkv_weights_validation() raises:
     # Missing tensor in weight map
     var raised_missing = False
     try:
-        var _w3 = load_layer_qkv_weights(0, "", empty_map, cfg, telem)
+        var _w3 = load_layer_qkv_weights(0, "", empty_map, cfg, cache, telem)
     except:
         raised_missing = True
     assert_true(raised_missing)

@@ -3,7 +3,8 @@
 # See LICENSE for details.
 """Unit tests untuk top-k selection, router_forward pipeline, dan weight loading (M3-W1)."""
 
-from core.config import LoadMemoryTelemetry, ModelConfig, _contains
+from core.config import LoadMemoryTelemetry, ModelConfig
+from core.tensor_loader import ShardHeaderCache
 from format.file_io import read_small_file
 from format.index import parse_index_to_dict
 from layers.router import (
@@ -144,12 +145,13 @@ def test_load_layer_router_weights_validation() raises:
     var cfg = ModelConfig(2048, 24, 16, 151936)
     var router_cfg = RouterConfig(60, 4, False)
     var empty_map = Dict[String, String]()
+    var cache = ShardHeaderCache()
     var telem = LoadMemoryTelemetry()
 
     var raised_neg = False
     try:
         var _w = load_layer_router_weights(
-            -1, "", empty_map, cfg, router_cfg, telem
+            -1, "", empty_map, cfg, router_cfg, cache, telem
         )
     except e:
         raised_neg = True
@@ -158,7 +160,7 @@ def test_load_layer_router_weights_validation() raises:
     var raised_hi = False
     try:
         var _w2 = load_layer_router_weights(
-            24, "", empty_map, cfg, router_cfg, telem
+            24, "", empty_map, cfg, router_cfg, cache, telem
         )
     except e:
         raised_hi = True
@@ -167,7 +169,7 @@ def test_load_layer_router_weights_validation() raises:
     var raised_miss = False
     try:
         var _w3 = load_layer_router_weights(
-            0, "", empty_map, cfg, router_cfg, telem
+            0, "", empty_map, cfg, router_cfg, cache, telem
         )
     except e:
         raised_miss = True
@@ -182,10 +184,11 @@ def test_load_layer_router_weights_fixture_m1() raises:
     # Fixture M1: hidden_size=64, num_hidden_layers=2, num_experts=8
     var cfg = ModelConfig(64, 2, 2, 512)
     var router_cfg = RouterConfig(8, 2, False)
+    var cache = ShardHeaderCache()
     var telem = LoadMemoryTelemetry()
 
     var w_router = load_layer_router_weights(
-        0, "fixtures/m1", weight_map, cfg, router_cfg, telem
+        0, "fixtures/m1", weight_map, cfg, router_cfg, cache, telem
     )
     assert_equal(len(w_router), 8 * 64)
     for i in range(len(w_router)):
@@ -196,11 +199,11 @@ def test_property_p_norm_topk_prob_false() raises:
     """Property P: konfigurasi model harus norm_topk_prob=false."""
     var m0_raw = read_small_file("fixtures/m0/model_config.json")
     var m0_str = String(from_utf8_lossy=Span(m0_raw))
-    assert_true(_contains(m0_str, '"norm_topk_prob": false'))
+    assert_true(m0_str.find('"norm_topk_prob": false') >= 0)
 
     var m1_raw = read_small_file("fixtures/m1/model_config.json")
     var m1_str = String(from_utf8_lossy=Span(m1_raw))
-    assert_true(_contains(m1_str, '"norm_topk_prob": false'))
+    assert_true(m1_str.find('"norm_topk_prob": false') >= 0)
 
 
 def add_tests_to_suite(mut suite: TestSuite):

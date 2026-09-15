@@ -4,6 +4,7 @@
 """POSIX C FFI dan utilitas sistem untuk Kimo CLI."""
 
 from cli.errors import basename, dirname, eprint_json, fail, fail_layer
+from format.file_io import c_realpath, path_is_within
 from format.types import json_escape
 from std.collections import Dict, List
 from std.ffi import external_call
@@ -87,27 +88,6 @@ def make_unique_tmp_path(target_path: String, attempt: Int) -> String:
     return String(target_path, ".tmp.", pid, ".", ns, ".", attempt)
 
 
-def c_realpath(path: String) -> String:
-    var p = path.as_bytes()
-    var p_z = List[UInt8]()
-    for i in range(len(p)):
-        p_z.append(p[i])
-    p_z.append(0)
-    var buf = List[UInt8]()
-    for _ in range(4096):
-        buf.append(0)
-    var res = external_call["realpath", Int](p_z.unsafe_ptr(), buf.unsafe_ptr())
-    if res == 0:
-        return ""
-    var n = 0
-    while n < 4096 and buf[n] != 0:
-        n += 1
-    var out = List[UInt8]()
-    for i in range(n):
-        out.append(buf[i])
-    return String(from_utf8_lossy=Span(out))
-
-
 def str_to_float(s: String) -> Float32:
     var sb = s.as_bytes()
     var z = List[UInt8]()
@@ -160,16 +140,8 @@ def _in_list(list: List[String], item: String) -> Bool:
 
 
 def _is_within_workdir(parent_canon: String, workdir_canon: String) -> Bool:
-    # Component-aware containment: realpath(3) output sudah canonical
-    # (tanpa trailing slash kecuali root "/"), jadi boundary komponen
-    # adalah kesamaan persis atau prefix "workdir + /".
-    # Ini menolak sibling prefix seperti /tmp/workevil untuk root /tmp/work.
-    if parent_canon == workdir_canon:
-        return True
-    if workdir_canon == "/":
-        return parent_canon.startswith("/")
-    var prefix = String(workdir_canon, "/")
-    return parent_canon.startswith(prefix)
+    # Delegasi ke SATU-SATUNYA implementasi containment (format.path_is_within).
+    return path_is_within(workdir_canon, parent_canon)
 
 
 def resolve_target_output(

@@ -4,7 +4,7 @@
 """Blok attention lengkap: RMSNorm -> QKV -> RoPE -> MHA -> o_proj -> Residual (M2)."""
 
 from core.config import LoadMemoryTelemetry, ModelConfig
-from core.tensor_loader import _load_one_tensor_by_name
+from core.tensor_loader import ShardHeaderCache, _load_one_tensor_by_name
 from layers.mha import mha_forward
 from layers.qkv import QKVWeights, load_layer_qkv_weights, qkv_forward
 from layers.residual import add_residual
@@ -200,6 +200,7 @@ def load_layer_attention_weights(
     model_root: String,
     weight_map: Dict[String, String],
     cfg: ModelConfig,
+    mut cache: ShardHeaderCache,
     mut telemetry: LoadMemoryTelemetry,
 ) raises -> AttentionWeights:
     """Memuat seluruh bobot blok attention satu layer dari shard safetensors.
@@ -249,6 +250,7 @@ def load_layer_attention_weights(
         )
 
     var norm_gamma = _load_one_tensor_by_name(
+        cache,
         model_root,
         weight_map[norm_name],
         norm_name,
@@ -258,9 +260,10 @@ def load_layer_attention_weights(
         telemetry,
     )
     var qkv = load_layer_qkv_weights(
-        layer_idx, model_root, weight_map, cfg, telemetry
+        layer_idx, model_root, weight_map, cfg, cache, telemetry
     )
     var w_o = _load_one_tensor_by_name(
+        cache,
         model_root,
         weight_map[o_proj_name],
         o_proj_name,
@@ -272,6 +275,7 @@ def load_layer_attention_weights(
     var b_o = List[Float32]()
     if o_bias_name in weight_map:
         b_o = _load_one_tensor_by_name(
+            cache,
             model_root,
             weight_map[o_bias_name],
             o_bias_name,
