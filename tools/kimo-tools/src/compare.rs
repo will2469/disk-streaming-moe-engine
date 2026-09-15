@@ -16,7 +16,8 @@
 //!   1: FAIL / MISMATCH (threshold tidak terpenuhi)
 //!   2: ERROR (file hilang, layout/shape mismatch, JSON malformed)
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
@@ -47,6 +48,64 @@ pub struct ErrorReport {
     pub error_type: String,
     pub detail: String,
     pub stage: String,
+}
+
+#[derive(Deserialize)]
+struct RoutingFile {
+    #[serde(default)]
+    selected_experts: Vec<Vec<usize>>,
+    #[serde(default)]
+    routing_info: Option<RoutingInner>,
+}
+
+#[derive(Deserialize)]
+struct RoutingInner {
+    selected_experts: Vec<Vec<usize>>,
+}
+
+pub fn extract_selected_experts(path: &str) -> Result<Vec<Vec<usize>>, (String, String)> {
+    if !Path::new(path).exists() {
+        return Err((
+            "FILE_NOT_FOUND".to_string(),
+            format!("routing file not found: {}", path),
+        ));
+    }
+    let content = fs::read_to_string(path).map_err(|e| {
+        (
+            "FILE_NOT_FOUND".to_string(),
+            format!("cannot read routing file {}: {}", path, e),
+        )
+    })?;
+    let rf: RoutingFile = serde_json::from_str(&content).map_err(|e| {
+        (
+            "ROUTING_PARSE_ERROR".to_string(),
+            format!("cannot parse routing json {}: {}", path, e),
+        )
+    })?;
+    if !rf.selected_experts.is_empty() {
+        Ok(rf.selected_experts)
+    } else if let Some(inner) = rf.routing_info {
+        Ok(inner.selected_experts)
+    } else {
+        Err((
+            "ROUTING_PARSE_ERROR".to_string(),
+            format!("missing selected_experts in {}", path),
+        ))
+    }
+}
+
+pub fn check_routing_match(oracle_experts: &[Vec<usize>], cand_experts: &[Vec<usize>]) -> bool {
+    if oracle_experts.len() != cand_experts.len() {
+        return false;
+    }
+    for (o_row, c_row) in oracle_experts.iter().zip(cand_experts.iter()) {
+        let o_set: HashSet<usize> = o_row.iter().copied().collect();
+        let c_set: HashSet<usize> = c_row.iter().copied().collect();
+        if o_set != c_set {
+            return false;
+        }
+    }
+    true
 }
 
 fn emit_error(err_type: &str, detail: &str) -> i32 {
@@ -227,6 +286,8 @@ pub fn run(args: &[String]) -> i32 {
     let mut vocab_size: usize = 512;
     let mut explicit_dim = false;
     let mut run_id = String::new();
+    let mut oracle_routing = String::new();
+    let mut cand_routing = String::new();
 
     let mut positional = Vec::new();
     let mut i = 0;
@@ -265,6 +326,18 @@ pub fn run(args: &[String]) -> i32 {
                     run_id = args[i].clone();
                 }
             }
+            "--oracle-routing" => {
+                i += 1;
+                if i < args.len() {
+                    oracle_routing = args[i].clone();
+                }
+            }
+            "--cand-routing" => {
+                i += 1;
+                if i < args.len() {
+                    cand_routing = args[i].clone();
+                }
+            }
             s if s.starts_with('-') => {
                 return emit_error("USAGE", &format!("unknown option: {}", s));
             }
@@ -285,12 +358,33 @@ pub fn run(args: &[String]) -> i32 {
     if ref_path.is_empty() || cand_path.is_empty() {
         return emit_error(
             "USAGE",
-            "pakai: kimo-tools compare <ref.bin> <cand.bin> [--gate G-M1-1|G-M2-1] [--dim <N>]",
+            "pakai: kimo-tools compare <ref.bin> <cand.bin> [--gate G-M1-1|G-M2-1|G-M3-1] [--dim <N>] [--oracle-routing <json>] [--cand-routing <json>]",
         );
+    }
+
+    let has_routing = !oracle_routing.is_empty() || !cand_routing.is_empty();
+    let mut routing_ok = true;
+    if has_routing {
+        if oracle_routing.is_empty() || cand_routing.is_empty() {
+            return emit_error(
+                "USAGE",
+                "both --oracle-routing and --cand-routing must be provided together",
+            );
+        }
+        let o_exp = match extract_selected_experts(&oracle_routing) {
+            Ok(v) => v,
+            Err((code, detail)) => return emit_error(&code, &detail),
+        };
+        let c_exp = match extract_selected_experts(&cand_routing) {
+            Ok(v) => v,
+            Err((code, detail)) => return emit_error(&code, &detail),
+        };
+        routing_ok = check_routing_match(&o_exp, &c_exp);
     }
 
     if run_id.is_empty() {
         run_id = match gate.as_str() {
+            "G-M3-1" => "M3-F10-001".to_string(),
             "G-M2-1" => "M2-F10-001".to_string(),
             _ => "M1-F10-001".to_string(),
         };
@@ -306,7 +400,7 @@ pub fn run(args: &[String]) -> i32 {
         Err((code, detail)) => return emit_error(&code, &detail),
     };
 
-    if !explicit_dim && gate == "G-M2-1" {
+    if !explicit_dim && (gate == "G-M2-1" || gate == "G-M3-1") {
         if ref_floats.len() % 2048 == 0 {
             vocab_size = 2048;
         } else if ref_floats.len() % 64 == 0 {
@@ -322,7 +416,12 @@ pub fn run(args: &[String]) -> i32 {
     };
 
     // Evaluate gate
-    let (is_pass, threshold_str, fail_cat) = evaluate_gate(&gate, &metrics);
+    let (mut is_pass, threshold_str, mut fail_cat) = evaluate_gate(&gate, &metrics);
+
+    if has_routing && !routing_ok {
+        is_pass = false;
+        fail_cat = Some("router-selection".to_string());
+    }
 
     let report = CompareReport {
         status: if is_pass {
@@ -368,17 +467,17 @@ pub fn evaluate_gate(gate: &str, metrics: &CompareMetrics) -> (bool, &'static st
             };
             (pass, thresh, cat)
         }
-        "G-M2-1" => {
+        "G-M2-1" | "G-M3-1" => {
             let pass = metrics.delta_max <= 1e-3 && metrics.epsilon_rel <= 1e-4;
             let thresh = "delta_max <= 1e-3 && epsilon_rel <= 1e-4";
             let cat = if pass {
                 None
             } else if metrics.delta_max > 1.0 || metrics.cos_theta < 0.90 {
                 Some("dtype-layout".to_string())
-            } else if metrics.delta_max >= 0.05 && metrics.delta_max <= 0.25 {
-                Some("rope-style".to_string())
             } else if metrics.delta_max > 0.25 && metrics.delta_max <= 1.0 {
                 Some("bias-placement".to_string())
+            } else if metrics.delta_max >= 0.05 && metrics.delta_max <= 0.25 {
+                Some("rope-style".to_string())
             } else {
                 Some("numeric-order".to_string())
             };
@@ -447,18 +546,33 @@ mod tests {
     }
 
     #[test]
-    fn test_gate_g_m2_1_fail_categories() {
-        // rope-style: 0.05 <= delta_max <= 0.25
-        let m_rope = CompareMetrics {
-            delta_max: 0.12,
-            epsilon_rel: 1e-2,
-            cos_theta: 0.98,
-            agreement: 90.0,
-            delta_ce: 0.1,
+    fn test_gate_g_m3_1_pass() {
+        let m = CompareMetrics {
+            delta_max: 1e-7,
+            epsilon_rel: 1e-7,
+            cos_theta: 0.9999999,
+            agreement: 100.0,
+            delta_ce: 0.0,
         };
-        let (pass, _, cat) = evaluate_gate("G-M2-1", &m_rope);
+        let (pass, thresh, cat) = evaluate_gate("G-M3-1", &m);
+        assert!(pass);
+        assert_eq!(thresh, "delta_max <= 1e-3 && epsilon_rel <= 1e-4");
+        assert_eq!(cat, None);
+    }
+
+    #[test]
+    fn test_gate_g_m3_1_fail_categories() {
+        // dtype-layout: delta_max > 1.0 or cos_theta < 0.90
+        let m_layout = CompareMetrics {
+            delta_max: 1.5,
+            epsilon_rel: 0.5,
+            cos_theta: 0.85,
+            agreement: 50.0,
+            delta_ce: 1.0,
+        };
+        let (pass, _, cat) = evaluate_gate("G-M3-1", &m_layout);
         assert!(!pass);
-        assert_eq!(cat.as_deref(), Some("rope-style"));
+        assert_eq!(cat.as_deref(), Some("dtype-layout"));
 
         // bias-placement: 0.25 < delta_max <= 1.0
         let m_bias = CompareMetrics {
@@ -468,21 +582,9 @@ mod tests {
             agreement: 80.0,
             delta_ce: 0.2,
         };
-        let (pass, _, cat) = evaluate_gate("G-M2-1", &m_bias);
+        let (pass, _, cat) = evaluate_gate("G-M3-1", &m_bias);
         assert!(!pass);
         assert_eq!(cat.as_deref(), Some("bias-placement"));
-
-        // dtype-layout: delta_max > 1.0 or cos_theta < 0.90
-        let m_layout = CompareMetrics {
-            delta_max: 1.5,
-            epsilon_rel: 0.5,
-            cos_theta: 0.85,
-            agreement: 50.0,
-            delta_ce: 1.0,
-        };
-        let (pass, _, cat) = evaluate_gate("G-M2-1", &m_layout);
-        assert!(!pass);
-        assert_eq!(cat.as_deref(), Some("dtype-layout"));
 
         // numeric-order: delta_max < 0.05 but > 1e-3
         let m_numeric = CompareMetrics {
@@ -492,8 +594,24 @@ mod tests {
             agreement: 99.0,
             delta_ce: 0.01,
         };
-        let (pass, _, cat) = evaluate_gate("G-M2-1", &m_numeric);
+        let (pass, _, cat) = evaluate_gate("G-M3-1", &m_numeric);
         assert!(!pass);
         assert_eq!(cat.as_deref(), Some("numeric-order"));
+    }
+
+    #[test]
+    fn test_routing_check_match_and_mismatch() {
+        let oracle = vec![vec![1, 2, 3, 4], vec![5, 6, 7, 8]];
+        // Same elements in different order
+        let cand_same = vec![vec![4, 3, 2, 1], vec![8, 7, 6, 5]];
+        assert!(check_routing_match(&oracle, &cand_same));
+
+        // Different element
+        let cand_diff = vec![vec![1, 2, 3, 99], vec![5, 6, 7, 8]];
+        assert!(!check_routing_match(&oracle, &cand_diff));
+
+        // Different length
+        let cand_len = vec![vec![1, 2, 3, 4]];
+        assert!(!check_routing_match(&oracle, &cand_len));
     }
 }

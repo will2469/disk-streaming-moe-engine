@@ -2,7 +2,8 @@
 # Copyright 2026 will2469
 # Licensed under the Apache License, Version 2.0 (the "License");
 # See LICENSE for details.
-"""Oracle Layer Path — PyTorch FP32 Reference for Part Attention (M2-W5).
+"""Oracle Layer Path — PyTorch FP32 Reference.
+Covers Part Attention (M2-W5) and Part MoE (M3-W4).
 
 10-step reference attention pipeline:
   1. Load activation input: shape [16, 2048] (or [L, hidden_dim]), fp32 LE
@@ -16,9 +17,22 @@
   9. Residual: y_final = y + x
   10. Output: write binary fp32 LE to attn_ref.bin + compute SHA-256
 
+11-step reference MoE pipeline (F8):
+  1. Load activation input: shape [16, 2048], fp32 LE
+  2. Router softmax fp32: p = softmax(W_r x) in R^60
+  3. Top-4 selection TANPA renormalisasi: A = Top-4(p)
+  4. Load routed experts weights (gate, up, down) untuk selected experts
+  5. Load shared expert weights (gate, up, down) + shared expert gate
+  6. Routed experts SwiGLU: E_i(x) = W_down(SiLU(W_gate x) * W_up x)
+  7. Weighted sum routed: y_routed = sum_{i in A} p_i E_i(x)
+  8. Shared expert sigmoid gate: g_sh = W_{gate_sh} x, sigma(g_sh) (sigmoid)
+  9. Shared expert computation: y_shared = sigma(g_sh) E_sh(x)
+  10. Residual: y = y_routed + y_shared + x
+  11. Output: write binary fp32 LE to moe_ref.bin + routing_info
+
 CLI:
-  oracle_layer.py --part attn --layer 0|12|23 --activation <path>
-                  --model-dir <dir> [--output <path>]
+  oracle_layer.py --part attn|moe --layer 0|12|23 --activation <path>
+                  --model-dir <dir> [--output <path>] [--routing-output <path>]
 """
 
 import argparse
@@ -28,12 +42,10 @@ import math
 import os
 import sys
 import torch
-from safetensors.torch import load_file
+from safetensors import safe_open
 
 
-def fail(
-    error_type: str, detail: str, stage: str = "attention", layer: int = -1
-) -> None:
+def fail(error_type: str, detail: str, stage: str = "oracle", layer: int = -1) -> None:
     payload = {
         "error_type": error_type,
         "detail": detail,
@@ -95,6 +107,15 @@ def parse_model_config(config_path: str, layer: int) -> dict:
     rope_theta = float(cfg.get("rope_theta", 1000000.0))
     cfg["rope_theta"] = rope_theta
 
+    # MoE architecture fields (Qwen1.5-MoE defaults if absent)
+    cfg["num_experts"] = int(cfg.get("num_experts", 60))
+    cfg["num_experts_per_tok"] = int(cfg.get("num_experts_per_tok", 4))
+    cfg["moe_intermediate_size"] = int(cfg.get("moe_intermediate_size", 1408))
+    cfg["shared_expert_intermediate_size"] = int(
+        cfg.get("shared_expert_intermediate_size", 5632)
+    )
+    cfg["norm_topk_prob"] = bool(cfg.get("norm_topk_prob", False))
+
     return cfg
 
 
@@ -103,7 +124,7 @@ def load_activation(path: str, hidden_dim: int, layer: int) -> tuple[torch.Tenso
         fail(
             "FILE_NOT_FOUND",
             f"activation file not found: {path}",
-            stage="attention",
+            stage="activation",
             layer=layer,
         )
     try:
@@ -113,7 +134,7 @@ def load_activation(path: str, hidden_dim: int, layer: int) -> tuple[torch.Tenso
         fail(
             "ACT_LOAD_FAILED",
             f"cannot read activation file: {e}",
-            stage="attention",
+            stage="activation",
             layer=layer,
         )
 
@@ -122,7 +143,7 @@ def load_activation(path: str, hidden_dim: int, layer: int) -> tuple[torch.Tenso
             "ACT_LOAD_FAILED",
             f"activation byte size {len(raw_bytes)} not divisible "
             f"by row size {hidden_dim * 4}",
-            stage="attention",
+            stage="activation",
             layer=layer,
         )
 
@@ -137,7 +158,7 @@ def load_activation(path: str, hidden_dim: int, layer: int) -> tuple[torch.Tenso
         fail(
             "ACT_LOAD_FAILED",
             "activation contains non-finite values (NaN or Inf)",
-            stage="attention",
+            stage="activation",
             layer=layer,
         )
 
@@ -145,7 +166,7 @@ def load_activation(path: str, hidden_dim: int, layer: int) -> tuple[torch.Tenso
         fail(
             "ACT_LOAD_FAILED",
             "activation contains values out of reasonable range (>1e6)",
-            stage="attention",
+            stage="activation",
             layer=layer,
         )
 
@@ -156,37 +177,49 @@ def _load_tensor_from_shard(
     model_dir: str,
     weight_map: dict[str, str],
     name: str,
-    shards_cache: dict[str, dict[str, torch.Tensor]],
+    shards_cache: dict,
     layer: int,
+    stage: str = "attention",
 ) -> torch.Tensor:
+    if name not in weight_map:
+        fail(
+            "WEIGHT_LOAD_FAILED",
+            f"missing required tensor in index: {name}",
+            stage=stage,
+            layer=layer,
+        )
     shard_file = weight_map[name]
     shard_path = os.path.join(model_dir, shard_file)
     if not os.path.exists(shard_path):
         fail(
             "FILE_NOT_FOUND",
             f"shard file not found on disk: {shard_path}",
-            stage="attention",
+            stage=stage,
             layer=layer,
         )
     if shard_file not in shards_cache:
         try:
-            shards_cache[shard_file] = load_file(shard_path, device="cpu")
+            shards_cache[shard_file] = safe_open(
+                shard_path, framework="pt", device="cpu"
+            )
         except Exception as e:
             fail(
                 "WEIGHT_LOAD_FAILED",
-                f"failed to load shard {shard_file}: {e}",
-                stage="attention",
+                f"failed to open shard {shard_file}: {e}",
+                stage=stage,
                 layer=layer,
             )
-    shard_dict = shards_cache[shard_file]
-    if name not in shard_dict:
+    shard = shards_cache[shard_file]
+    try:
+        t = shard.get_tensor(name)
+    except Exception as e:
         fail(
             "WEIGHT_LOAD_FAILED",
-            f"tensor {name} missing from shard {shard_file}",
-            stage="attention",
+            f"tensor {name} missing from shard {shard_file}: {e}",
+            stage=stage,
             layer=layer,
         )
-    return shard_dict[name].float()
+    return t.float()
 
 
 def _validate_weight_shapes(
@@ -280,13 +313,13 @@ def load_layer_weights(
     weights = {}
     for req in req_tensors:
         weights[req] = _load_tensor_from_shard(
-            model_dir, weight_map, req, shards_cache, layer
+            model_dir, weight_map, req, shards_cache, layer, "attention"
         )
 
     o_bias_name = f"{pfx}self_attn.o_proj.bias"
     if o_bias_name in weight_map:
         weights[o_bias_name] = _load_tensor_from_shard(
-            model_dir, weight_map, o_bias_name, shards_cache, layer
+            model_dir, weight_map, o_bias_name, shards_cache, layer, "attention"
         )
 
     _validate_weight_shapes(weights, pfx, cfg["hidden_size"], layer)
@@ -391,12 +424,236 @@ def forward_layer_attention_oracle(
     return y_final
 
 
+def compute_swiglu(
+    x: torch.Tensor,
+    w_gate: torch.Tensor,
+    w_up: torch.Tensor,
+    w_down: torch.Tensor,
+) -> torch.Tensor:
+    """Hitung SwiGLU(x) = W_down (SiLU(W_gate x) * W_up x)."""
+    g = torch.nn.functional.linear(x, w_gate)
+    u = torch.nn.functional.linear(x, w_up)
+    h = torch.nn.functional.silu(g) * u
+    y = torch.nn.functional.linear(h, w_down)
+    return y
+
+
+def forward_layer_moe_oracle(
+    act: torch.Tensor,
+    model_dir: str,
+    weight_map: dict[str, str],
+    layer: int,
+    cfg: dict,
+) -> tuple[torch.Tensor, dict]:
+    """11-step reference MoE pipeline (F8)."""
+    seq_len, hidden_dim = act.shape
+    num_experts = cfg["num_experts"]
+    top_k = cfg["num_experts_per_tok"]
+    inter_routed = cfg["moe_intermediate_size"]
+    inter_shared = cfg["shared_expert_intermediate_size"]
+    shards_cache = {}
+
+    # 2. Router softmax fp32
+    router_name = f"model.layers.{layer}.mlp.gate.weight"
+    w_router = _load_tensor_from_shard(
+        model_dir, weight_map, router_name, shards_cache, layer, "router"
+    )
+    if w_router.shape != torch.Size([num_experts, hidden_dim]):
+        fail(
+            "WEIGHT_LOAD_FAILED",
+            f"router shape {w_router.shape} != [{num_experts}, {hidden_dim}]",
+            stage="router",
+            layer=layer,
+        )
+
+    logits = torch.nn.functional.linear(act, w_router)
+    probs = torch.nn.functional.softmax(logits, dim=-1, dtype=torch.float32)
+
+    # 3. Top-4 selection TANPA renormalisasi (sorted descending, tie-break by index)
+    topk_probs, topk_indices = torch.topk(probs, k=top_k, dim=-1, sorted=True)
+
+    selected_experts = []
+    router_probs = []
+    for t in range(seq_len):
+        row_exp = [int(topk_indices[t, k].item()) for k in range(top_k)]
+        row_prob = [float(topk_probs[t, k].item()) for k in range(top_k)]
+        selected_experts.append(row_exp)
+        router_probs.append(row_prob)
+
+    unique_experts = sorted(list({e for row in selected_experts for e in row}))
+
+    # 4. Load routed experts weights
+    routed_gates = {}
+    routed_ups = {}
+    routed_downs = {}
+    for exp_id in unique_experts:
+        pfx = f"model.layers.{layer}.mlp.experts.{exp_id}."
+        w_g = _load_tensor_from_shard(
+            model_dir,
+            weight_map,
+            pfx + "gate_proj.weight",
+            shards_cache,
+            layer,
+            "experts",
+        )
+        w_u = _load_tensor_from_shard(
+            model_dir,
+            weight_map,
+            pfx + "up_proj.weight",
+            shards_cache,
+            layer,
+            "experts",
+        )
+        w_d = _load_tensor_from_shard(
+            model_dir,
+            weight_map,
+            pfx + "down_proj.weight",
+            shards_cache,
+            layer,
+            "experts",
+        )
+        if w_g.shape != torch.Size([inter_routed, hidden_dim]):
+            fail(
+                "WEIGHT_LOAD_FAILED",
+                f"expert {exp_id} gate_proj shape mismatch: {w_g.shape}",
+                stage="experts",
+                layer=layer,
+            )
+        if w_u.shape != torch.Size([inter_routed, hidden_dim]):
+            fail(
+                "WEIGHT_LOAD_FAILED",
+                f"expert {exp_id} up_proj shape mismatch: {w_u.shape}",
+                stage="experts",
+                layer=layer,
+            )
+        if w_d.shape != torch.Size([hidden_dim, inter_routed]):
+            fail(
+                "WEIGHT_LOAD_FAILED",
+                f"expert {exp_id} down_proj shape mismatch: {w_d.shape}",
+                stage="experts",
+                layer=layer,
+            )
+        routed_gates[exp_id] = w_g
+        routed_ups[exp_id] = w_u
+        routed_downs[exp_id] = w_d
+
+    # 5. Load shared expert weights
+    pfx_sh = f"model.layers.{layer}.mlp.shared_expert."
+    w_sh_gate_proj = _load_tensor_from_shard(
+        model_dir,
+        weight_map,
+        pfx_sh + "gate_proj.weight",
+        shards_cache,
+        layer,
+        "shared",
+    )
+    w_sh_up_proj = _load_tensor_from_shard(
+        model_dir,
+        weight_map,
+        pfx_sh + "up_proj.weight",
+        shards_cache,
+        layer,
+        "shared",
+    )
+    w_sh_down_proj = _load_tensor_from_shard(
+        model_dir,
+        weight_map,
+        pfx_sh + "down_proj.weight",
+        shards_cache,
+        layer,
+        "shared",
+    )
+    w_sh_gate = _load_tensor_from_shard(
+        model_dir,
+        weight_map,
+        f"model.layers.{layer}.mlp.shared_expert_gate.weight",
+        shards_cache,
+        layer,
+        "shared",
+    )
+
+    if w_sh_gate_proj.shape != torch.Size([inter_shared, hidden_dim]):
+        fail(
+            "WEIGHT_LOAD_FAILED",
+            f"shared gate_proj shape mismatch: {w_sh_gate_proj.shape}",
+            stage="shared",
+            layer=layer,
+        )
+    if w_sh_up_proj.shape != torch.Size([inter_shared, hidden_dim]):
+        fail(
+            "WEIGHT_LOAD_FAILED",
+            f"shared up_proj shape mismatch: {w_sh_up_proj.shape}",
+            stage="shared",
+            layer=layer,
+        )
+    if w_sh_down_proj.shape != torch.Size([hidden_dim, inter_shared]):
+        fail(
+            "WEIGHT_LOAD_FAILED",
+            f"shared down_proj shape mismatch: {w_sh_down_proj.shape}",
+            stage="shared",
+            layer=layer,
+        )
+    if w_sh_gate.numel() != hidden_dim:
+        fail(
+            "WEIGHT_LOAD_FAILED",
+            f"shared_expert_gate size {w_sh_gate.numel()} != {hidden_dim}",
+            stage="shared",
+            layer=layer,
+        )
+    w_sh_gate = w_sh_gate.reshape(1, hidden_dim)
+
+    # 6 & 7. Routed experts SwiGLU + weighted sum
+    y_routed = torch.zeros_like(act)
+    for t in range(seq_len):
+        x_t = act[t : t + 1]
+        accum = torch.zeros(1, hidden_dim, dtype=torch.float32)
+        for k in range(top_k):
+            exp_id = selected_experts[t][k]
+            prob = router_probs[t][k]
+            e_out = compute_swiglu(
+                x_t,
+                routed_gates[exp_id],
+                routed_ups[exp_id],
+                routed_downs[exp_id],
+            )
+            accum += prob * e_out
+        y_routed[t] = accum[0]
+
+    # 8. Shared expert sigmoid gate: INVARIANT KERAS sigmoid, NOT softmax
+    shared_logits = torch.nn.functional.linear(act, w_sh_gate)
+    g_sh = torch.sigmoid(shared_logits)
+
+    # 9. Shared expert computation
+    e_sh = compute_swiglu(act, w_sh_gate_proj, w_sh_up_proj, w_sh_down_proj)
+    y_shared = g_sh * e_sh
+
+    # 10. Residual connection: y = y_routed + y_shared + act
+    y_final = y_routed + y_shared + act
+
+    if not torch.isfinite(y_final).all():
+        fail(
+            "EXPERT_ERROR",
+            "non-finite value in MoE oracle output",
+            stage="moe",
+            layer=layer,
+        )
+
+    routing_info = {
+        "selected_experts": selected_experts,
+        "router_probs": router_probs,
+    }
+    return y_final, routing_info
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Oracle Layer Attention (PyTorch fp32)"
+        description="Oracle Layer (PyTorch fp32) — Attention or MoE"
     )
     parser.add_argument(
-        "--part", required=True, choices=["attn"], help="Part name (attn)"
+        "--part",
+        required=True,
+        choices=["attn", "moe"],
+        help="Part name (attn|moe)",
     )
     parser.add_argument(
         "--layer", required=True, type=int, help="Layer index (0, 12, or 23)"
@@ -409,12 +666,13 @@ def main():
         required=True,
         help="Directory containing model weights and index",
     )
+    parser.add_argument("--output", default=None, help="Path to write output binary")
     parser.add_argument(
-        "--output", default="attn_ref.bin", help="Path to write output binary"
+        "--routing-output", default=None, help="Path to write routing info JSON"
     )
     args = parser.parse_args()
 
-    if args.part != "attn":
+    if args.part not in ["attn", "moe"]:
         fail(
             "PART_INVALID",
             f"unsupported part: {args.part}",
@@ -447,31 +705,60 @@ def main():
         )
 
     act, num_tokens = load_activation(args.activation, cfg["hidden_size"], args.layer)
-    weights = load_layer_weights(args.model_dir, args.layer, cfg)
 
-    ref_out = forward_layer_attention_oracle(act, weights, args.layer, cfg)
+    out_file = args.output
+    if not out_file:
+        out_file = "attn_ref.bin" if args.part == "attn" else "moe_ref.bin"
 
-    # 10. Write binary output fp32 LE & compute SHA-256
-    out_dir = os.path.dirname(os.path.abspath(args.output))
+    routing_info = None
+    if args.part == "attn":
+        weights = load_layer_weights(args.model_dir, args.layer, cfg)
+        ref_out = forward_layer_attention_oracle(act, weights, args.layer, cfg)
+    else:
+        index_path = os.path.join(args.model_dir, "model.safetensors.index.json")
+        if not os.path.exists(index_path):
+            fail(
+                "FILE_NOT_FOUND",
+                f"index file not found: {index_path}",
+                stage="moe",
+                layer=args.layer,
+            )
+        with open(index_path, "r", encoding="utf-8") as f:
+            index = json.load(f)
+        weight_map = index["weight_map"]
+        ref_out, routing_info = forward_layer_moe_oracle(
+            act, args.model_dir, weight_map, args.layer, cfg
+        )
+
+    out_dir = os.path.dirname(os.path.abspath(out_file))
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
 
     out_bytes = ref_out.detach().cpu().to(torch.float32).numpy().tobytes()
-    with open(args.output, "wb") as f:
+    with open(out_file, "wb") as f:
         f.write(out_bytes)
 
     sha256_hash = hashlib.sha256(out_bytes).hexdigest()
 
     summary = {
         "status": "success",
-        "part": "attn",
+        "part": args.part,
         "layer": args.layer,
         "num_tokens": num_tokens,
         "hidden_dim": cfg["hidden_size"],
-        "output_file": args.output,
+        "output_file": out_file,
         "output_bytes": len(out_bytes),
         "sha256": sha256_hash,
     }
+    if routing_info is not None:
+        summary["routing_info"] = routing_info
+        if args.routing_output:
+            rout_dir = os.path.dirname(os.path.abspath(args.routing_output))
+            if rout_dir:
+                os.makedirs(rout_dir, exist_ok=True)
+            with open(args.routing_output, "w", encoding="utf-8") as rf:
+                json.dump(routing_info, rf, indent=2)
+
     print(json.dumps(summary))
 
 
