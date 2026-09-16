@@ -1,0 +1,130 @@
+{
+  "benchmark": "M4 Full Forward 24-Layer Prefill",
+  "run_id": "M4-20260916-001",
+  "timestamp": "2026-09-17 00:19:22",
+  "hardware": {
+    "cpu_model": "12th Gen Intel(R) Core(TM) i3-1215U",
+    "cpu_governor": "powersave",
+    "threads_pinned": 1
+  },
+  "model": {
+    "path": "/home/will/models/qwen1.5-moe-a2.7b-chat",
+    "num_tokens": 16,
+    "num_layers": 24,
+    "hidden_size": 2048
+  },
+  "protocol": {
+    "warmup_runs": 0,
+    "cold_runs": 1,
+    "cgroup_memory_max": "6G"
+  },
+  "summary": {
+    "count": 1,
+    "walltime_sec": {
+      "p50": 152.635507925,
+      "p95": 152.635507925,
+      "min": 152.635507925,
+      "max": 152.635507925
+    },
+    "throughput_tok_s": {
+      "p50": 0.10482488784891301,
+      "p95": 0.10482488784891301
+    },
+    "vmhwm_bytes": {
+      "p50": 3585974272,
+      "p95": 3585974272,
+      "p50_gib": 3.3396987915039062,
+      "p95_gib": 3.3396987915039062
+    },
+    "logical_bytes_read": {
+      "p50": 17316961328,
+      "p50_gb": 17.316961328,
+      "p50_gib": 16.127677008509636
+    },
+    "physical_read_bytes": {
+      "p50": 16755527680,
+      "p50_gb": 16.75552768,
+      "p50_gib": 15.604801177978516
+    },
+    "cgroup_peak_bytes": {
+      "p50": 6442450944,
+      "p50_gib": 6.0
+    },
+    "cgroup_oom_kills_total": 0,
+    "bw_effective_gb_s": {
+      "p50": 0.12571566562056802,
+      "p95": 0.12571566562056802,
+      "min": 0.12571566562056802,
+      "max": 0.12571566562056802
+    },
+    "phases_p50": {
+      "index_load_sec": 0.036836155,
+      "embedding_sec": 10.01126823,
+      "layer_forward_sec": 137.747044034,
+      "final_norm_sec": 0.000147743,
+      "lm_head_sec": 4.836778342,
+      "write_sec": 0.002676701
+    },
+    "phases_p95": {
+      "index_load_sec": 0.036836155,
+      "embedding_sec": 10.01126823,
+      "layer_forward_sec": 137.747044034,
+      "final_norm_sec": 0.000147743,
+      "lm_head_sec": 4.836778342,
+      "write_sec": 0.002676701
+    }
+  },
+  "calibration_f4_f5": {
+    "model_total_params": 14330685440,
+    "model_active_params_per_tok": 2067235840,
+    "b_tok_decode_bytes": 4134000000,
+    "sequence_length": 16,
+    "initial_compute_intensity_e_T": 1.000114097726173,
+    "i_prefill_operational_intensity": 16.00182556361877,
+    "i_decode_weight_intensity": 1.000114097726173,
+    "assumed_single_core_peak_gflops": 70.4,
+    "measured_effective_bandwidth_gb_s": 0.12571566562056802,
+    "machine_ridge_point_flops_per_byte": 559.9938532122129,
+    "prefill_regime": "memory-bound",
+    "decode_regime": "memory-bound",
+    "m5_projection": "Di M5 decode (s=1), intensitas operasional (1.00 FLOP/byte) berada jauh di bawah ridge point (559.99 FLOP/byte). Decode diproyeksikan murni memory-bound dengan batas kecepatan ditentukan oleh bandwidth streaming I/O dan RAM, bukan kapasitas FLOP CPU."
+  },
+  "gate_verdict": {
+    "G-M4-2": "FAIL (BW effective p50 0.13 GB/s < 10.0 GB/s floor)",
+    "status": "FAIL"
+  },
+  "raw_runs": {
+    "warmup": [],
+    "cold": [
+      {
+        "run": 1,
+        "type": "cold",
+        "run_id": "M4-20260916-001",
+        "cgroup_confined": true,
+        "walltime_sec": 152.635507925,
+        "throughput_tok_s": 0.10482488784891301,
+        "vmhwm_bytes": 3585974272,
+        "vmhwm_gib": 3.3396987915039062,
+        "logical_bytes_read": 17316961328,
+        "logical_bytes_gb": 17.316961328,
+        "logical_bytes_gib": 16.127677008509636,
+        "physical_read_bytes": 16755527680,
+        "physical_read_gb": 16.75552768,
+        "physical_read_gib": 15.604801177978516,
+        "cgroup_peak_bytes": 6442450944,
+        "cgroup_peak_gib": 6.0,
+        "cgroup_oom_kills": 0,
+        "bw_effective_gb_s": 0.12571566562056802,
+        "bw_effective_gib_s": 0.117081837375246,
+        "phases": {
+          "index_load_sec": 0.036836155,
+          "embedding_sec": 10.01126823,
+          "layer_forward_sec": 137.747044034,
+          "final_norm_sec": 0.000147743,
+          "lm_head_sec": 4.836778342,
+          "write_sec": 0.002676701
+        }
+      }
+    ]
+  }
+}
