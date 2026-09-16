@@ -47,10 +47,13 @@ def test_locked_constants_and_slot_size() raises:
 
 
 def test_context_bounds_validation_chain() raises:
-    """Verifikasi rantai bound: S + N <= ctx <= s_max (exit 2 bila dilanggar)."""
+    """Verifikasi rantai bound: S + N <= ctx <= s_max (exit 2 bila dilanggar).
+    """
     # 1. Kasus valid
     validate_context_bounds(16, 64, 2048, DEFAULT_MAX_POS)
-    validate_context_bounds(1984, 64, 2048, DEFAULT_MAX_POS)  # S + N = 2048 == ctx
+    validate_context_bounds(
+        1984, 64, 2048, DEFAULT_MAX_POS
+    )  # S + N = 2048 == ctx
 
     # 2. Pelanggaran sisi kiri: S + N > ctx
     var left_failed = False
@@ -96,7 +99,8 @@ def test_context_bounds_validation_chain() raises:
 
 
 def test_memory_budget_arithmetic() raises:
-    """Verifikasi dekomposisi M_tensor dan bound proses M_peak_bound <= 5 GiB."""
+    """Verifikasi dekomposisi M_tensor dan bound proses M_peak_bound <= 5 GiB.
+    """
     var b_2k = MemoryBudget(2048)
     assert_equal(b_2k.m_kv_cache, 402653184)
     # M_tensor @2K ≈ 3.82 GiB (4,102,036,224 B)
@@ -119,7 +123,8 @@ def test_memory_budget_arithmetic() raises:
 
 
 def test_layer_kv_cache_lifecycle() raises:
-    """Verifikasi siklus hidup LayerKVCache: prefill [0, S) -> decode append di p -> slice -> clear."""
+    """Verifikasi siklus hidup LayerKVCache: prefill [0, S) -> decode append di p -> slice -> clear.
+    """
     var capacity = 32
     var layer = LayerKVCache(capacity, 0)
     assert_equal(layer.current_len, 0)
@@ -180,7 +185,8 @@ def test_layer_kv_cache_lifecycle() raises:
 
 
 def test_full_kv_cache_24_layers() raises:
-    """Verifikasi FullKVCache 24 layer: alokasi statis, prefill, append, dan cleanup."""
+    """Verifikasi FullKVCache 24 layer: alokasi statis, prefill, append, dan cleanup.
+    """
     var capacity = 16
     var full = FullKVCache(capacity)
     assert_equal(len(full.layers), 24)
@@ -223,7 +229,8 @@ def test_full_kv_cache_24_layers() raises:
 
 
 def test_kv_oracle_slice_precision() raises:
-    """Verifikasi presisi numerik BF16 oracle slice: relative error <= 2^-7 (eps BF16)."""
+    """Verifikasi presisi numerik BF16 oracle slice: relative error <= 2^-7 (eps BF16).
+    """
     var capacity = 4
     var layer = LayerKVCache(capacity, 0)
 

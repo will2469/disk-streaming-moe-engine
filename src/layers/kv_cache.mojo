@@ -60,7 +60,9 @@ def validate_context_bounds(
             m5_error_json(
                 "M5_ERR_INPUT",
                 "input",
-                String("max-tokens must be positive, got: ", String(max_tokens)),
+                String(
+                    "max-tokens must be positive, got: ", String(max_tokens)
+                ),
             )
         )
     if context_size <= 0:
@@ -130,7 +132,8 @@ def validate_context_bounds(
 
 @fieldwise_init
 struct MemoryBudget(Copyable, Movable):
-    """Dekomposisi anggaran memori M_tensor dan bound proses M_peak_bound (M5 DoD)."""
+    """Dekomposisi anggaran memori M_tensor dan bound proses M_peak_bound (M5 DoD).
+    """
 
     var ctx: Int
     var m_res_f32: Int
@@ -190,7 +193,9 @@ struct MemoryBudget(Copyable, Movable):
         self.m_alloc_max = 157286400
 
         # M_peak_bound = M_tensor + M_runtime + M_alloc
-        self.m_peak_bound = self.m_tensor + self.m_runtime_max + self.m_alloc_max
+        self.m_peak_bound = (
+            self.m_tensor + self.m_runtime_max + self.m_alloc_max
+        )
         # Gate limit cgroup 5 GiB
         self.gate_limit = 5368709120
 
