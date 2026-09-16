@@ -37,11 +37,24 @@ kimo decode \
 - `--model-dir`: Direktori checkpoint (8 shard safetensors + index.json).
 - `--prompt`: Text prompt (akan di-tokenize).
 - `--max-tokens`: Jumlah token untuk generate (default: 64).
-- `--context-size`: Ukuran konteks maksimal untuk KV cache (default: 2048).
+- `--context-size`: Ukuran konteks maksimal untuk KV cache (default: 2048) —
+  terikat rantai bound `S + N ≤ ctx ≤ s_max` (lihat Batas konteks).
 - `--output`: Path output tokens JSON (default: `tokens_generated.json`).
 - `--workdir`: Direktori kerja untuk temporary files (default: `./work`).
 - `--threads`: Jumlah thread untuk layer forward (default: 1, deterministik untuk verdict).
-- `--seed`: Random seed untuk sampling (default: 42, greedy = temperature 0).
+- `--seed`: Random seed untuk sampling (default: 42) — DIABAIKAN bila temperature == 0
+  (greedy); nilai seed yang EFEKTIF selalu tercatat di blok `sampling` output JSON
+  (`null` bila diabaikan), agar artifact tidak memberi kesan seed menentukan output greedy.
+
+**Batas konteks (normatif):** dengan $S$ = panjang prompt (diketahui setelah tokenize)
+dan $N$ = `--max-tokens`, kebutuhan slot KV adalah $required\_context = S + N$
+(posisi $[0, S+N)$). Rantai yang ditegakkan, SEBELUM alokasi KV:
+
+$$S + N \le ctx \le s_{max}$$
+
+Pelanggaran sisi kiri (prompt 2000 + max 64 > ctx 2048) MAUPUN sisi kanan
+(ctx > $s_{max}$) → `M5_ERR_CONTEXT_SIZE`, exit 2. Cek `ctx ≤ s_max` saja TIDAK
+cukup — static allocation `ctx × 8 KB/layer` tidak punya ruang untuk kelebihan itu.
 
 ### Output JSON
 
@@ -55,6 +68,11 @@ kimo decode \
   "generated_tokens": 64,
   "context_size": 2048,
   "kv_cache_bytes": 402653184,
+  "sampling": {
+    "mode": "greedy",
+    "temperature": 0,
+    "seed": null
+  },
   "metrics": {
     "prefill_time_sec": 45.2,
     "decode_time_sec": 62.5,
@@ -71,7 +89,7 @@ kimo decode \
 
 - `0`: Sukses, tokens ditulis.
 - `1`: Error input (prompt kosong, max-tokens tidak valid).
-- `2`: Error context size (ctx > s_max, memori tidak cukup).
+- `2`: Error context size (`S + N > ctx`, atau ctx > s_max).
 - `3`: Error KV alloc (gagal alokasi KV cache).
 - `4`: Error prefill (shard corrupt, read gagal).
 - `5`: Error decode (NaN/INF/overflow di layer forward).
@@ -87,13 +105,12 @@ kimo decode \
   --max-tokens 64 \
   --context-size 2048
 
-# Greedy mode (temperature 0, seed tetap)
+# Greedy mode (temperature 0; --seed tidak perlu — diabaikan)
 kimo decode \
   --model-dir /models/qwen-moe \
   --prompt "Explain quantum computing" \
   --max-tokens 64 \
-  --context-size 2048 \
-  --seed 42
+  --context-size 2048
 
 # Cgroup boundary test @4K context
 systemd-run --scope -p MemoryMax=6G \
@@ -134,24 +151,21 @@ python tools/oracle/oracle_kv_decode.py \
 
 1. Load model PyTorch dari safetensors (8 shard → merge).
 2. Convert semua bobot ke FP32.
-3. **Prefill**: tokenization → embedding → 24 layer forward → store K/V per layer.
-4. **Decode loop** (untuk t = 1..N):
-   - Generate token t-1 (sampling/greedy).
-   - Lookup embedding untuk token t-1.
-   - Per layer: compute Q untuk posisi baru, retrieve K/V dari cache, compute attention, MoE, residual.
-   - Store K/V baru untuk posisi t-1.
-   - Output logits untuk token t.
-5. Collect semua logits decode.
+3. **Prefill**: tokenization → embedding → 24 layer forward → store K/V untuk posisi $[0, S)$.
+4. **Decode loop**: ikuti kontrak posisi normatif § KV Cache Lifecycle
+   (prefill → `next_logits` di $S-1$; step $i$: sample → forward 1 token di $p = S+i$ →
+   append K/V di $p$ → logits di $p$), plus invarian debug assertion di sana.
+5. Collect semua logits decode (satu per posisi $[S, S+N)$).
 
 ### Process: Recompute Path
 
 1. Load model PyTorch (sama).
-2. **Prefill**: tokenization → embedding → 24 layer forward → store K/V per layer.
-3. **Decode loop** (untuk t = 1..N):
-   - Generate token t-1 (sampling/greedy, sama seed).
-   - **Full recompute**: embedding → 24 layer forward (hitung ulang K/V untuk semua posisi).
-   - Output logits untuk token t.
-4. Collect semua logits recompute.
+2. **Prefill**: tokenization → embedding → 24 layer forward → store K/V untuk posisi $[0, S)$.
+3. **Decode loop**: kontrak posisi yang sama persis (§ KV Cache Lifecycle), kecuali
+   tiap step menghitung ulang K/V untuk semua posisi $[0, p]$ dari embedding
+   (full recompute) alih-alih retrieve cache — Kunci semantik posisional di bawah
+   menjamin kedua cara ini ekuivalen.
+4. Collect semua logits recompute (satu per posisi $[S, S+N)$).
 
 ### Output Format
 
@@ -171,7 +185,26 @@ oracle_recompute.sha256: SHA-256 dari logits_recompute.bin
 
 ### Verdict Contract
 
-Rust `compare` membandingkan `logits_kv_decode.bin` vs `logits_recompute.bin` dengan F10 threshold M4 (loose). G-M5-1 PASS jika loose threshold terpenuhi.
+Rust `compare` membandingkan `logits_kv_decode.bin` vs `logits_recompute.bin` dengan F10 threshold M4 (loose, prosedur A→N→S). G-M5-1 PASS jika loose threshold terpenuhi.
+
+**Kunci semantik posisional (normatif):** kedua path oracle wajib identik pada:
+RoPE di posisi $p$; causal mask $[0, p]$; ordering K/V $[0:p)$; scaling $1/\sqrt{d_h}$;
+KV-head mapping 16×128; bias q/k/v tanpa o-bias (kontrak M4); router top-4 tanpa
+renorm + shared sigmoid; urutan residual M4 §2.4. Invarian intinya:
+
+> recompute attention at position $p$ == incremental attention using cached K/V$[0:p)$ + Q$[p]$.
+
+**Invarian per-layer / localisasi (normatif):** sebelum verdict agregat logits,
+harness wajib membandingkan per layer $l$ pada fixture kecil ($S=4$ prompt, $N=4$
+generate) — prosedur lokalisasi dulu, agregat kemudian (filosofi A→N→S):
+
+- untuk tiap posisi decode $p$: `K_cached[:p]` vs `K_recompute[:p]` (per layer),
+  sama untuk `V`; `Q[p]`; `attn_out[p]`; `moe_out[p]`;
+- threshold loose yang sama per tensor (urutan penjumlahan fp32 boleh beda,
+  matematika sama);
+- format kegagalan: `layer L, <K|V|Q|attn-out|moe-out> mismatch` — bukan sekadar
+  `logits mismatch`. Kategori hard-fail (`router-selection`, `rope-style`,
+  `bias-placement`) berlaku per tensor di sini.
 
 ## Fixture: M5 KV Decode Set
 
@@ -198,7 +231,7 @@ Fixture `tools/fixtures/m5_kv_decode.json` berisi prompt untuk gate G-M5-1 (64 t
 
 1. Load full Qwen1.5-MoE tokenizer.
 2. Select representative prompt (beragam: factual, explanatory).
-3. Tokenize → verify length ≤ context_size (2048).
+3. Tokenize → verify `S + expected_tokens ≤ context_size` (rantai bound, bukan `length ≤ ctx` saja).
 4. Validate: semua token < 151,936 (vocab size).
 5. Output JSON dengan prompt + expected_tokens + context_size.
 
@@ -260,7 +293,7 @@ Untuk G-M5-3 (memori @4K ctx), tambahkan variant:
 | Error Code            | Stage    | Description                              | Exit Code |
 | --------------------- | -------- | ---------------------------------------- | --------- |
 | `M5_ERR_INPUT`        | input    | Prompt kosong, max-tokens tidak valid    | 1         |
-| `M5_ERR_CONTEXT_SIZE` | kv_alloc | Context size > s_max, memori tidak cukup | 2         |
+| `M5_ERR_CONTEXT_SIZE` | kv_alloc | `S + N > ctx` atau ctx > s_max (rantai bound) | 2         |
 | `M5_ERR_KV_ALLOC`     | kv_alloc | Gagal alokasi KV cache (OOM)             | 3         |
 | `M5_ERR_PREFILL`      | prefill  | Shard corrupt / read gagal               | 4         |
 | `M5_ERR_DECODE`       | decode   | NaN/INF/overflow di layer forward        | 5         |
@@ -272,7 +305,7 @@ Untuk G-M5-3 (memori @4K ctx), tambahkan variant:
 - **Context size validation**: Batal, cleanup, exit 2.
 - **KV alloc**: Batal, cleanup, exit 3.
 - **Prefill**: Batal, cleanup temporary, exit 4.
-- **Decode (token t)**: Batal pada token t, cleanup KV cache, exit 5.
+- **Decode (step i)**: Batal pada step i, cleanup KV cache, exit 5.
 - **Output**: Atomic write rollback jika gagal, exit 6.
 
 ### Atomic Rollback
@@ -290,14 +323,16 @@ Per layer `l` (0..23), KV cache menyimpan:
 - **K cache**: [s, H_kv, d_h] BF16 → key vectors untuk semua posisi
 - **V cache**: [s, H_kv, d_h] BF16 → value vectors untuk semua posisi
 
-Trial MHA:
+Trial MHA — asumsi formal terkunci (input rumus, bukan hasil sulap):
 
-- $H_{kv} = 16$ (16 heads)
-- $d_h = 128$ (head dimension)
-- Per posisi: $16 × 128 × 2$ B (K) + $16 × 128 × 2$ B (V) = 8192 B
-- Per token: 8192 B = 8 KB
-- @2048 ctx: $2048 × 8$ KB = 16 MB per layer
-- 24 layer: $24 × 16$ MB = 384 MB total
+- $H_{kv} = 16$ (KV heads, config `num_key_value_heads`), $d_h = 128$ (head dim),
+  $L = 24$ layer, cache disimpan BF16 ($b = 2$ B/elemen).
+- Per slot posisi per layer: $2 \cdot H_{kv} \cdot d_h \cdot b = 2 \times 16 \times 128 \times 2 = 8192$ B $= 8$ KiB (K+V).
+- Total cache: $KV(ctx) = L \cdot 8192 \cdot ctx$.
+- Instans terverifikasi: $KV(2048) = 402.653.184$ B $= 384$ MiB;
+  $KV(4096) = 805.306.368$ B $= 768$ MiB $= 0{,}75$ GiB.
+- Cross-check independen: $W_{res} = 2 \cdot 151936 \cdot 2048 \cdot 4 = 2.489.319.424$ B
+  $= 2{,}318$ GiB (dua matriks F32) — konsisten dengan M1/M4.
 
 ### Memory Budget Breakdown
 
@@ -312,8 +347,26 @@ Trial MHA:
 | Attention scratch F32 (QKV new + scores [h,1,S] + out) | 168 KiB | 296 KiB | 1 layer |
 | MoE scratch F32 (router/dispatch/SwiGLU/combine/shared) | 115 KiB | 115 KiB | 1 layer |
 | I/O buffers                      | 1 MB         | 1 MB         | 1 layer        |
-| **Total peak bound @2K**          | **≈3,82 GiB** | -           | < 5 GiB gate   |
-| **Total peak bound @4K**          | -            | **≈4,20 GiB** | < 5 GiB gate  |
+| **$M_{tensor}$ @2K (accounted tensor peak)** | **≈3,82 GiB** | - | terhitung, bukan process bound |
+| **$M_{tensor}$ @4K (accounted tensor peak)** | - | **≈4,20 GiB** | terhitung, bukan process bound |
+
+**Dekomposisi $M_{peak}$ (normatif):** tabel di atas adalah $M_{tensor}$ —
+penjumlahan komponen bernama yang overlap — BUKAN upper bound proses. Bound proses:
+
+$$M_{peak\_bound} = M_{tensor} + M_{runtime} + M_{alloc} \le 5\ \text{GiB}, \qquad M_{peak\_observed} = \text{VmHWM}$$
+
+| Komponen | Isi | Allowance @4K | Cara verifikasi |
+|---|---|---|---|
+| $M_{tensor}$ | semua baris tabel (tensor + scratch + io explisit) | 4,20 GiB (terhitung) | aritmetika § ini |
+| $M_{runtime}$ | tokenizer + JSON buffers + logits transient [1,V] + thread stacks (@threads=1 gate) + tensor metadata + overhead runtime | ≤ 150 MiB | diukur-dicatatkan per laporan; tembus → naikkan allowance via rationale, bukan diam-diam |
+| $M_{alloc}$ | fragmentasi + metadata allocator (I/O path = pread, tanpa mmap; readahead hanya memengaruhi physical, bukan RSS) | ≤ 150 MiB (~3,5%) | tidak langsung; terverifikasi via selisih observed-vs-bound |
+| $M_{page\_cache}$ | file/page cache ter-charge cgroup | observability SAJA (`memory.stat`/VmHWM-eksklusif: RSS tidak mencakup page cache hasil `read()`) | dilaporkan, tidak di-gate (konsisten keputusan M4) |
+
+Bound @4K: $4{,}20 + 0{,}15 + 0{,}15 = 4{,}50$ GiB → margin eksplisit tak-teralokasi
+$0{,}50$ GiB ke gate 5 GiB. Gigi pengaman: $M_{peak\_observed} \le 5$ GiB WAJIB, dan
+$observed > bound \Rightarrow$ lubang akuntansi ⇒ investigasi (bound yang dilampaui
+ukurannya sama gagalnya dengan gate yang dilampaui). Memory gate diukur @threads=1;
+penggunaan threads=c pada sweep dilaporkan terpisah.
 
 ### KV Cache Lifecycle
 
@@ -326,17 +379,31 @@ Trial MHA:
    - Store K/V untuk semua posisi di KV cache.
 4. KV cache size = s_prompt × 8 KB per layer.
 
-**Decode Phase** (untuk t = 1..N):
+**Decode Phase** — kontrak posisi eksplisit (normatif; menggantikan label `t-1` yang ambigu).
+Notasi: $S$ = panjang prompt, $i = 0..N-1$ = iterasi decode, $p$ = posisi sekuens,
+$g$ = jumlah token ter-generate sejauh ini.
 
-1. Generate token t-1 (sampling/greedy).
-2. Lookup embedding untuk token t-1 → hidden state [1, H].
-3. Loop layer 0..23:
-   - Compute Q untuk posisi baru (s_prompt + t - 1).
-   - Retrieve K/V dari cache (semua posisi 0..s_prompt + t - 1).
-   - Compute attention (Q @ K^T @ V).
-   - Forward MoE.
-   - Store K/V baru untuk posisi s_prompt + t - 1.
-4. KV cache size = (s_prompt + t) × 8 KB per layer.
+Prefill:
+- Input = prompt$[0:S]$; forward semua posisi; cache K/V untuk posisi $[0, S)$.
+- `next_logits` = logits pada posisi $S-1$.
+
+Decode step $i$:
+- `next_token = sample(next_logits)`; `generated[i] = next_token`.
+- Input = `next_token` pada posisi $p = S + i$ (SATU token, bukan ulang prompt).
+- Forward satu token di $p$; append K/V di $p$; `next_logits` = logits di $p$.
+
+Invarian (wajib sebagai debug assertion di engine DAN oracle):
+
+```
+cache_len_before_step = S + g          # panjang cache terisi sebelum step
+input_position        = cache_len_before_step   # = p, tidak pernah t-1
+cache_len_after_step  = cache_len_before_step + 1
+cache_len_after_step <= ctx            # dijamin rantai bound P0-1
+```
+
+Ambiguitas yang dihapus: indeks token generate ($i$) ≠ posisi sekuens ($p = S+i$) ≠
+sumber logits (posisi $p$ sebelumnya). Retrieve K di step $i$ mencakup posisi
+$[0, p)$ half-open — tidak ada posisi "baru yang belum di-store" di dalamnya.
 
 **Cleanup**:
 
@@ -348,7 +415,7 @@ Trial MHA:
 **Static allocation** (M5 trial):
 
 - Pre-allocate KV cache dengan size = context_size × 8 KB per layer.
-- Validasi: context_size ≤ s_max (dari config + memory constraint).
+- Validasi rantai bound `S + N ≤ ctx ≤ s_max` setelah tokenize, sebelum alloc (bukan `ctx ≤ s_max` saja).
 - Gagal alloc → error M5_ERR_KV_ALLOC, exit 3.
 
 **Dynamic allocation** (opsional untuk M7+):
@@ -358,9 +425,10 @@ Trial MHA:
 
 ### KV Cache Position Tracking
 
-- Position index: 0..(s_prompt + N - 1).
-- RoPE position embedding diaplikasikan per position.
-- Attention mask: causal (hanya attention ke posisi ≤ current).
+- Posisi terisi selalu interval half-open $[0, L)$ dengan $L$ = panjang cache terisi;
+  total slot teralokasi = ctx (static), slot terpakai setelah sesi penuh = $S+N \le ctx$.
+- RoPE position embedding diaplikasikan per position $p$ (sama di kedua path oracle).
+- Attention mask: causal (hanya attention ke posisi $< p$, plus $p$ sendiri).
 
 ### KV Cache Persistence
 
@@ -376,7 +444,7 @@ flowchart TD
     B --> C{Valid prompt?}
     C -->|No| ERR1[Error: M5_ERR_INPUT, exit 1]
     C -->|Yes| D[Tokenize prompt]
-    D --> E{Context size OK?}
+    D --> E{S+N ≤ ctx ≤ s_max?}
     E -->|No| ERR2[Error: M5_ERR_CONTEXT_SIZE, exit 2]
     E -->|Yes| F[Allocate KV cache]
     F --> G{KV alloc OK?}
@@ -391,10 +459,10 @@ flowchart TD
     M --> N{Layer done?}
     N -->|No| I
     N -->|Yes| O[Prefill complete]
-    O --> P[Decode loop t=1..N]
+    O --> P[Decode loop i=0..N-1, p=S+i]
     P --> Q{All tokens done?}
     Q -->|Yes| Z[Write tokens.json]
-    Q -->|No| R[Sample token t-1]
+    Q -->|No| R[Sample next_token, input di p=S+i]
     R --> S[Lookup embedding]
     S --> T[Loop layer 0..23]
     T --> U[Pread layer weights]
@@ -403,8 +471,8 @@ flowchart TD
     W --> X[Forward layer]
     X --> Y{Forward OK?}
     Y -->|No| ERR5[Error: M5_ERR_DECODE, exit 5]
-    Y -->|Yes| AA[Store K/V new pos]
-    AA --> AB[Increment t]
+    Y -->|Yes| AA[Store K/V di p, cache_len+1]
+    AA --> AB[Increment i, g+1]
     AB --> Q
     Z --> AC{Write OK?}
     AC -->|No| ERR6[Error: M5_ERR_OUTPUT, exit 6]
@@ -432,11 +500,39 @@ F2: $M_{KV}(s) = 2\cdot L_{att}\cdot H_{kv}\cdot d_h\cdot s\cdot b$.
 
 Trial MHA: $2×24×16×128×2$ B = 196.608 B/token = **0,1875 MiB/token** → @4096 = **0,75 GiB** → konteks praktis ≤ 8K di 8 GB.
 
-F3b: $N_{stream}≈2{,}0668$ B → $B_{tok}^{decode}≈4{,}134$ GB/token (BF16).
+F3b — traffic per token decode, steady state (definisi terkunci sebelum implementasi;
+$B_{tok}$ telanjang DILARANG dipakai tanpa subscript):
 
-F5: $T_{data}=B_{tok}(\rho_B/BW_{RAM}+(1-\rho_B)/BW_{SSD})$, $BW_{eff}=B_{tok}/T_{data}$, dan forecast serial $T_{tok}=T_{data}+T_{comp}+T_{ovh}$. $\rho_C≈\min(1,C_{pc}/W_{stream})$ hanya estimasi kapasitas awal untuk fraksi byte terukur $\rho_B$.
+- $B_{tok\_disk} = N_{stream} \cdot 2$ B $\approx 4{,}134$ GB/token — SATU-SATUNYA traffic
+  disk: attn penuh ($0{,}4027$B param) + routed aktif 4/60 ($0{,}8305$B) + shared penuh
+  ($0{,}8305$B) + remah router/norm/gate ($0{,}0031$B) $= 2{,}0668$B param BF16.
+  Embed/head resident (bukan traffic); KV di RAM (bukan disk).
+- $B_{tok\_kv\_read}(S) = L \cdot S \cdot 8\,\text{KiB} = S \cdot 192$ KiB (baca histori K+V
+  per layer); $B_{tok\_kv\_write} = L \cdot 8$ KiB $= 192$ KiB konstan (satu slot baru).
+  @2048: 384 MiB + 192 KiB; @4096: 768 MiB + 192 KiB.
+- $B_{tok\_ram} = \rho_B \cdot B_{tok\_disk} + B_{tok\_kv}$ (porsi cache + traffic KV;
+  aktivasi kecil tercakup $T_{comp}$).
+- $B_{tok\_total} = B_{tok\_disk} + B_{tok\_kv}$ (union tanpa double-count).
+- F5 memakai $B_{tok} \equiv B_{tok\_disk}$; traffic KV masuk aditif via $T_{kv}$ di bawah
+  (bukan dilipat ke $B_{tok}$).
 
-Contoh estimasi (bukan acceptance): $C_{pc}=3$ GB, $W_{stream}=26$ GB → $\rho_C≈0{,}1154$. Jika $\rho_B=\rho_C$, $BW_{RAM}=15$ GB/s, dan $BW_{SSD}=3$ GB/s, maka $BW_{eff}≈3{,}305$ GB/s dan $T_{data}≈1{,}251$ s/token; + placeholder $T_{comp}=0{,}05$ s → ≈1,301 s/token ≈0,77 tok/s. Placeholder wajib diganti ukur.
+F5 (v1): $T_{data}=B_{tok\_disk}(\rho_B/BW_{RAM}+(1-\rho_B)/BW_{SSD})$, $BW_{eff}=B_{tok\_disk}/T_{data}$,
+$T_{kv}=(B_{tok\_kv\_read}+B_{tok\_kv\_write})/BW_{RAM}$, dan forecast serial
+$T_{tok}=T_{data}+T_{kv}+T_{comp}+T_{ovh}$.
+
+Pipeline kalibrasi (normatif — menggantikan "meleset → update → gate jalan"):
+
+1. **Prediksi v0**: dengan $\rho_C \approx \min(1, C_{pc}/W_{stream})$ BERLABEL asumsi
+   (bukan acceptance) + $BW$ terukur + $T_{comp}$ placeholder eksplisit.
+2. **Ukur**: 30 run §4.4; pisahkan $T_{data}$ (linear fit vs $B_{tok\_disk}$) dari
+   $T_{kv}+T_{comp}+T_{ovh}$ (intersep/komponen).
+3. **Fit $\rho_B$** (dan $BW$ bila perlu) dari data; **freeze** konstanta di laporan.
+4. **Prediksi v1** (frozen) → **acceptance** $e_T \le 30\%$ terhadap v1.
+   Meleset v0 = ekspektasi (asumsi!), tidak blokir. Meleset v1 = FAIL — di sinilah
+   gate punya gigi. "Update konstanta lalu tetap lolos" tanpa siklus v0→v1→acceptance
+   = pelanggaran spec.
+
+Contoh estimasi (bukan acceptance): $C_{pc}=3$ GB, $W_{stream}=26$ GB → $\rho_C≈0{,}1154$. Jika $\rho_B=\rho_C$, $BW_{RAM}=15$ GB/s, dan $BW_{SSD}=3$ GB/s, maka $BW_{eff}≈3{,}305$ GB/s dan $T_{data}≈1{,}251$ s/token; + $T_{kv}≈0{,}027$ s (@2048) + placeholder $T_{comp}=0{,}05$ s → ≈1,328 s/token ≈0,75 tok/s. Placeholder wajib diganti ukur.
 
 F4: $I_{decode}≈1$ FLOP/byte (self-canceling) → memory-bound; optimasi = kurangi bytes atau naikkan BW, bukan FLOPs.
 
@@ -444,19 +540,27 @@ F4: $I_{decode}≈1$ FLOP/byte (self-canceling) → memory-bound; optimasi = kur
 
 | Gate   | Kriteria                                         | Threshold                                                                                                               | Metode                                                                       |
 | ------ | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| G-M5-1 | decode incremental == recompute                  | verdict loose (sama M4)                                                                                                 | 64 token @ ctx 2K                                                            |
+| G-M5-1 | decode incremental == recompute                  | F10 A→N→S loose (SHA bukan bukti — lihat Pembedaan di bawah)                                                        | 64 token @ ctx 2K                                                            |
 | G-M5-2 | prediksi F2 vs ukur                              | $e_{KV} \le 5\%$                                                                                                        | log engine + sampler                                                         |
-| G-M5-3 | memori @4K ctx                                   | $M_{peak} \le 5$ GiB                                                                                                    | VmHWM                                                                        |
+| G-M5-3 | memori @4K ctx                                   | $M_{peak} \le 5$ GiB (bound 4,50 GiB: tensor 4,20 + runtime/alloc 0,30)                                                | VmHWM + dekomposisi $M_{peak}$                                               |
 | G-M5-4 | kalibrasi waktu F5                               | $e_T \le 30\%$                                                                                                          | 30 run (`../03-testing.md` §4.4)                                             |
-| G-M5-5 | kurva skala core decode (rasio, device-agnostic) | monotonik ($T(c_2)\le T(c_1)\cdot1{,}05$) + $S_{tok}(c)\ge1$ + $e_{T,core}\le20\%$ + $c^*,r^*,p,\beta$ dilaporkan (F16) | sweep $c\in\{1,2,4,\dots\}\cap[1,C_{max}]$, 10 run/level + 30 run di $c^*$   |
+| G-M5-5 | kurva skala core decode (rasio, device-agnostic) | (a) non-regression: monotonik ($T(c_2)\le T(c_1)\cdot1{,}05$) ∧ $S_{tok}(c)\ge1$ ∀c, dengan $S_{tok}(c) = T_{tok}(1)/T_{tok}(c)$; (b) F16-consistency: $e_{T,core}\le20\%$; (c) titik operasi $c^*$ = c terkecil dengan $T(c^*) \le 1{,}05 \times \min_c T(c)$, dilabeli `scales` vs `flat (memory-bound)` dari slope F16 | sweep $c\in\{1,2,4,\dots\}\cap[1,C_{max}]$, 10 run/level + 30 run di $c^*$; $c^*,r^*,p,\beta$ dilaporkan (F16) |
 | G-M5-6 | floor bandwidth RAM (gate minimal)               | $BW_{RAM}\ge10$ GB/s single-thread Copy read-equiv                                                                      | STREAM-like (`../03-testing.md` §4.4), median 10 run, governor `performance` |
 
-Kalibrasi: $e_{KV}=|pred-meas|/meas$, $e_T=|T^{pred}-T^{meas}|/T^{meas}$. Gagal kalibrasi → update konstanta ρ/BW, tidak blokir tapi wajib catat. Titik operasi performa = $c^*$ (bukan $C_{max}$); $C_{max}$ terdeteksi saat run, tidak dipatok di spec.
+Kalibrasi: $e_{KV}=|pred-meas|/meas$, $e_T=|T^{pred}_{v1}-T^{meas}|/T^{meas}$ (terhadap prediksi
+v1 FROZEN, bukan v0). Meleset v0 = ekspektasi berlabel-asumsi, wajib catat + fit + freeze
+ulang, tidak blokir. Meleset v1 = FAIL G-M5-4. Titik operasi performa = $c^*$ (bukan
+$C_{max}$); $C_{max}$ terdeteksi saat run, tidak dipatok di spec.
+
+Catatan G-M5-5: kurva datar ($S_{tok} \approx 1$ di semua $c$) BUKAN kegagalan bila
+konsisten F16 — ia hasil valid "flat (memory-bound)" dengan $c^* = 1$ (jangan bakar
+core tanpa manfaat). Yang dilarang adalah mengklaimnya sebagai scaling; (a) dan (b)
+menjaga regresi dan kejujuran model, (c) menjaga ekonomi core.
 
 ## Testing
 
 - O: KV decode vs recompute.
-- B: decode N=30 + 2 warm-up, greedy, seed tetap; CSV + markdown p50/p95 + run-id di `reports/YYYY-MM-DD/`.
+- B: decode N=30 + 2 warm-up, greedy (seed tak relevan, tercatat null); CSV + markdown p50/p95 + run-id di `reports/YYYY-MM-DD/`.
 - B-core (F16): sweep $c$ kelipatan 2 hingga $C_{max}$ (terdeteksi run-time); tiap level 10 run + 2 warm-up, lalu 30 run di $c^*$; catat $C_{max}, c, r=c/C_{max}$, governor, `OMP_NUM_THREADS=c`; verdict numerik tetap `threads=1` terpisah.
 - Sampling RSS VmHWM + poller 100 ms; bytes via `/proc/<pid>/io`.
 
@@ -473,9 +577,10 @@ Kalibrasi: $e_{KV}=|pred-meas|/meas$, $e_T=|T^{pred}-T^{meas}|/T^{meas}$. Gagal 
 | IT-M5-5  | KV alloc fail (OOM)                       | Exit 3, error M5_ERR_KV_ALLOC     | HIGH     |
 | IT-M5-6  | Invalid prompt (kosong)                   | Exit 1, error M5_ERR_INPUT        | HIGH     |
 | IT-M5-7  | Cgroup memory.max=6G boundary @4K ctx     | Exit 0, VmHWM ≤ 5 GiB             | HIGH     |
-| IT-M5-8  | Deterministic output (threads=1, seed=42) | SHA-256 match di 2 run            | MEDIUM   |
+| IT-M5-8  | Deterministic output = reproduksibilitas A SAJA (threads=1, greedy; seed diabaikan) | SHA-256 match di 2 run (bukan bukti ekuivalensi B) | MEDIUM   |
 | IT-M5-9  | Max-tokens = 0                            | Exit 1, error M5_ERR_INPUT        | MEDIUM   |
 | IT-M5-10 | Prefill shard corrupt                     | Exit 4, error M5_ERR_PREFILL      | MEDIUM   |
+| IT-M5-11 | Prompt+max overflow ctx (S+N > ctx)       | Exit 2, error M5_ERR_CONTEXT_SIZE | HIGH     |
 
 ### Test Automation
 
@@ -530,6 +635,18 @@ kimo decode \
   --workdir "$WORKDIR" || true
 # Expect exit 2
 
+# IT-M5-11: S + N > ctx (prompt ~5000 kata ≫ sisa 2048-64; tokenizer apa pun jebol)
+BIG_PROMPT=$(python3 -c "print('hello ' * 5000)")
+if kimo decode \
+  --model-dir "$MODEL_DIR" \
+  --prompt "$BIG_PROMPT" \
+  --max-tokens 64 \
+  --context-size 2048 \
+  --workdir "$WORKDIR"; then
+  echo "FAIL: overflow konteks diterima"; exit 1
+fi
+# Expect exit 2, SEBELUM alokasi KV
+
 # IT-M5-7: Cgroup boundary
 systemd-run --scope -p MemoryMax=6G \
   kimo decode \
@@ -540,7 +657,9 @@ systemd-run --scope -p MemoryMax=6G \
   --workdir "$WORKDIR"
 # Expect exit 0, VmHWM ≤ 5 GiB
 
-# IT-M5-8: Deterministic
+# IT-M5-8: Reproduksibilitas A (run-sama → byte-sama). BUKAN bukti ekuivalensi B
+# (KV-vs-recompute dibuktikan HANYA via F10 di IT-M5-2).
+# --seed 42 sengaja diteruskan: wajib diterima-namun-diabaikan pada greedy (exit 0).
 OUTPUT1="$WORKDIR/tokens_run1.json"
 OUTPUT2="$WORKDIR/tokens_run2.json"
 kimo decode \
@@ -567,6 +686,10 @@ SHA2=$(sha256sum "$OUTPUT2" | cut -d' ' -f1)
 ```
 
 ### Regression Golden Outputs
+
+SHA di sini = identity pin artifact oracle (level R), BUKAN verdict engine:
+kebenaran KV-vs-recompute dinilai semata via F10 (IT-M5-2), reproduksibilitas
+run-sama via SHA (IT-M5-8). Dua pertanyaan berbeda, dua mekanisme berbeda.
 
 - Commit `m5_kv_decode_logits_kv.bin` + `m5_kv_decode_logits_recompute.bin` + SHA-256 ke repo.
 - Setiap build: jalankan IT-M5-2 → bandingkan dengan golden.
@@ -655,7 +778,8 @@ Header format (JSON + padding to 256 bytes):
 **Greedy (temperature = 0)**:
 
 - Select token dengan probabilitas maksimum (argmax).
-- Deterministik: seed tidak berpengaruh.
+- Deterministik: seed tidak berpengaruh (flag `--seed` tetap diterima tapi diabaikan;
+  output JSON mencatat `"seed": null`).
 - Digunakan untuk G-M5-1 (verifikasi numerik).
 
 **Temperature sampling (temperature > 0)**:
@@ -693,20 +817,21 @@ def temperature_sample(logits, vocab_size, temperature, seed):
 
 ### CLI Arguments
 
-- `--seed <SEED>`: Random seed untuk sampling (default: 42).
+- `--seed <SEED>`: Random seed untuk sampling (default: 42) — hanya berlaku bila temperature > 0.
 - `--temperature <TEMP>`: Temperature untuk sampling (default: 0 = greedy).
 - `--top-k <K>`: Top-k sampling (opsional, tidak di M5).
 - `--top-p <P>`: Nucleus sampling (opsional, tidak di M5).
 
 ### Determinism Contract
 
-- Untuk G-M5-1: temperature = 0 (greedy), threads = 1 → deterministik.
-- Untuk benchmark: temperature = 0 (greedy), seed tetap → deterministik.
+- Untuk G-M5-1: temperature = 0 (greedy), threads = 1 → deterministik (tanpa peran seed).
+- Untuk benchmark: temperature = 0 (greedy) → deterministik; seed dicatat `null`.
 - Untuk generasi bebas: temperature > 0, seed tetap → reproducible.
 
 ### Oracle Sampling
 
-Oracle PyTorch menggunakan `torch.multinomial` dengan `generator=torch.Generator().manual_seed(seed)` untuk deterministik.
+Oracle PyTorch menggunakan `torch.multinomial` dengan `generator=torch.Generator().manual_seed(seed)`
+untuk deterministik (hanya path temperature > 0; path greedy = argmax murni, tanpa generator/seed).
 
 ## Decode CLI Output Examples
 
@@ -722,6 +847,11 @@ Oracle PyTorch menggunakan `torch.multinomial` dengan `generator=torch.Generator
   "generated_tokens": 64,
   "context_size": 2048,
   "kv_cache_bytes": 402653184,
+  "sampling": {
+    "mode": "greedy",
+    "temperature": 0,
+    "seed": null
+  },
   "metrics": {
     "prefill_time_sec": 45.2,
     "decode_time_sec": 62.5,
@@ -924,7 +1054,7 @@ kimo decode \
 ```
 
 - O: KV decode vs recompute.
-- B: decode N=30 + 2 warm-up, greedy, seed tetap; CSV + markdown p50/p95 + run-id di `reports/YYYY-MM-DD/`.
+- B: decode N=30 + 2 warm-up, greedy (seed tak relevan, tercatat null); CSV + markdown p50/p95 + run-id di `reports/YYYY-MM-DD/`.
 - B-core (F16): sweep $c$ kelipatan 2 hingga $C_{max}$ (terdeteksi run-time); tiap level 10 run + 2 warm-up, lalu 30 run di $c^*$; catat $C_{max}, c, r=c/C_{max}$, governor, `OMP_NUM_THREADS=c`; verdict numerik tetap `threads=1` terpisah.
 - Sampling RSS VmHWM + poller 100 ms; bytes via `/proc/<pid>/io`.
 
@@ -938,22 +1068,22 @@ kimo decode \
 
 - [ ] G-M5-1 KV decode == recompute PASS loose (Δ_max ≤ 1e-2, ε_rel ≤ 1e-4, A ≥ 99.9%, Δ_CE ≤ 0.02)
 - [ ] G-M5-2 F2 prediction error ≤ 5% (e_KV ≤ 5%)
-- [ ] G-M5-3 memory @4K ctx ≤ 5 GiB (VmHWM)
-- [ ] G-M5-4 F5 calibration error ≤ 30% (e_T ≤ 30%)
-- [ ] G-M5-5 core scaling monotonic + S_tok ≥ 1 + e_T,core ≤ 20% + c*, r*, p, β reported
+- [ ] G-M5-3 memory @4K ctx ≤ 5 GiB (bound 4,50 GiB; observed = VmHWM; gap dilapor)
+- [ ] G-M5-4 F5 calibration error ≤ 30% ($e_T$ terhadap prediksi v1 FROZEN)
+- [ ] G-M5-5 non-regression + F16-consistency + aturan $c^*$ + label scales/flat; $S_{tok}(c) = T_{tok}(1)/T_{tok}(c)$
 - [ ] G-M5-6 BW_RAM ≥ 10 GB/s (STREAM-like, floor)
 
 ### CLI Implementation
 
 - [ ] `kimo decode` subcommand terimplementasi dengan semua argumen
-- [ ] Input validation: prompt, max-tokens, context-size, workdir writability
+- [ ] Input validation: prompt, max-tokens, rantai bound `S + N ≤ ctx ≤ s_max` setelah tokenize sebelum KV alloc, workdir writability
 - [ ] Exit codes: 0 (success), 1-6 (error per stage), semuanya teruji
 - [ ] Output JSON dengan run_id, metrics, prefill/decode timing tercommit schema
 
 ### Oracle & Fixture
 
 - [ ] `tools/oracle/oracle_kv_decode.py` menghasilkan KV decode + recompute logits FP32
-- [ ] Oracle deterministik (seed=42, thread=1, FP32, greedy)
+- [ ] Oracle deterministik (seed=42 hanya untuk temperature>0, thread=1, FP32, greedy)
 - [ ] `tools/fixtures/m5_kv_decode.json` tercommit dengan 64 token @ ctx 2K
 - [ ] SHA-256 logits KV decode + recompute tercommit untuk regression protection
 - [ ] Generation script `tools/fixtures/generate_m5.py` teruji
@@ -968,11 +1098,12 @@ kimo decode \
 
 ### KV Cache Management
 
-- [ ] KV cache layout: [s, H_kv, d_h] BF16 per layer (K + V)
+- [ ] KV cache layout: [s, H_kv, d_h] BF16 per layer (K + V); asumsi formal terkunci (H_kv=16, d_h=128, L=24, b=2)
+- [ ] KV decode vs recompute: kunci semantik posisional + invarian per-layer (K/V/Q/attn-out, format `layer L, <kelas> mismatch`) sebelum verdict agregat
 - [ ] Memory budget breakdown teruji (@2K ctx ≈3,82 GiB, @4K ctx ≈4,20 GiB bound)
 - [ ] KV cache lifecycle: prefill (store) → decode (retrieve + store) → cleanup
 - [ ] Static allocation strategy (pre-allocate @ context_size)
-- [ ] Position tracking: 0..(s_prompt + N - 1), RoPE per position, causal mask
+- [ ] Position tracking: interval half-open [0,L), invarian cache_len/input_position, RoPE per position, causal mask
 - [ ] KV cache in-memory only (M5), tidak persist ke disk
 
 ### KV Decode vs Recompute
@@ -987,16 +1118,18 @@ kimo decode \
 
 - [ ] F10 verdict PASS loose untuk KV decode vs recompute
 - [ ] F2 prediction error e_KV ≤ 5% (predicted vs measured KV size)
-- [ ] F5 calibration error e_T ≤ 30% (predicted vs measured T_tok)
+- [ ] F5 calibration error e_T ≤ 30% (measured vs prediksi v1 frozen)
+- [ ] F5 calibration T_tok vs prediksi v1 (e_T ≤ 30%); meleset v0 → fit+freeze, meleset v1 → FAIL
 
 ### Integration Tests
 
 - [ ] Happy path: 64 token @ ctx 2K → KV decode → compare → PASS
 - [ ] Context size 4K: KV alloc, VmHWM ≤ 5 GiB
 - [ ] Context size > s_max: error M5_ERR_CONTEXT_SIZE, exit 2
+- [ ] S + N > ctx: error M5_ERR_CONTEXT_SIZE, exit 2, sebelum alokasi KV (IT-M5-11)
 - [ ] KV alloc fail: error M5_ERR_KV_ALLOC, exit 3
 - [ ] Invalid prompt (kosong): error M5_ERR_INPUT, exit 1
-- [ ] Deterministic output: threads=1, seed=42 → logits sama di 2 run (SHA-256 match)
+- [ ] Deterministic output (A): threads=1, greedy (seed diabaikan, tercatat null) → run sama byte-sama (SHA-256 match); ekuivalensi (B) HANYA via F10, tidak pernah via SHA
 
 ### Performance Baseline
 
@@ -1005,7 +1138,7 @@ kimo decode \
 - [ ] p50/p95 VmHWM tercatat (@2K ctx ≤ 5 GiB, @4K ctx ≤ 5 GiB)
 - [ ] Bytes read tercatat (prefill: ~28,63 GB, decode: ~264 MB untuk 64 token)
 - [ ] Tokens per second tercatat (tok/s)
-- [ ] F5 calibration T_tok vs predicted (e_T ≤ 30%)
+- [ ] F5 calibration T_tok vs prediksi v1 frozen (e_T ≤ 30%); meleset v1 → FAIL
 - [ ] F2 calibration KV size vs predicted (e_KV ≤ 5%)
 
 ### Core Scaling (F16)
@@ -1014,8 +1147,8 @@ kimo decode \
 - [ ] C_max terdeteksi run-time (tidak dipatok di spec)
 - [ ] Tiap level: 10 run + 2 warm-up
 - [ ] 30 run di c\* (titik operasi)
-- [ ] Monotonik: T(c_2) ≤ T(c_1)·1,05
-- [ ] Speedup S_tok(c) ≥ 1
+- [ ] Monotonik: T(c_2) ≤ T(c_1)·1,05 ∧ S_tok(c) ≥ 1 (non-regression)
+- [ ] Speedup $S_{tok}(c) = T_{tok}(1)/T_{tok}(c)$; $c^*$ = c terkecil ≤1,05×min T; label scales/flat
 - [ ] e_T,core ≤ 20%
 - [ ] c*, r*, p, β dilaporkan (device-agnostic)
 - [ ] Governor tercatat (performance/schedutil)
@@ -1044,10 +1177,10 @@ kimo decode \
 - [ ] Laporan decode tercommit (p50/p95 walltime, VmHWM, bytes-read, tok/s)
 - [ ] Run ID tercatat per run (format: M5-YYYYMMDD-NNN)
 - [ ] Log per-phase timing tercatat (prefill, decode)
-- [ ] Konstanta F5 ter-update (ρ, BW_eff, T_comp)
+- [ ] Konstanta F5 frozen di laporan (ρ_B fit, BW, T_kv, T_comp); v0 berlabel asumsi
 - [ ] Kurva F16 ter-commit (c*, r*, p, β, tanpa angka core absolut)
 - [ ] BW_RAM terukur ≥ floor tercatat
-- [ ] Kalibrasi tercatat bila e_T atau e_KV meleset
+- [ ] Meleset v0 → fit+freeze+catat (tidak blokir); meleset v1 atau e_KV → FAIL
 
 ## Wave Note
 
