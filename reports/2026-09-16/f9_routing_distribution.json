@@ -1,0 +1,1569 @@
+{
+  "description": "F9 Routing Distribution and Load-Balance Baseline",
+  "seed": 42,
+  "num_samples": 256,
+  "num_experts": 60,
+  "top_k": 4,
+  "primary_layer_0": {
+    "layer": 0,
+    "num_experts": 60,
+    "num_samples": 256,
+    "top_k": 4,
+    "load_balance_loss": 1.001355,
+    "coefficient_of_variation": 0.387763,
+    "expert_stats": [
+      {
+        "expert_id": 0,
+        "selection_count": 16,
+        "frequency": 0.015625,
+        "avg_probability": 0.016785
+      },
+      {
+        "expert_id": 1,
+        "selection_count": 8,
+        "frequency": 0.007812,
+        "avg_probability": 0.016507
+      },
+      {
+        "expert_id": 2,
+        "selection_count": 24,
+        "frequency": 0.023438,
+        "avg_probability": 0.01686
+      },
+      {
+        "expert_id": 3,
+        "selection_count": 27,
+        "frequency": 0.026367,
+        "avg_probability": 0.016776
+      },
+      {
+        "expert_id": 4,
+        "selection_count": 10,
+        "frequency": 0.009766,
+        "avg_probability": 0.016532
+      },
+      {
+        "expert_id": 5,
+        "selection_count": 4,
+        "frequency": 0.003906,
+        "avg_probability": 0.016687
+      },
+      {
+        "expert_id": 6,
+        "selection_count": 10,
+        "frequency": 0.009766,
+        "avg_probability": 0.01676
+      },
+      {
+        "expert_id": 7,
+        "selection_count": 14,
+        "frequency": 0.013672,
+        "avg_probability": 0.016432
+      },
+      {
+        "expert_id": 8,
+        "selection_count": 16,
+        "frequency": 0.015625,
+        "avg_probability": 0.016551
+      },
+      {
+        "expert_id": 9,
+        "selection_count": 23,
+        "frequency": 0.022461,
+        "avg_probability": 0.016732
+      },
+      {
+        "expert_id": 10,
+        "selection_count": 26,
+        "frequency": 0.025391,
+        "avg_probability": 0.016763
+      },
+      {
+        "expert_id": 11,
+        "selection_count": 11,
+        "frequency": 0.010742,
+        "avg_probability": 0.016458
+      },
+      {
+        "expert_id": 12,
+        "selection_count": 19,
+        "frequency": 0.018555,
+        "avg_probability": 0.01669
+      },
+      {
+        "expert_id": 13,
+        "selection_count": 15,
+        "frequency": 0.014648,
+        "avg_probability": 0.016571
+      },
+      {
+        "expert_id": 14,
+        "selection_count": 12,
+        "frequency": 0.011719,
+        "avg_probability": 0.016604
+      },
+      {
+        "expert_id": 15,
+        "selection_count": 13,
+        "frequency": 0.012695,
+        "avg_probability": 0.01643
+      },
+      {
+        "expert_id": 16,
+        "selection_count": 20,
+        "frequency": 0.019531,
+        "avg_probability": 0.016672
+      },
+      {
+        "expert_id": 17,
+        "selection_count": 25,
+        "frequency": 0.024414,
+        "avg_probability": 0.016671
+      },
+      {
+        "expert_id": 18,
+        "selection_count": 20,
+        "frequency": 0.019531,
+        "avg_probability": 0.016732
+      },
+      {
+        "expert_id": 19,
+        "selection_count": 20,
+        "frequency": 0.019531,
+        "avg_probability": 0.016758
+      },
+      {
+        "expert_id": 20,
+        "selection_count": 15,
+        "frequency": 0.014648,
+        "avg_probability": 0.016559
+      },
+      {
+        "expert_id": 21,
+        "selection_count": 16,
+        "frequency": 0.015625,
+        "avg_probability": 0.016681
+      },
+      {
+        "expert_id": 22,
+        "selection_count": 13,
+        "frequency": 0.012695,
+        "avg_probability": 0.016563
+      },
+      {
+        "expert_id": 23,
+        "selection_count": 21,
+        "frequency": 0.020508,
+        "avg_probability": 0.016585
+      },
+      {
+        "expert_id": 24,
+        "selection_count": 13,
+        "frequency": 0.012695,
+        "avg_probability": 0.016607
+      },
+      {
+        "expert_id": 25,
+        "selection_count": 17,
+        "frequency": 0.016602,
+        "avg_probability": 0.01671
+      },
+      {
+        "expert_id": 26,
+        "selection_count": 22,
+        "frequency": 0.021484,
+        "avg_probability": 0.016734
+      },
+      {
+        "expert_id": 27,
+        "selection_count": 20,
+        "frequency": 0.019531,
+        "avg_probability": 0.016638
+      },
+      {
+        "expert_id": 28,
+        "selection_count": 25,
+        "frequency": 0.024414,
+        "avg_probability": 0.016845
+      },
+      {
+        "expert_id": 29,
+        "selection_count": 22,
+        "frequency": 0.021484,
+        "avg_probability": 0.016787
+      },
+      {
+        "expert_id": 30,
+        "selection_count": 15,
+        "frequency": 0.014648,
+        "avg_probability": 0.016555
+      },
+      {
+        "expert_id": 31,
+        "selection_count": 13,
+        "frequency": 0.012695,
+        "avg_probability": 0.016746
+      },
+      {
+        "expert_id": 32,
+        "selection_count": 21,
+        "frequency": 0.020508,
+        "avg_probability": 0.016792
+      },
+      {
+        "expert_id": 33,
+        "selection_count": 1,
+        "frequency": 0.000977,
+        "avg_probability": 0.01658
+      },
+      {
+        "expert_id": 34,
+        "selection_count": 25,
+        "frequency": 0.024414,
+        "avg_probability": 0.016815
+      },
+      {
+        "expert_id": 35,
+        "selection_count": 15,
+        "frequency": 0.014648,
+        "avg_probability": 0.016733
+      },
+      {
+        "expert_id": 36,
+        "selection_count": 29,
+        "frequency": 0.02832,
+        "avg_probability": 0.016802
+      },
+      {
+        "expert_id": 37,
+        "selection_count": 1,
+        "frequency": 0.000977,
+        "avg_probability": 0.016641
+      },
+      {
+        "expert_id": 38,
+        "selection_count": 25,
+        "frequency": 0.024414,
+        "avg_probability": 0.016758
+      },
+      {
+        "expert_id": 39,
+        "selection_count": 13,
+        "frequency": 0.012695,
+        "avg_probability": 0.016627
+      },
+      {
+        "expert_id": 40,
+        "selection_count": 18,
+        "frequency": 0.017578,
+        "avg_probability": 0.016762
+      },
+      {
+        "expert_id": 41,
+        "selection_count": 19,
+        "frequency": 0.018555,
+        "avg_probability": 0.016691
+      },
+      {
+        "expert_id": 42,
+        "selection_count": 23,
+        "frequency": 0.022461,
+        "avg_probability": 0.016797
+      },
+      {
+        "expert_id": 43,
+        "selection_count": 25,
+        "frequency": 0.024414,
+        "avg_probability": 0.016748
+      },
+      {
+        "expert_id": 44,
+        "selection_count": 10,
+        "frequency": 0.009766,
+        "avg_probability": 0.016691
+      },
+      {
+        "expert_id": 45,
+        "selection_count": 0,
+        "frequency": 0.0,
+        "avg_probability": 0.016713
+      },
+      {
+        "expert_id": 46,
+        "selection_count": 16,
+        "frequency": 0.015625,
+        "avg_probability": 0.016582
+      },
+      {
+        "expert_id": 47,
+        "selection_count": 13,
+        "frequency": 0.012695,
+        "avg_probability": 0.016333
+      },
+      {
+        "expert_id": 48,
+        "selection_count": 11,
+        "frequency": 0.010742,
+        "avg_probability": 0.016624
+      },
+      {
+        "expert_id": 49,
+        "selection_count": 18,
+        "frequency": 0.017578,
+        "avg_probability": 0.01671
+      },
+      {
+        "expert_id": 50,
+        "selection_count": 20,
+        "frequency": 0.019531,
+        "avg_probability": 0.016728
+      },
+      {
+        "expert_id": 51,
+        "selection_count": 12,
+        "frequency": 0.011719,
+        "avg_probability": 0.01674
+      },
+      {
+        "expert_id": 52,
+        "selection_count": 13,
+        "frequency": 0.012695,
+        "avg_probability": 0.016476
+      },
+      {
+        "expert_id": 53,
+        "selection_count": 20,
+        "frequency": 0.019531,
+        "avg_probability": 0.016636
+      },
+      {
+        "expert_id": 54,
+        "selection_count": 20,
+        "frequency": 0.019531,
+        "avg_probability": 0.016657
+      },
+      {
+        "expert_id": 55,
+        "selection_count": 20,
+        "frequency": 0.019531,
+        "avg_probability": 0.016626
+      },
+      {
+        "expert_id": 56,
+        "selection_count": 23,
+        "frequency": 0.022461,
+        "avg_probability": 0.016744
+      },
+      {
+        "expert_id": 57,
+        "selection_count": 19,
+        "frequency": 0.018555,
+        "avg_probability": 0.016609
+      },
+      {
+        "expert_id": 58,
+        "selection_count": 18,
+        "frequency": 0.017578,
+        "avg_probability": 0.016558
+      },
+      {
+        "expert_id": 59,
+        "selection_count": 31,
+        "frequency": 0.030273,
+        "avg_probability": 0.016844
+      }
+    ],
+    "hot_experts": [
+      59,
+      36,
+      3,
+      10,
+      17,
+      28,
+      34,
+      38
+    ],
+    "cold_experts": [
+      1,
+      4,
+      5,
+      6,
+      33,
+      37,
+      44,
+      45
+    ]
+  },
+  "all_layers": {
+    "layer_0": {
+      "layer": 0,
+      "num_experts": 60,
+      "num_samples": 256,
+      "top_k": 4,
+      "load_balance_loss": 1.001355,
+      "coefficient_of_variation": 0.387763,
+      "expert_stats": [
+        {
+          "expert_id": 0,
+          "selection_count": 16,
+          "frequency": 0.015625,
+          "avg_probability": 0.016785
+        },
+        {
+          "expert_id": 1,
+          "selection_count": 8,
+          "frequency": 0.007812,
+          "avg_probability": 0.016507
+        },
+        {
+          "expert_id": 2,
+          "selection_count": 24,
+          "frequency": 0.023438,
+          "avg_probability": 0.01686
+        },
+        {
+          "expert_id": 3,
+          "selection_count": 27,
+          "frequency": 0.026367,
+          "avg_probability": 0.016776
+        },
+        {
+          "expert_id": 4,
+          "selection_count": 10,
+          "frequency": 0.009766,
+          "avg_probability": 0.016532
+        },
+        {
+          "expert_id": 5,
+          "selection_count": 4,
+          "frequency": 0.003906,
+          "avg_probability": 0.016687
+        },
+        {
+          "expert_id": 6,
+          "selection_count": 10,
+          "frequency": 0.009766,
+          "avg_probability": 0.01676
+        },
+        {
+          "expert_id": 7,
+          "selection_count": 14,
+          "frequency": 0.013672,
+          "avg_probability": 0.016432
+        },
+        {
+          "expert_id": 8,
+          "selection_count": 16,
+          "frequency": 0.015625,
+          "avg_probability": 0.016551
+        },
+        {
+          "expert_id": 9,
+          "selection_count": 23,
+          "frequency": 0.022461,
+          "avg_probability": 0.016732
+        },
+        {
+          "expert_id": 10,
+          "selection_count": 26,
+          "frequency": 0.025391,
+          "avg_probability": 0.016763
+        },
+        {
+          "expert_id": 11,
+          "selection_count": 11,
+          "frequency": 0.010742,
+          "avg_probability": 0.016458
+        },
+        {
+          "expert_id": 12,
+          "selection_count": 19,
+          "frequency": 0.018555,
+          "avg_probability": 0.01669
+        },
+        {
+          "expert_id": 13,
+          "selection_count": 15,
+          "frequency": 0.014648,
+          "avg_probability": 0.016571
+        },
+        {
+          "expert_id": 14,
+          "selection_count": 12,
+          "frequency": 0.011719,
+          "avg_probability": 0.016604
+        },
+        {
+          "expert_id": 15,
+          "selection_count": 13,
+          "frequency": 0.012695,
+          "avg_probability": 0.01643
+        },
+        {
+          "expert_id": 16,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.016672
+        },
+        {
+          "expert_id": 17,
+          "selection_count": 25,
+          "frequency": 0.024414,
+          "avg_probability": 0.016671
+        },
+        {
+          "expert_id": 18,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.016732
+        },
+        {
+          "expert_id": 19,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.016758
+        },
+        {
+          "expert_id": 20,
+          "selection_count": 15,
+          "frequency": 0.014648,
+          "avg_probability": 0.016559
+        },
+        {
+          "expert_id": 21,
+          "selection_count": 16,
+          "frequency": 0.015625,
+          "avg_probability": 0.016681
+        },
+        {
+          "expert_id": 22,
+          "selection_count": 13,
+          "frequency": 0.012695,
+          "avg_probability": 0.016563
+        },
+        {
+          "expert_id": 23,
+          "selection_count": 21,
+          "frequency": 0.020508,
+          "avg_probability": 0.016585
+        },
+        {
+          "expert_id": 24,
+          "selection_count": 13,
+          "frequency": 0.012695,
+          "avg_probability": 0.016607
+        },
+        {
+          "expert_id": 25,
+          "selection_count": 17,
+          "frequency": 0.016602,
+          "avg_probability": 0.01671
+        },
+        {
+          "expert_id": 26,
+          "selection_count": 22,
+          "frequency": 0.021484,
+          "avg_probability": 0.016734
+        },
+        {
+          "expert_id": 27,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.016638
+        },
+        {
+          "expert_id": 28,
+          "selection_count": 25,
+          "frequency": 0.024414,
+          "avg_probability": 0.016845
+        },
+        {
+          "expert_id": 29,
+          "selection_count": 22,
+          "frequency": 0.021484,
+          "avg_probability": 0.016787
+        },
+        {
+          "expert_id": 30,
+          "selection_count": 15,
+          "frequency": 0.014648,
+          "avg_probability": 0.016555
+        },
+        {
+          "expert_id": 31,
+          "selection_count": 13,
+          "frequency": 0.012695,
+          "avg_probability": 0.016746
+        },
+        {
+          "expert_id": 32,
+          "selection_count": 21,
+          "frequency": 0.020508,
+          "avg_probability": 0.016792
+        },
+        {
+          "expert_id": 33,
+          "selection_count": 1,
+          "frequency": 0.000977,
+          "avg_probability": 0.01658
+        },
+        {
+          "expert_id": 34,
+          "selection_count": 25,
+          "frequency": 0.024414,
+          "avg_probability": 0.016815
+        },
+        {
+          "expert_id": 35,
+          "selection_count": 15,
+          "frequency": 0.014648,
+          "avg_probability": 0.016733
+        },
+        {
+          "expert_id": 36,
+          "selection_count": 29,
+          "frequency": 0.02832,
+          "avg_probability": 0.016802
+        },
+        {
+          "expert_id": 37,
+          "selection_count": 1,
+          "frequency": 0.000977,
+          "avg_probability": 0.016641
+        },
+        {
+          "expert_id": 38,
+          "selection_count": 25,
+          "frequency": 0.024414,
+          "avg_probability": 0.016758
+        },
+        {
+          "expert_id": 39,
+          "selection_count": 13,
+          "frequency": 0.012695,
+          "avg_probability": 0.016627
+        },
+        {
+          "expert_id": 40,
+          "selection_count": 18,
+          "frequency": 0.017578,
+          "avg_probability": 0.016762
+        },
+        {
+          "expert_id": 41,
+          "selection_count": 19,
+          "frequency": 0.018555,
+          "avg_probability": 0.016691
+        },
+        {
+          "expert_id": 42,
+          "selection_count": 23,
+          "frequency": 0.022461,
+          "avg_probability": 0.016797
+        },
+        {
+          "expert_id": 43,
+          "selection_count": 25,
+          "frequency": 0.024414,
+          "avg_probability": 0.016748
+        },
+        {
+          "expert_id": 44,
+          "selection_count": 10,
+          "frequency": 0.009766,
+          "avg_probability": 0.016691
+        },
+        {
+          "expert_id": 45,
+          "selection_count": 0,
+          "frequency": 0.0,
+          "avg_probability": 0.016713
+        },
+        {
+          "expert_id": 46,
+          "selection_count": 16,
+          "frequency": 0.015625,
+          "avg_probability": 0.016582
+        },
+        {
+          "expert_id": 47,
+          "selection_count": 13,
+          "frequency": 0.012695,
+          "avg_probability": 0.016333
+        },
+        {
+          "expert_id": 48,
+          "selection_count": 11,
+          "frequency": 0.010742,
+          "avg_probability": 0.016624
+        },
+        {
+          "expert_id": 49,
+          "selection_count": 18,
+          "frequency": 0.017578,
+          "avg_probability": 0.01671
+        },
+        {
+          "expert_id": 50,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.016728
+        },
+        {
+          "expert_id": 51,
+          "selection_count": 12,
+          "frequency": 0.011719,
+          "avg_probability": 0.01674
+        },
+        {
+          "expert_id": 52,
+          "selection_count": 13,
+          "frequency": 0.012695,
+          "avg_probability": 0.016476
+        },
+        {
+          "expert_id": 53,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.016636
+        },
+        {
+          "expert_id": 54,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.016657
+        },
+        {
+          "expert_id": 55,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.016626
+        },
+        {
+          "expert_id": 56,
+          "selection_count": 23,
+          "frequency": 0.022461,
+          "avg_probability": 0.016744
+        },
+        {
+          "expert_id": 57,
+          "selection_count": 19,
+          "frequency": 0.018555,
+          "avg_probability": 0.016609
+        },
+        {
+          "expert_id": 58,
+          "selection_count": 18,
+          "frequency": 0.017578,
+          "avg_probability": 0.016558
+        },
+        {
+          "expert_id": 59,
+          "selection_count": 31,
+          "frequency": 0.030273,
+          "avg_probability": 0.016844
+        }
+      ],
+      "hot_experts": [
+        59,
+        36,
+        3,
+        10,
+        17,
+        28,
+        34,
+        38
+      ],
+      "cold_experts": [
+        1,
+        4,
+        5,
+        6,
+        33,
+        37,
+        44,
+        45
+      ]
+    },
+    "layer_12": {
+      "layer": 12,
+      "num_experts": 60,
+      "num_samples": 256,
+      "top_k": 4,
+      "load_balance_loss": 1.000315,
+      "coefficient_of_variation": 0.259817,
+      "expert_stats": [
+        {
+          "expert_id": 0,
+          "selection_count": 27,
+          "frequency": 0.026367,
+          "avg_probability": 0.01669
+        },
+        {
+          "expert_id": 1,
+          "selection_count": 14,
+          "frequency": 0.013672,
+          "avg_probability": 0.016571
+        },
+        {
+          "expert_id": 2,
+          "selection_count": 24,
+          "frequency": 0.023438,
+          "avg_probability": 0.016669
+        },
+        {
+          "expert_id": 3,
+          "selection_count": 23,
+          "frequency": 0.022461,
+          "avg_probability": 0.016712
+        },
+        {
+          "expert_id": 4,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.016698
+        },
+        {
+          "expert_id": 5,
+          "selection_count": 15,
+          "frequency": 0.014648,
+          "avg_probability": 0.016737
+        },
+        {
+          "expert_id": 6,
+          "selection_count": 23,
+          "frequency": 0.022461,
+          "avg_probability": 0.016663
+        },
+        {
+          "expert_id": 7,
+          "selection_count": 16,
+          "frequency": 0.015625,
+          "avg_probability": 0.01664
+        },
+        {
+          "expert_id": 8,
+          "selection_count": 19,
+          "frequency": 0.018555,
+          "avg_probability": 0.016664
+        },
+        {
+          "expert_id": 9,
+          "selection_count": 15,
+          "frequency": 0.014648,
+          "avg_probability": 0.016563
+        },
+        {
+          "expert_id": 10,
+          "selection_count": 11,
+          "frequency": 0.010742,
+          "avg_probability": 0.016696
+        },
+        {
+          "expert_id": 11,
+          "selection_count": 14,
+          "frequency": 0.013672,
+          "avg_probability": 0.016643
+        },
+        {
+          "expert_id": 12,
+          "selection_count": 14,
+          "frequency": 0.013672,
+          "avg_probability": 0.016636
+        },
+        {
+          "expert_id": 13,
+          "selection_count": 16,
+          "frequency": 0.015625,
+          "avg_probability": 0.016725
+        },
+        {
+          "expert_id": 14,
+          "selection_count": 22,
+          "frequency": 0.021484,
+          "avg_probability": 0.016701
+        },
+        {
+          "expert_id": 15,
+          "selection_count": 16,
+          "frequency": 0.015625,
+          "avg_probability": 0.016717
+        },
+        {
+          "expert_id": 16,
+          "selection_count": 27,
+          "frequency": 0.026367,
+          "avg_probability": 0.016662
+        },
+        {
+          "expert_id": 17,
+          "selection_count": 24,
+          "frequency": 0.023438,
+          "avg_probability": 0.016717
+        },
+        {
+          "expert_id": 18,
+          "selection_count": 19,
+          "frequency": 0.018555,
+          "avg_probability": 0.016874
+        },
+        {
+          "expert_id": 19,
+          "selection_count": 24,
+          "frequency": 0.023438,
+          "avg_probability": 0.016676
+        },
+        {
+          "expert_id": 20,
+          "selection_count": 10,
+          "frequency": 0.009766,
+          "avg_probability": 0.016605
+        },
+        {
+          "expert_id": 21,
+          "selection_count": 14,
+          "frequency": 0.013672,
+          "avg_probability": 0.01672
+        },
+        {
+          "expert_id": 22,
+          "selection_count": 11,
+          "frequency": 0.010742,
+          "avg_probability": 0.016588
+        },
+        {
+          "expert_id": 23,
+          "selection_count": 19,
+          "frequency": 0.018555,
+          "avg_probability": 0.016563
+        },
+        {
+          "expert_id": 24,
+          "selection_count": 15,
+          "frequency": 0.014648,
+          "avg_probability": 0.016593
+        },
+        {
+          "expert_id": 25,
+          "selection_count": 14,
+          "frequency": 0.013672,
+          "avg_probability": 0.016658
+        },
+        {
+          "expert_id": 26,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.016701
+        },
+        {
+          "expert_id": 27,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.016664
+        },
+        {
+          "expert_id": 28,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.016752
+        },
+        {
+          "expert_id": 29,
+          "selection_count": 16,
+          "frequency": 0.015625,
+          "avg_probability": 0.016666
+        },
+        {
+          "expert_id": 30,
+          "selection_count": 15,
+          "frequency": 0.014648,
+          "avg_probability": 0.016666
+        },
+        {
+          "expert_id": 31,
+          "selection_count": 13,
+          "frequency": 0.012695,
+          "avg_probability": 0.016649
+        },
+        {
+          "expert_id": 32,
+          "selection_count": 17,
+          "frequency": 0.016602,
+          "avg_probability": 0.016616
+        },
+        {
+          "expert_id": 33,
+          "selection_count": 13,
+          "frequency": 0.012695,
+          "avg_probability": 0.016648
+        },
+        {
+          "expert_id": 34,
+          "selection_count": 16,
+          "frequency": 0.015625,
+          "avg_probability": 0.016709
+        },
+        {
+          "expert_id": 35,
+          "selection_count": 13,
+          "frequency": 0.012695,
+          "avg_probability": 0.016564
+        },
+        {
+          "expert_id": 36,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.016694
+        },
+        {
+          "expert_id": 37,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.016779
+        },
+        {
+          "expert_id": 38,
+          "selection_count": 12,
+          "frequency": 0.011719,
+          "avg_probability": 0.016645
+        },
+        {
+          "expert_id": 39,
+          "selection_count": 17,
+          "frequency": 0.016602,
+          "avg_probability": 0.016669
+        },
+        {
+          "expert_id": 40,
+          "selection_count": 15,
+          "frequency": 0.014648,
+          "avg_probability": 0.016641
+        },
+        {
+          "expert_id": 41,
+          "selection_count": 16,
+          "frequency": 0.015625,
+          "avg_probability": 0.016647
+        },
+        {
+          "expert_id": 42,
+          "selection_count": 14,
+          "frequency": 0.013672,
+          "avg_probability": 0.016785
+        },
+        {
+          "expert_id": 43,
+          "selection_count": 27,
+          "frequency": 0.026367,
+          "avg_probability": 0.01673
+        },
+        {
+          "expert_id": 44,
+          "selection_count": 21,
+          "frequency": 0.020508,
+          "avg_probability": 0.016675
+        },
+        {
+          "expert_id": 45,
+          "selection_count": 14,
+          "frequency": 0.013672,
+          "avg_probability": 0.016654
+        },
+        {
+          "expert_id": 46,
+          "selection_count": 23,
+          "frequency": 0.022461,
+          "avg_probability": 0.016648
+        },
+        {
+          "expert_id": 47,
+          "selection_count": 12,
+          "frequency": 0.011719,
+          "avg_probability": 0.016647
+        },
+        {
+          "expert_id": 48,
+          "selection_count": 9,
+          "frequency": 0.008789,
+          "avg_probability": 0.016726
+        },
+        {
+          "expert_id": 49,
+          "selection_count": 11,
+          "frequency": 0.010742,
+          "avg_probability": 0.016549
+        },
+        {
+          "expert_id": 50,
+          "selection_count": 17,
+          "frequency": 0.016602,
+          "avg_probability": 0.016644
+        },
+        {
+          "expert_id": 51,
+          "selection_count": 23,
+          "frequency": 0.022461,
+          "avg_probability": 0.016698
+        },
+        {
+          "expert_id": 52,
+          "selection_count": 15,
+          "frequency": 0.014648,
+          "avg_probability": 0.016588
+        },
+        {
+          "expert_id": 53,
+          "selection_count": 16,
+          "frequency": 0.015625,
+          "avg_probability": 0.016639
+        },
+        {
+          "expert_id": 54,
+          "selection_count": 17,
+          "frequency": 0.016602,
+          "avg_probability": 0.016656
+        },
+        {
+          "expert_id": 55,
+          "selection_count": 18,
+          "frequency": 0.017578,
+          "avg_probability": 0.016739
+        },
+        {
+          "expert_id": 56,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.016645
+        },
+        {
+          "expert_id": 57,
+          "selection_count": 14,
+          "frequency": 0.013672,
+          "avg_probability": 0.016608
+        },
+        {
+          "expert_id": 58,
+          "selection_count": 12,
+          "frequency": 0.011719,
+          "avg_probability": 0.016597
+        },
+        {
+          "expert_id": 59,
+          "selection_count": 12,
+          "frequency": 0.011719,
+          "avg_probability": 0.01668
+        }
+      ],
+      "hot_experts": [
+        0,
+        16,
+        43,
+        2,
+        17,
+        19,
+        3,
+        6
+      ],
+      "cold_experts": [
+        10,
+        20,
+        22,
+        47,
+        48,
+        49,
+        58,
+        59
+      ]
+    },
+    "layer_23": {
+      "layer": 23,
+      "num_experts": 60,
+      "num_samples": 256,
+      "top_k": 4,
+      "load_balance_loss": 1.000324,
+      "coefficient_of_variation": 0.372714,
+      "expert_stats": [
+        {
+          "expert_id": 0,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.016637
+        },
+        {
+          "expert_id": 1,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.016706
+        },
+        {
+          "expert_id": 2,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.016735
+        },
+        {
+          "expert_id": 3,
+          "selection_count": 13,
+          "frequency": 0.012695,
+          "avg_probability": 0.016672
+        },
+        {
+          "expert_id": 4,
+          "selection_count": 18,
+          "frequency": 0.017578,
+          "avg_probability": 0.016582
+        },
+        {
+          "expert_id": 5,
+          "selection_count": 8,
+          "frequency": 0.007812,
+          "avg_probability": 0.016674
+        },
+        {
+          "expert_id": 6,
+          "selection_count": 8,
+          "frequency": 0.007812,
+          "avg_probability": 0.016647
+        },
+        {
+          "expert_id": 7,
+          "selection_count": 32,
+          "frequency": 0.03125,
+          "avg_probability": 0.016731
+        },
+        {
+          "expert_id": 8,
+          "selection_count": 9,
+          "frequency": 0.008789,
+          "avg_probability": 0.016647
+        },
+        {
+          "expert_id": 9,
+          "selection_count": 19,
+          "frequency": 0.018555,
+          "avg_probability": 0.016671
+        },
+        {
+          "expert_id": 10,
+          "selection_count": 14,
+          "frequency": 0.013672,
+          "avg_probability": 0.016686
+        },
+        {
+          "expert_id": 11,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.016648
+        },
+        {
+          "expert_id": 12,
+          "selection_count": 19,
+          "frequency": 0.018555,
+          "avg_probability": 0.016721
+        },
+        {
+          "expert_id": 13,
+          "selection_count": 16,
+          "frequency": 0.015625,
+          "avg_probability": 0.016636
+        },
+        {
+          "expert_id": 14,
+          "selection_count": 18,
+          "frequency": 0.017578,
+          "avg_probability": 0.016688
+        },
+        {
+          "expert_id": 15,
+          "selection_count": 30,
+          "frequency": 0.029297,
+          "avg_probability": 0.016727
+        },
+        {
+          "expert_id": 16,
+          "selection_count": 16,
+          "frequency": 0.015625,
+          "avg_probability": 0.016625
+        },
+        {
+          "expert_id": 17,
+          "selection_count": 27,
+          "frequency": 0.026367,
+          "avg_probability": 0.016704
+        },
+        {
+          "expert_id": 18,
+          "selection_count": 8,
+          "frequency": 0.007812,
+          "avg_probability": 0.016679
+        },
+        {
+          "expert_id": 19,
+          "selection_count": 27,
+          "frequency": 0.026367,
+          "avg_probability": 0.016652
+        },
+        {
+          "expert_id": 20,
+          "selection_count": 19,
+          "frequency": 0.018555,
+          "avg_probability": 0.016623
+        },
+        {
+          "expert_id": 21,
+          "selection_count": 9,
+          "frequency": 0.008789,
+          "avg_probability": 0.016684
+        },
+        {
+          "expert_id": 22,
+          "selection_count": 24,
+          "frequency": 0.023438,
+          "avg_probability": 0.016682
+        },
+        {
+          "expert_id": 23,
+          "selection_count": 13,
+          "frequency": 0.012695,
+          "avg_probability": 0.016674
+        },
+        {
+          "expert_id": 24,
+          "selection_count": 18,
+          "frequency": 0.017578,
+          "avg_probability": 0.016628
+        },
+        {
+          "expert_id": 25,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.01665
+        },
+        {
+          "expert_id": 26,
+          "selection_count": 16,
+          "frequency": 0.015625,
+          "avg_probability": 0.016686
+        },
+        {
+          "expert_id": 27,
+          "selection_count": 22,
+          "frequency": 0.021484,
+          "avg_probability": 0.01668
+        },
+        {
+          "expert_id": 28,
+          "selection_count": 10,
+          "frequency": 0.009766,
+          "avg_probability": 0.016753
+        },
+        {
+          "expert_id": 29,
+          "selection_count": 26,
+          "frequency": 0.025391,
+          "avg_probability": 0.016677
+        },
+        {
+          "expert_id": 30,
+          "selection_count": 29,
+          "frequency": 0.02832,
+          "avg_probability": 0.016689
+        },
+        {
+          "expert_id": 31,
+          "selection_count": 13,
+          "frequency": 0.012695,
+          "avg_probability": 0.016659
+        },
+        {
+          "expert_id": 32,
+          "selection_count": 21,
+          "frequency": 0.020508,
+          "avg_probability": 0.016625
+        },
+        {
+          "expert_id": 33,
+          "selection_count": 22,
+          "frequency": 0.021484,
+          "avg_probability": 0.016695
+        },
+        {
+          "expert_id": 34,
+          "selection_count": 23,
+          "frequency": 0.022461,
+          "avg_probability": 0.01667
+        },
+        {
+          "expert_id": 35,
+          "selection_count": 10,
+          "frequency": 0.009766,
+          "avg_probability": 0.016651
+        },
+        {
+          "expert_id": 36,
+          "selection_count": 13,
+          "frequency": 0.012695,
+          "avg_probability": 0.016665
+        },
+        {
+          "expert_id": 37,
+          "selection_count": 11,
+          "frequency": 0.010742,
+          "avg_probability": 0.016643
+        },
+        {
+          "expert_id": 38,
+          "selection_count": 7,
+          "frequency": 0.006836,
+          "avg_probability": 0.016682
+        },
+        {
+          "expert_id": 39,
+          "selection_count": 8,
+          "frequency": 0.007812,
+          "avg_probability": 0.016623
+        },
+        {
+          "expert_id": 40,
+          "selection_count": 14,
+          "frequency": 0.013672,
+          "avg_probability": 0.016636
+        },
+        {
+          "expert_id": 41,
+          "selection_count": 31,
+          "frequency": 0.030273,
+          "avg_probability": 0.016766
+        },
+        {
+          "expert_id": 42,
+          "selection_count": 16,
+          "frequency": 0.015625,
+          "avg_probability": 0.016682
+        },
+        {
+          "expert_id": 43,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.016746
+        },
+        {
+          "expert_id": 44,
+          "selection_count": 19,
+          "frequency": 0.018555,
+          "avg_probability": 0.016698
+        },
+        {
+          "expert_id": 45,
+          "selection_count": 16,
+          "frequency": 0.015625,
+          "avg_probability": 0.016646
+        },
+        {
+          "expert_id": 46,
+          "selection_count": 11,
+          "frequency": 0.010742,
+          "avg_probability": 0.016571
+        },
+        {
+          "expert_id": 47,
+          "selection_count": 11,
+          "frequency": 0.010742,
+          "avg_probability": 0.016626
+        },
+        {
+          "expert_id": 48,
+          "selection_count": 22,
+          "frequency": 0.021484,
+          "avg_probability": 0.016632
+        },
+        {
+          "expert_id": 49,
+          "selection_count": 9,
+          "frequency": 0.008789,
+          "avg_probability": 0.016685
+        },
+        {
+          "expert_id": 50,
+          "selection_count": 15,
+          "frequency": 0.014648,
+          "avg_probability": 0.016617
+        },
+        {
+          "expert_id": 51,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.016698
+        },
+        {
+          "expert_id": 52,
+          "selection_count": 18,
+          "frequency": 0.017578,
+          "avg_probability": 0.016647
+        },
+        {
+          "expert_id": 53,
+          "selection_count": 14,
+          "frequency": 0.013672,
+          "avg_probability": 0.016608
+        },
+        {
+          "expert_id": 54,
+          "selection_count": 24,
+          "frequency": 0.023438,
+          "avg_probability": 0.016655
+        },
+        {
+          "expert_id": 55,
+          "selection_count": 20,
+          "frequency": 0.019531,
+          "avg_probability": 0.016682
+        },
+        {
+          "expert_id": 56,
+          "selection_count": 10,
+          "frequency": 0.009766,
+          "avg_probability": 0.016572
+        },
+        {
+          "expert_id": 57,
+          "selection_count": 17,
+          "frequency": 0.016602,
+          "avg_probability": 0.016662
+        },
+        {
+          "expert_id": 58,
+          "selection_count": 6,
+          "frequency": 0.005859,
+          "avg_probability": 0.01668
+        },
+        {
+          "expert_id": 59,
+          "selection_count": 15,
+          "frequency": 0.014648,
+          "avg_probability": 0.016682
+        }
+      ],
+      "hot_experts": [
+        7,
+        41,
+        15,
+        30,
+        17,
+        19,
+        29,
+        22
+      ],
+      "cold_experts": [
+        5,
+        6,
+        18,
+        21,
+        38,
+        39,
+        49,
+        58
+      ]
+    }
+  }
+}

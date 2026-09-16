@@ -114,7 +114,10 @@ terbagi ke 2 file); shard 8 hanya berisi sisa layer 23 + `lm_head` + `embed_toke
 Dua jebakan yang sudah ditemukan dan menjadi **invariant test permanen**:
 
 1. `config.json` tidak menuliskan `attention_bias`, tetapi checkpoint punya 72 tensor bias. Mengikuti config mentah-mentah → hasil salah. Pelajaran: _selalu verifikasi ke index safetensors, bukan cuma config_ — diuji sebagai property test P-2 (`03-testing.md` §4.2).
-2. Shared expert gate memakai `sigmoid`, bukan softmax/linear. Diuji sebagai invariant G-M3-2.
+2. Shared expert gate memakai `sigmoid` independen ($\sigma(W_{sh\_gate} x) \in (0, 1)$), bukan softmax bersama routed experts dan bukan penambahan un-gated linear:
+   - **Jebakan & Akar Masalah**: Pada arsitektur MoE lain (misalnya DeepSeek atau Mixtral), shared expert sering kali dijumlahkan langsung (un-gated) atau router memasukkan shared expert dalam kompetisi probabilitas softmax bersama routed experts. Pada Qwen1.5-MoE, shared expert memiliki skalar gate independen dari proyeksi tensor `shared_expert_gate.weight` (shape `[1, 2048]`) yang diaktivasi oleh fungsi $\sigma(z) = \frac{1}{1 + e^{-z}}$.
+   - **Dampak Numerik**: Jika shared expert dihitung tanpa scaling sigmoid ($\sigma=1.0$) atau digabungkan ke dalam softmax router, magnitudo aktivasi membengkak hingga puluhan order of magnitude, merusak aktivasi residual secara fatal, dan menyebabkan pelanggaran mutlak pada Gate G-M3-1 ($\Delta_{\max} \gg 10^3$).
+   - **Invariant Test Permanen**: Diuji ketat via property tests di `tests/unit/test_moe_block.mojo` (`test_shared_gate_sigmoid_property` dan `test_property_sigmoid_gate_monotonicity`), invariant gate G-M3-1, serta G-M3-2.
 
 ## 2.4 Alur Forward Streaming (fase M0–M4)
 

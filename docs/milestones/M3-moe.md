@@ -643,29 +643,29 @@ let moe_output = Array2::from_shape_vec((16, 2048), moe_output)?;
 
 ## DoD
 
-- [ ] G-M3-1, G-M3-2 hijau
-- [ ] Laporan distribusi routing (F9) ter-commit sebagai baseline M7
-- [ ] Retro jebakan shared-sigmoid diperbarui
-- [ ] layer CLI implementasi lengkap part moe (input/output/exit code sesuai spec)
-- [ ] Oracle layer.py implementasi part moe dan ter-commit
-- [ ] Router softmax fp32 implementasi
-- [ ] Top-4 selection tanpa renormalisasi implementasi
-- [ ] Routed experts SwiGLU implementasi (60 experts)
-- [ ] Shared expert sigmoid gate implementasi
-- [ ] Weighted sum aggregation implementasi
-- [ ] Residual connection implementasi
-- [ ] Error handling M3 implementasi (format JSON, error types)
-- [ ] Fixture M3 activation.bin + moe_ref.bin ter-commit (3 layer)
-- [ ] Unit tests coverage ≥ 85% untuk MoE components
-- [ ] Property tests routing invariant implementasi (SET expert identik 100%)
-- [ ] Property tests sigmoid gate implementasi
-- [ ] Property tests norm_topk_prob=false implementasi
-- [ ] Integration test end-to-end MoE implementasi (8 test cases)
-- [ ] Performance baseline M3 terukur dan terdokumentasi (< 200 ms)
-- [ ] MoE output file format implementasi (binary fp32, shape validation)
-- [ ] Routing info report format implementasi (F9 diagnostics)
-- [ ] F9 diagnostics implementasi (load-balance analysis)
-- [ ] Cgroup memory.max=6G integration testing (SEC-4)
-- [ ] SHA-256 verification implementasi (golden hash)
-- [ ] Determinisme test ulang 5× identik (seed + threads=1)
-- [ ] Workflow diagram M3 implementasi
+- [x] G-M3-1, G-M3-2 hijau
+- [x] Laporan distribusi routing (F9) ter-commit sebagai baseline M7
+- [x] Retro jebakan shared-sigmoid diperbarui
+- [x] layer CLI implementasi lengkap part moe (input/output/exit code sesuai spec)
+- [x] Oracle layer.py implementasi part moe dan ter-commit
+- [x] Router softmax fp32 implementasi
+- [x] Top-4 selection tanpa renormalisasi implementasi
+- [x] Routed experts SwiGLU implementasi (60 experts)
+- [x] Shared expert sigmoid gate implementasi
+- [x] Weighted sum aggregation implementasi
+- [x] Residual connection implementasi
+- [x] Error handling M3 implementasi (format JSON, error types)
+- [x] Fixture M3 activation.bin + moe_ref.bin ter-commit (3 layer)
+- [x] Unit tests coverage ≥ 85% untuk MoE components
+- [x] Property tests routing invariant implementasi (SET expert identik 100%)
+- [x] Property tests sigmoid gate implementasi
+- [x] Property tests norm_topk_prob=false implementasi
+- [x] Integration test end-to-end MoE implementasi (8 test cases)
+- [x] Performance baseline M3 terukur dan terdokumentasi (< 200 ms)
+- [x] MoE output file format implementasi (binary fp32, shape validation)
+- [x] Routing info report format implementasi (F9 diagnostics)
+- [x] F9 diagnostics implementasi (load-balance analysis)
+- [x] Cgroup memory.max=6G integration testing (SEC-4)
+- [x] SHA-256 verification implementasi (golden hash)
+- [x] Determinisme test ulang 5× identik (seed + threads=1)
+- [x] Workflow diagram M3 implementasi

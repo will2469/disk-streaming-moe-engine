@@ -28,4 +28,6 @@ bench-m2 = "uv run python tools/bench/bench_m2_real.py"
 test-m2 = { depends-on = ["build", "test-compare", "test-m1-model", "test-m2-cli", "test-m2-compare"] }
 test-m3-cli = "bash tests/integration/test_m3_w3_moe_cli.sh"
 test-m3-compare = "bash tests/integration/test_m3_w4_compare.sh"
-test-m3 = { depends-on = ["build", "test-compare", "test-m3-cli", "test-m3-compare"] }
+test-m3-integration = "cargo test --manifest-path tools/kimo-tools/Cargo.toml --test integration_m3"
+bench-m3 = "uv run python tools/bench/bench_m3_real.py"
+test-m3 = { depends-on = ["build", "test-compare", "test-m3-cli", "test-m3-compare", "test-m3-integration"] }
