@@ -358,7 +358,7 @@ pub fn run(args: &[String]) -> i32 {
     if ref_path.is_empty() || cand_path.is_empty() {
         return emit_error(
             "USAGE",
-            "pakai: kimo-tools compare <ref.bin> <cand.bin> [--gate G-M1-1|G-M2-1|G-M3-1] [--dim <N>] [--oracle-routing <json>] [--cand-routing <json>]",
+            "pakai: kimo-tools compare <ref.bin> <cand.bin> [--gate G-M1-1|G-M2-1|G-M3-1|G-M4-1|G-M5-1] [--dim <N>] [--oracle-routing <json>] [--cand-routing <json>]",
         );
     }
 
@@ -384,6 +384,8 @@ pub fn run(args: &[String]) -> i32 {
 
     if run_id.is_empty() {
         run_id = match gate.as_str() {
+            "G-M4-1" => "M4-F10-001".to_string(),
+            "G-M5-1" => "M5-F10-001".to_string(),
             "G-M3-1" => "M3-F10-001".to_string(),
             "G-M2-1" => "M2-F10-001".to_string(),
             _ => "M1-F10-001".to_string(),
@@ -477,6 +479,35 @@ pub fn evaluate_gate(gate: &str, metrics: &CompareMetrics) -> (bool, &'static st
             } else if metrics.delta_max > 0.25 && metrics.delta_max <= 1.0 {
                 Some("bias-placement".to_string())
             } else if metrics.delta_max >= 0.05 && metrics.delta_max <= 0.25 {
+                Some("rope-style".to_string())
+            } else {
+                Some("numeric-order".to_string())
+            };
+            (pass, thresh, cat)
+        }
+        "G-M4-1" | "G-M5-1" => {
+            // Loose full-forward gate: FP32 vs FP32 (03-testing.md §4.3).
+            // Kandidat BF16 DILARANG — noise kuantisasi serialisasi
+            // (round-trip murni ε_rel ≈ 1,7e-3) menenggelamkan threshold 1e-4.
+            let pass = metrics.delta_max <= 1e-2
+                && metrics.epsilon_rel <= 1e-4
+                && metrics.agreement >= 99.9
+                && metrics.delta_ce <= 0.02;
+            let thresh =
+                "delta_max <= 1e-2 && epsilon_rel <= 1e-4 && agreement >= 99.9 && delta_ce <= 0.02";
+            // F10-A lebih dulu: agreement, lalu pita Δ (prosedur verdict M4 A→N→S).
+            // Pita-pita ini screening (Tier-2); bukti definitif router = SET equality
+            // via --oracle-routing/--cand-routing (ditangani di run(): override
+            // menjadi "router-selection"). "tensor-mapping" adalah alias `dtype-layout`.
+            let cat = if pass {
+                None
+            } else if metrics.agreement < 99.9 {
+                Some("argmax-mismatch".to_string())
+            } else if metrics.delta_max > 1.0 || metrics.cos_theta < 0.90 {
+                Some("dtype-layout".to_string())
+            } else if metrics.delta_max > 0.25 {
+                Some("bias-placement".to_string())
+            } else if metrics.delta_max >= 0.05 {
                 Some("rope-style".to_string())
             } else {
                 Some("numeric-order".to_string())
@@ -597,6 +628,117 @@ mod tests {
         let (pass, _, cat) = evaluate_gate("G-M3-1", &m_numeric);
         assert!(!pass);
         assert_eq!(cat.as_deref(), Some("numeric-order"));
+    }
+
+    #[test]
+    fn test_gate_g_m4_1_loose_four_metrics() {
+        // Semua 4 metrik gate M4 terpenuhi → PASS (FP32 vs FP32).
+        let m = CompareMetrics {
+            delta_max: 5e-3,
+            epsilon_rel: 5e-5,
+            cos_theta: 0.99999,
+            agreement: 100.0,
+            delta_ce: 0.01,
+        };
+        for gate in ["G-M4-1", "G-M5-1"] {
+            let (pass, thresh, cat) = evaluate_gate(gate, &m);
+            assert!(pass, "gate {gate} harus PASS");
+            assert_eq!(
+                thresh,
+                "delta_max <= 1e-2 && epsilon_rel <= 1e-4 && agreement >= 99.9 && delta_ce <= 0.02"
+            );
+            assert_eq!(cat, None);
+        }
+    }
+
+    #[test]
+    fn test_gate_g_m4_1_rejects_bf16_noise_floor() {
+        // Noise lantai kuantisasi BF16 murni (ε_rel ≈ 1,7e-3) wajib FAIL
+        // di gate correctness — inilah alasan kandidat BF16 dilarang.
+        let m = CompareMetrics {
+            delta_max: 5e-3,
+            epsilon_rel: 1.7e-3,
+            cos_theta: 0.99999,
+            agreement: 100.0,
+            delta_ce: 0.005,
+        };
+        let (pass, _, _) = evaluate_gate("G-M4-1", &m);
+        assert!(!pass, "noise lantai BF16 harus FAIL G-M4-1");
+    }
+
+    #[test]
+    fn test_gate_g_m4_1_agreement_and_ce_gated() {
+        // Agreement di bawah 99,9 → FAIL kategori argmax-mismatch.
+        let m_low_a = CompareMetrics {
+            delta_max: 5e-3,
+            epsilon_rel: 5e-5,
+            cos_theta: 0.99999,
+            agreement: 99.0,
+            delta_ce: 0.01,
+        };
+        let (pass, _, cat) = evaluate_gate("G-M4-1", &m_low_a);
+        assert!(!pass);
+        assert_eq!(cat.as_deref(), Some("argmax-mismatch"));
+
+        // Δ_CE di atas 0,02 → FAIL meski 3 metrik lain lolos.
+        let m_high_ce = CompareMetrics {
+            delta_max: 5e-3,
+            epsilon_rel: 5e-5,
+            cos_theta: 0.99999,
+            agreement: 100.0,
+            delta_ce: 0.05,
+        };
+        let (pass, _, _) = evaluate_gate("G-M4-1", &m_high_ce);
+        assert!(!pass);
+    }
+
+    #[test]
+    fn test_gate_g_m4_1_delta_bands() {
+        // Pita Δ M4 (Tier-2 screening F10-A): layout > bias > rope > numeric.
+        let mk = |delta_max: f64, cos_theta: f64, epsilon_rel: f64| CompareMetrics {
+            delta_max,
+            epsilon_rel,
+            cos_theta,
+            agreement: 100.0,
+            delta_ce: 0.01,
+        };
+        for (dm, ct, er, expect) in [
+            (1.5, 0.85, 5e-5, "dtype-layout"), // tensor-mapping alias
+            (1.5, 0.99, 5e-5, "dtype-layout"), // Δ saja cukup
+            (0.5, 0.95, 5e-5, "bias-placement"),
+            (0.10, 0.999, 5e-5, "rope-style"),
+            (0.005, 0.9999, 1e-3, "numeric-order"), // FAIL lewat ε_rel
+        ] {
+            let (pass, _, cat) = evaluate_gate("G-M4-1", &mk(dm, ct, er));
+            assert!(!pass, "Δ={dm} harus FAIL");
+            assert_eq!(cat.as_deref(), Some(expect), "Δ={dm}");
+        }
+        // Pita numeric-order: Δ kecil tapi FAIL lewat metrik lain (di sini ε_rel).
+        let (pass, _, cat) = evaluate_gate(
+            "G-M4-1",
+            &CompareMetrics {
+                delta_max: 0.005,
+                epsilon_rel: 1e-3,
+                cos_theta: 0.9999,
+                agreement: 100.0,
+                delta_ce: 0.01,
+            },
+        );
+        assert!(!pass);
+        assert_eq!(cat.as_deref(), Some("numeric-order"));
+        // Agreement mengalahkan pita: A gagal → argmax-mismatch walau Δ besar.
+        let (pass, _, cat) = evaluate_gate(
+            "G-M4-1",
+            &CompareMetrics {
+                delta_max: 2.0,
+                epsilon_rel: 0.5,
+                cos_theta: 0.8,
+                agreement: 98.0,
+                delta_ce: 0.5,
+            },
+        );
+        assert!(!pass);
+        assert_eq!(cat.as_deref(), Some("argmax-mismatch"));
     }
 
     #[test]

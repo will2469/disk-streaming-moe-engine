@@ -304,14 +304,16 @@ Trial MHA:
 | Component                        | Size @2K ctx | Size @4K ctx | Lifetime       |
 | -------------------------------- | ------------ | ------------ | -------------- |
 | Embedding + lm_head resident F32 | 2,318 GiB    | 2,318 GiB    | Seluruh decode |
-| KV cache (K+V)                   | 384 MB       | 768 MB       | Seluruh decode |
-| Per-layer weights (BF16)         | ~1,2 GiB     | ~1,2 GiB     | 1 layer saja   |
-| Hidden state [1, H]              | 4 KB         | 4 KB         | Seluruh decode |
-| Attention scratch                | 8 KB         | 8 KB         | 1 layer        |
-| MoE intermediate                 | 11 KB        | 11 KB        | 1 layer        |
+| `model.norm.weight` F32          | 8 KiB        | 8 KiB        | Seluruh decode |
+| KV cache (K+V, BF16 stored)      | 384 MB       | 768 MB       | Seluruh decode |
+| Per-layer weights (BF16)         | ≈1,063 GiB   | ≈1,063 GiB   | 1 layer saja   |
+| Dequant scratch (chunked ≤64 MiB, strategi M1) | ≤64 MiB bound | ≤64 MiB bound | 1 layer |
+| Hidden state [1, H] F32          | 8 KiB        | 8 KiB        | Seluruh decode |
+| Attention scratch F32 (QKV new + scores [h,1,S] + out) | 168 KiB | 296 KiB | 1 layer |
+| MoE scratch F32 (router/dispatch/SwiGLU/combine/shared) | 115 KiB | 115 KiB | 1 layer |
 | I/O buffers                      | 1 MB         | 1 MB         | 1 layer        |
-| **Total peak @2K**               | **~3,7 GiB** | -            | < 5 GiB gate   |
-| **Total peak @4K**               | -            | **~4,1 GiB** | < 5 GiB gate   |
+| **Total peak bound @2K**          | **≈3,82 GiB** | -           | < 5 GiB gate   |
+| **Total peak bound @4K**          | -            | **≈4,20 GiB** | < 5 GiB gate  |
 
 ### KV Cache Lifecycle
 
@@ -967,7 +969,7 @@ kimo decode \
 ### KV Cache Management
 
 - [ ] KV cache layout: [s, H_kv, d_h] BF16 per layer (K + V)
-- [ ] Memory budget breakdown teruji (@2K ctx ~3,7 GiB, @4K ctx ~4,1 GiB)
+- [ ] Memory budget breakdown teruji (@2K ctx ≈3,82 GiB, @4K ctx ≈4,20 GiB bound)
 - [ ] KV cache lifecycle: prefill (store) → decode (retrieve + store) → cleanup
 - [ ] Static allocation strategy (pre-allocate @ context_size)
 - [ ] Position tracking: 0..(s_prompt + N - 1), RoPE per position, causal mask
