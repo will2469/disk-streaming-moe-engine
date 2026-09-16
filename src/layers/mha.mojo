@@ -4,6 +4,7 @@
 """Multi-Head Attention (MHA) dengan causal mask dan softmax stabil fp32."""
 
 from core.config import ModelConfig
+from layers.kv_cache import LayerKVCache, SLOT_DIM
 from std.builtin.dtype import DType
 from std.collections import List
 from std.math import exp, isinf, isnan, sqrt
@@ -265,4 +266,118 @@ def mha_forward(
                 p_out[unsafe_offset=out_offset + d] = val
 
     verify_causal_mask_property(all_probs, seq_len, num_heads, layer_idx)
+    return out^
+
+
+def mha_decode_step(
+    q: List[Float32],
+    layer_kv: LayerKVCache,
+    cache_len: Int,
+    cfg: ModelConfig,
+    layer_idx: Int = 0,
+) raises -> List[Float32]:
+    """Incremental Multi-Head Attention decode step untuk 1 token pada posisi sequence p.
+
+    q: [hidden_size] float32 query vector token baru pada posisi p.
+    layer_kv: LayerKVCache menyimpan K dan V dari slot 0 s/d cache_len - 1 dalam BF16.
+    cache_len: jumlah total posisi terisi di cache termasuk token p (cache_len = p + 1).
+
+    Invarian:
+    - Tidak ada alokasi buffer baru di dalam decode step (zero heap allocation).
+    - Membaca langsung dari pointer BF16 layer_kv.
+    - Menghitung attention scores [cache_len] per head, softmax stabil, dan akumulasi context output.
+    """
+    if cache_len <= 0:
+        raise Error(
+            '{"error_type":"ATTENTION_ERROR","detail":"cache_len must be'
+            ' positive","stage":"attention","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+    if cache_len > layer_kv.current_len:
+        raise Error(
+            '{"error_type":"ATTENTION_ERROR","detail":"cache_len exceeds'
+            ' layer_kv.current_len","stage":"attention","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+
+    var hidden = cfg.hidden_size
+    var num_heads = cfg.num_attention_heads
+    var head_dim = cfg.head_dim()
+
+    if num_heads * head_dim != hidden:
+        raise Error(
+            '{"error_type":"CONFIG_ERROR","detail":"num_attention_heads *'
+            ' head_dim != hidden_size","stage":"attention","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+    if len(q) != hidden:
+        raise Error(
+            '{"error_type":"ATTENTION_ERROR","detail":"Q length mismatch'
+            ' against hidden_size","stage":"attention","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+
+    for i in range(len(q)):
+        if isnan(q[i]) or isinf(q[i]):
+            raise Error(
+                '{"error_type":"ATTENTION_ERROR","detail":"non-finite value in'
+                ' Q","stage":"attention","layer":'
+                + String(layer_idx)
+                + "}"
+            )
+
+    var scale = Float32(1.0) / sqrt(Float32(head_dim))
+    var out = List[Float32]()
+    out.resize(hidden, Float32(0.0))
+
+    var p_q = q.unsafe_ptr()
+    var p_k = layer_kv.k.unsafe_ptr()
+    var p_v = layer_kv.v.unsafe_ptr()
+    var p_out = out.unsafe_ptr()
+
+    var scores_row = List[Float32]()
+    scores_row.resize(cache_len, Float32(0.0))
+    var p_scores = scores_row.unsafe_ptr()
+
+    for h in range(num_heads):
+        var q_head_offset = h * head_dim
+
+        # 1. Hitung attention scores: dot(Q[h], K[j, h]) * scale untuk j in [0, cache_len)
+        for j in range(cache_len):
+            var k_offset = j * SLOT_DIM + h * head_dim
+            var acc = Float32(0.0)
+            for d in range(head_dim):
+                acc += p_q[unsafe_offset=q_head_offset + d] * Float32(
+                    p_k[unsafe_offset=k_offset + d]
+                )
+            p_scores[unsafe_offset=j] = acc * scale
+
+        # 2. Softmax stabil numerik terhadap panjang cache_len
+        var probs = softmax_row_stable(
+            scores_row, 0, cache_len, cache_len, layer_idx
+        )
+        var p_probs = probs.unsafe_ptr()
+
+        # 3. Akumulasi context output O[h] = sum_j probs[j] * V[j, h]
+        var out_head_offset = h * head_dim
+        for d in range(head_dim):
+            var val = Float32(0.0)
+            for j in range(cache_len):
+                var v_offset = j * SLOT_DIM + h * head_dim + d
+                val += p_probs[unsafe_offset=j] * Float32(
+                    p_v[unsafe_offset=v_offset]
+                )
+            if isnan(val) or isinf(val):
+                raise Error(
+                    '{"error_type":"ATTENTION_ERROR","detail":"non-finite value'
+                    ' in incremental MHA output","stage":"attention","layer":'
+                    + String(layer_idx)
+                    + "}"
+                )
+            p_out[unsafe_offset=out_head_offset + d] = val
+
     return out^

@@ -11,6 +11,7 @@ from layers.attention import (
 )
 from layers.forward_layer import (
     LayerTiming,
+    forward_attention_decode_step,
     forward_attention_step,
     forward_single_layer,
     moe_combine_no_residual,
@@ -24,6 +25,7 @@ from layers.head import (
 )
 from layers.mha import (
     build_causal_mask,
+    mha_decode_step,
     mha_forward,
     softmax_row_stable,
     verify_causal_mask_property,
@@ -73,4 +75,9 @@ from layers.kv_cache import (
     MemoryBudget,
     compute_kv_cache_bytes,
     validate_context_bounds,
+)
+from layers.decode_loop import (
+    DecodeStepContext,
+    compare_tensors_loose,
+    recompute_attention_at_position,
 )

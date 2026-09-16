@@ -14,3 +14,10 @@ from core.tensor_loader import (
     load_tensor_f32_chunked,
     read_shard_header,
 )
+from core.f3b_f5 import (
+    B_TOK_DISK_BYTES,
+    F3bTraffic,
+    F5Forecast,
+    KV_LAYER_TOTAL_SLOT_BYTES,
+    KV_SLOT_BYTES_PER_LAYER,
+)

@@ -10,7 +10,8 @@ from layers.attention import (
     load_layer_attention_weights,
     o_project,
 )
-from layers.mha import mha_forward
+from layers.kv_cache import LayerKVCache
+from layers.mha import mha_decode_step, mha_forward
 from layers.moe import shared_gate_forward
 from layers.moe_loader import (
     load_layer_routed_expert_weights,
@@ -118,6 +119,56 @@ def forward_attention_step(
         attn_out, weights.w_o, weights.b_o, seq_len, hidden, layer_idx
     )
 
+    return y^
+
+
+def forward_attention_decode_step(
+    x: List[Float32],
+    weights: AttentionWeights,
+    mut layer_kv: LayerKVCache,
+    pos: Int,
+    cfg: ModelConfig,
+    eps: Float32,
+    base: Float32 = Float32(1000000.0),
+    layer_idx: Int = 0,
+) raises -> List[Float32]:
+    """Pipeline blok attention incremental decode untuk 1 token pada posisi sekuens p:
+
+    RMSNorm -> QKV -> RoPE(pos) -> append K/V(pos) -> mha_decode_step -> o_proj.
+    Residual connection dieksekusi terpisah di caller (Residual 1).
+    """
+    var hidden = cfg.hidden_size
+    if len(x) != hidden:
+        raise Error(
+            '{"error_type":"ACT_LOAD_FAILED","detail":"activation length'
+            ' mismatch against hidden_size","stage":"attention","layer":'
+            + String(layer_idx)
+            + "}"
+        )
+
+    # 1. RMSNorm input 1 token (F6)
+    var x_norm = rmsnorm(x, weights.norm_gamma, eps)
+
+    # 2. QKV Projection dengan bias q/k/v (seq_len = 1)
+    var qkv_res = qkv_forward(x_norm, weights.qkv, 1, cfg)
+    ref q = qkv_res[0]
+    ref k = qkv_res[1]
+    ref v = qkv_res[2]
+
+    # 3. RoPE rotate_half pada posisi sekuens absolut p (F7)
+    var rope_res = apply_rope(q, k, 1, cfg, pos, base, layer_idx)
+    ref q_rot = rope_res[0]
+    ref k_rot = rope_res[1]
+
+    # 4. Append K_rot dan V baru ke KV cache pada posisi p
+    # Invarian: layer_kv.current_len sebelum append adalah pos; setelah append adalah pos + 1
+    layer_kv.append_decode_token(k_rot, v, pos)
+
+    # 5. Incremental MHA terhadap histori [0, pos + 1) yang tersimpan di layer_kv
+    var attn_out = mha_decode_step(q_rot, layer_kv, pos + 1, cfg, layer_idx)
+
+    # 6. Output projection o_proj (tanpa bias)
+    var y = o_project(attn_out, weights.w_o, weights.b_o, 1, hidden, layer_idx)
     return y^
 
 
