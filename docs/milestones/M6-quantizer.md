@@ -399,12 +399,16 @@ flowchart TD
 
 ## Rumus (F11, grup G=128, skala fp16)
 
-$$s_g=\mathrm{ceil}_{\mathrm{F16}}(\max|w_j|/7),\quad q_j=\mathrm{clip}(\mathrm{round}(w_j/s_g),-7,7),\quad \hat w_j^{(32)}=\mathrm{fp32}(s_g)q_j \tag{F11a}$$
+$$a_g=\max|w_j|,\qquad s_g\ge a_g/7$$
+
+Pilih $s_g$ sebagai nilai FP16 finite terkecil yang memenuhi ketaksamaan itu; grup nol memakai $s_g=1$, $q=0$.
+
+$$q_j=\mathrm{clip}(\mathrm{round}(w_j/s_g),-7,7),\qquad \hat w_j=s_gq_j \tag{F11a}$$
 $$\mathrm{MSE},\ \varepsilon_{rel},\ \text{bytes}≈N·bpw_{eff}/8 \tag{F11b}$$
 
 $bpw_{eff}=4+16/128=\mathbf{4{,}125}$ (+metadata). $N_{total}=14{,}32$ B → file ≈ **7,384 GB**.
 
-Property FP32: $|\mathrm{fp32}(w_j)-\hat w_j^{(32)}| \le s_g/2$. `ceil_F16` mencegah saturasi nilai maksimum akibat scale FP16 yang dibulatkan ke bawah.
+Property FP32: $|w_j-\hat w_j| \le s_g/2$. Pembulatan scale FP16 selalu ke atas agar nilai maksimum tidak tersaturasi.
 
 Kualitas F12: $\mathrm{PPL}=\exp(-1/N_{pred}\sum_{t\in\mathcal P}\ln p)$, $\Delta\mathrm{PPL}=\mathrm{PPL}_{quant}-\mathrm{PPL}_{bf16}$.
 

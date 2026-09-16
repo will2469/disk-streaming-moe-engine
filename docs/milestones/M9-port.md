@@ -1001,7 +1001,11 @@ GGUF (GPT-Generated Unified Format) adalah format quantized untuk LLM yang digun
 
 **Quantization formula** (dari F11):
 
-$$s_g=\mathrm{ceil}_{\mathrm{F16}}\left(\frac{\max_{j\in G}|w_j|}{7}\right), \qquad q_j=\mathrm{clip}\left(\mathrm{round}\left(\frac{w_j}{s_g}\right),-7,7\right), \qquad \hat w_j^{(32)}=\mathrm{fp32}(s_g)q_j$$
+$$a_g=\max_{j\in G}|w_j|, \qquad s_g\ge a_g/7$$
+
+Scale tersimpan adalah nilai FP16 finite terkecil yang memenuhi ketaksamaan tersebut.
+
+$$q_j=\mathrm{clip}\left(\mathrm{round}\left(\frac{w_j}{s_g}\right),-7,7\right), \qquad \hat w_j=s_gq_j$$
 
 **Group size**: $G = 128$ weights per scale.
 
