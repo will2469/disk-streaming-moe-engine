@@ -199,13 +199,15 @@ dengan $bpw_{eff}=4+16/128=\mathbf{4{,}125}$ bit/bobot secara asimtotik; ukuran 
 
 **F12 — Perplexity & degrade kuantisasi:**
 
-$$NLL=-N_{pred}^{-1}\sum_{t\in\mathcal P}\ln p(x_t\mid x_{<t})$$
+Untuk setiap token target, $\ell_t$ adalah log-probability yang diprediksi engine.
+
+$$NLL=-(\ell_1+\ell_2+\cdots+\ell_N)/N$$
 
 $$PPL=\exp(NLL)$$
 
 $$\Delta PPL=PPL_{quant}-PPL_{bf16}$$
 
-$\mathcal P$ adalah seluruh posisi yang benar-benar diprediksi (untuk satu urutan biasa, bukan token pertama) dan $N_{pred}=|\mathcal P|$; untuk corpus, agregasikan NLL dan jumlah token dahulu agar PPL token-weighted. $\Delta\mathrm{PPL}$ dapat negatif, sehingga ambang degradasi adalah batas atas seperti G-M6-3, bukan nilai absolut.
+$N$ adalah jumlah token yang benar-benar diprediksi (untuk satu urutan biasa, bukan token pertama). Untuk corpus, agregasikan NLL dan jumlah token dahulu agar PPL token-weighted. $\Delta\mathrm{PPL}$ dapat negatif, sehingga ambang degradasi adalah batas atas seperti G-M6-3, bukan nilai absolut.
 
 Dipakai di M6 dan M9.
 
@@ -303,7 +305,9 @@ $$M(c\to2c)=[T(c)-T(2c)]/T(c)$$
 
 **F16d — Knee dan rasio operasi:**
 
-$$c^*=\min\{c:M(c\to2c)<10\%\}$$
+Pilih $c^*$ sebagai nilai $c$ terkecil yang diuji dan memenuhi gain marginal di bawah 10%.
+
+$$M(c^*\to2c^*)<10\%$$
 
 $$r^*=c^*/C_{max}$$
 
