@@ -61,3 +61,16 @@ from layers.router import (
 from layers.router_types import RouterConfig, RoutingInfo
 from layers.swiglu import SwigluWeights, sigmoid_f32, silu_f32, swiglu_forward
 from layers.topk import select_topk
+from layers.kv_cache import (
+    BYTES_PER_SLOT_PER_LAYER,
+    DEFAULT_MAX_POS,
+    HEAD_DIM,
+    NUM_KV_HEADS,
+    NUM_LAYERS,
+    SLOT_DIM,
+    FullKVCache,
+    LayerKVCache,
+    MemoryBudget,
+    compute_kv_cache_bytes,
+    validate_context_bounds,
+)
