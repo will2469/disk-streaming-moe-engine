@@ -4,6 +4,7 @@
 """Kimo CLI entry point."""
 
 from cli.cmd_check_index import cmd_check_index
+from cli.cmd_forward import cmd_forward
 from cli.cmd_head import cmd_head
 from cli.cmd_layer import cmd_layer
 from cli.errors import eprint_json, fail, fail_layer
@@ -15,7 +16,9 @@ from std.sys.terminate import exit
 def main() raises:
     var args = argv()
     if len(args) < 2:
-        fail("USAGE", "pakai: kimo (check-index|head|layer) ...", "", "")
+        fail(
+            "USAGE", "pakai: kimo (check-index|head|layer|forward) ...", "", ""
+        )
     var cmd = String(args[1])
     if cmd == "check-index":
         var shards = List[String]()
@@ -48,5 +51,10 @@ def main() raises:
             else:
                 fail_layer("INTERNAL_ERROR", err_s, "attention", -1)
             exit(2)
+    elif cmd == "forward":
+        var pass_args = List[String]()
+        for i in range(len(args)):
+            pass_args.append(String(args[i]))
+        cmd_forward(pass_args^)
     else:
         fail("USAGE", String("subcommand tak dikenal: ", cmd), "", "")

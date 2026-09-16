@@ -37,6 +37,51 @@ def c_unlink(path: String) -> Int:
     return Int(external_call["unlink", Int32](p_z.unsafe_ptr()))
 
 
+def c_mkdir(path: String, mode: Int = 493) -> Int:
+    # mkdirat(AT_FDCWD, ...) == mkdir() tapi menghindari bentrok signature
+    # external_call["mkdir", ...] milik stdlib. AT_FDCWD=-100.
+    var p = path.as_bytes()
+    var p_z = List[UInt8]()
+    for i in range(len(p)):
+        p_z.append(p[i])
+    p_z.append(0)
+    return Int(
+        external_call["mkdirat", Int32](
+            Int32(-100), p_z.unsafe_ptr(), Int32(mode)
+        )
+    )
+
+
+def c_rmdir(path: String) -> Int:
+    var p = path.as_bytes()
+    var p_z = List[UInt8]()
+    for i in range(len(p)):
+        p_z.append(p[i])
+    p_z.append(0)
+    return Int(external_call["rmdir", Int32](p_z.unsafe_ptr()))
+
+
+def c_access_w(path: String) -> Bool:
+    # W_OK = 2 in POSIX unistd.h
+    var p = path.as_bytes()
+    var p_z = List[UInt8]()
+    for i in range(len(p)):
+        p_z.append(p[i])
+    p_z.append(0)
+    var ret = external_call["access", Int32](p_z.unsafe_ptr(), Int32(2))
+    return ret == 0
+
+
+def get_file_size(path: String) -> Int:
+    try:
+        var f = open(path, "r")
+        var sz = Int(f.seek(0, 2))  # SEEK_END = 2
+        f.close()
+        return sz
+    except:
+        return -1
+
+
 # Flags open(2) Linux (<fcntl.h>, bits/fcntl-linux.h):
 # O_WRONLY=1, O_CREAT=64, O_EXCL=128, O_NOFOLLOW=131072.
 # Kombinasi O_CREAT|O_EXCL|O_NOFOLLOW untuk tmp file:
@@ -64,6 +109,15 @@ def c_write_f32_fd_all(fd: Int, data: List[Float32]) -> Bool:
     # kernel transfer penuh atau gagal (ENOSPC/EINTR/dsb) — caller unlink
     # tmp dan lapor OUTPUT_WRITE_FAILED. Tanpa aritmetika pointer.
     var n_bytes = len(data) * 4
+    if n_bytes == 0:
+        return True
+    var p_u8 = data.unsafe_ptr().unsafe_bitcast[UInt8]()
+    var ret = external_call["write", Int](fd, p_u8, n_bytes)
+    return Int(ret) == n_bytes
+
+
+def c_write_f32_fd_n(fd: Int, data: List[Float32], count: Int) -> Bool:
+    var n_bytes = count * 4
     if n_bytes == 0:
         return True
     var p_u8 = data.unsafe_ptr().unsafe_bitcast[UInt8]()
@@ -130,6 +184,124 @@ def get_proc_io_read_bytes() -> Int:
     except:
         pass
     return 0
+
+
+def _get_cgroup_subpath() -> String:
+    try:
+        var f = open("/proc/self/cgroup", "r")
+        var content = f.read()
+        f.close()
+        var lines = content.split("\n")
+        for i in range(len(lines)):
+            var line = lines[i]
+            if line.startswith("0::"):
+                var sub = line[byte=3:]
+                return String(sub)
+    except:
+        pass
+    return ""
+
+
+def get_cgroup_peak_bytes() -> Int:
+    var sub = _get_cgroup_subpath()
+    var paths = List[String]()
+    if sub.byte_length() > 0:
+        paths.append(String("/sys/fs/cgroup", sub, "/memory.peak"))
+    paths.append("/sys/fs/cgroup/memory.peak")
+    for i in range(len(paths)):
+        try:
+            var f = open(paths[i], "r")
+            var content = f.read()
+            f.close()
+            var s = String(content.strip())
+            if s.byte_length() > 0:
+                return Int(s)
+        except:
+            pass
+    return 0
+
+
+def get_cgroup_oom_kills() -> Int:
+    var sub = _get_cgroup_subpath()
+    var paths = List[String]()
+    if sub.byte_length() > 0:
+        paths.append(String("/sys/fs/cgroup", sub, "/memory.events"))
+    paths.append("/sys/fs/cgroup/memory.events")
+    for i in range(len(paths)):
+        try:
+            var f = open(paths[i], "r")
+            var content = f.read()
+            f.close()
+            var lines = content.split("\n")
+            for j in range(len(lines)):
+                var line = lines[j]
+                if line.startswith("oom_kill "):
+                    var parts = line.split()
+                    if len(parts) >= 2:
+                        return Int(parts[1])
+        except:
+            pass
+    return 0
+
+
+def get_current_yyyymmdd() -> String:
+    var t_buf = List[Int]()
+    t_buf.append(0)
+    _ = external_call["time", Int](t_buf.unsafe_ptr())
+    var tm_buf = List[Int32]()
+    for _ in range(14):
+        tm_buf.append(0)
+    _ = external_call["localtime_r", Int](
+        t_buf.unsafe_ptr(), tm_buf.unsafe_ptr()
+    )
+    var year = Int(tm_buf[5]) + 1900
+    var month = Int(tm_buf[4]) + 1
+    var day = Int(tm_buf[3])
+
+    var y_str = String(year)
+    var m_str = String(month)
+    if month < 10:
+        m_str = String("0", month)
+    var d_str = String(day)
+    if day < 10:
+        d_str = String("0", day)
+    return String(y_str, m_str, d_str)
+
+
+def allocate_run_id_and_dir(
+    workdir_canon: String, custom_run_id: String = ""
+) raises -> Tuple[String, String]:
+    var runs_parent = String(workdir_canon, "/runs")
+    _ = c_mkdir(runs_parent)
+
+    if custom_run_id.byte_length() > 0:
+        var run_dir = String(runs_parent, "/", custom_run_id)
+        _ = c_mkdir(run_dir)
+        return (custom_run_id, run_dir)
+
+    var ymd = get_current_yyyymmdd()
+    for n in range(1, 1000):
+        var n_str = String(n)
+        if n < 10:
+            n_str = String("00", n)
+        elif n < 100:
+            n_str = String("0", n)
+        var run_id = String("M4-", ymd, "-", n_str)
+        var run_dir = String(runs_parent, "/", run_id)
+        var ret = c_mkdir(run_dir)
+        if ret == 0:
+            return (run_id, run_dir)
+
+    raise Error("Failed to allocate unique run_id in " + runs_parent)
+
+
+def cleanup_run_resources(run_dir: String, tmp_files: List[String]):
+    for i in range(len(tmp_files)):
+        var tf = tmp_files[i]
+        if tf.byte_length() > 0:
+            _ = c_unlink(tf)
+    if run_dir.byte_length() > 0:
+        _ = c_rmdir(run_dir)
 
 
 def _in_list(list: List[String], item: String) -> Bool:
