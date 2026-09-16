@@ -62,6 +62,7 @@ STDOUT_JSON="$TEST_DIR/happy_stdout.json"
 STDERR_TXT="$TEST_DIR/happy_stderr.txt"
 
 "$KIMO" forward \
+  --mock-forward \
   --model-dir "$MODEL_DIR" \
   --tokens "$TOKENS_16" \
   --output "$OUT_LOGITS" \
@@ -303,10 +304,10 @@ OUT_ISO_B="$WORKDIR/iso_b.bin"
 JSON_A="$TEST_DIR/iso_a.json"
 JSON_B="$TEST_DIR/iso_b.json"
 
-"$KIMO" forward --model-dir "$MODEL_DIR" --tokens "$TOKENS_16" --output "$OUT_ISO_A" --workdir "$WORKDIR" --run-id "M4-20260916-001" > "$JSON_A" 2>&1
+"$KIMO" forward --mock-forward --model-dir "$MODEL_DIR" --tokens "$TOKENS_16" --output "$OUT_ISO_A" --workdir "$WORKDIR" --run-id "M4-20260916-001" > "$JSON_A" 2>&1
 [ $? -eq 0 ] || { echo "FAIL: run A failed"; fail=1; }
 
-"$KIMO" forward --model-dir "$MODEL_DIR" --tokens "$TOKENS_16" --output "$OUT_ISO_B" --workdir "$WORKDIR" --run-id "M4-20260916-002" > "$JSON_B" 2>&1
+"$KIMO" forward --mock-forward --model-dir "$MODEL_DIR" --tokens "$TOKENS_16" --output "$OUT_ISO_B" --workdir "$WORKDIR" --run-id "M4-20260916-002" > "$JSON_B" 2>&1
 [ $? -eq 0 ] || { echo "FAIL: run B failed"; fail=1; }
 
 # Both output files must exist

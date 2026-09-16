@@ -76,6 +76,7 @@ def load_tensor_f32_chunked(
             )
         )
     var total_bytes = meta.end - meta.begin
+    telemetry.logical_bytes_read += total_bytes
     if total_bytes % element_size != 0:
         f.close()
         raise Error(
@@ -191,17 +192,20 @@ struct ShardHeaderCache(Movable):
     var files: List[String]
     var headers: List[STHeader]
     var maps: List[Dict[String, Int]]
+    var total_header_bytes: Int
 
     def __init__(out self):
         self.files = List[String]()
         self.headers = List[STHeader]()
         self.maps = List[Dict[String, Int]]()
+        self.total_header_bytes = 0
 
     def get_or_read(mut self, shard_path: String) raises -> Int:
         for i in range(len(self.files)):
             if self.files[i] == shard_path:
                 return i
         var st = read_header(shard_path)
+        self.total_header_bytes += st.data_base
         var pos = Dict[String, Int]()
         for k in range(len(st.entries)):
             pos[st.entries[k].name] = k

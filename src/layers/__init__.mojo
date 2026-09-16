@@ -9,6 +9,12 @@ from layers.attention import (
     load_layer_attention_weights,
     o_project,
 )
+from layers.forward_layer import (
+    LayerTiming,
+    forward_attention_step,
+    forward_single_layer,
+    moe_combine_no_residual,
+)
 from layers.head import (
     HeadWeights,
     embedding_lookup,

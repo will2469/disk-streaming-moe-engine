@@ -108,9 +108,11 @@ struct LoadMemoryTelemetry(Copyable, Movable):
     var conversion_buffer_bytes: Int
     var source_buffer_bytes: Int
     var vmhwm_bytes: Int
+    var logical_bytes_read: Int
 
     def __init__(out self):
         self.resident_target_bytes = 0
         self.conversion_buffer_bytes = 0
         self.source_buffer_bytes = 0
         self.vmhwm_bytes = 0
+        self.logical_bytes_read = 0

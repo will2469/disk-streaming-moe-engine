@@ -32,3 +32,5 @@ test-m3-integration = "cargo test --manifest-path tools/kimo-tools/Cargo.toml --
 bench-m3 = "uv run python tools/bench/bench_m3_real.py"
 test-m3 = { depends-on = ["build", "test-compare", "test-m3-cli", "test-m3-compare", "test-m3-integration"] }
 test-m4-cli = "bash tests/integration/test_m4_w1_forward_cli.sh"
+test-m4-unit = "mojo run -I src tests/unit/test_m4_forward_layer.mojo"
+test-m4-w2 = "bash tests/integration/test_m4_w2_layer_loop.sh"
