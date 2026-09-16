@@ -72,6 +72,17 @@ def c_access_w(path: String) -> Bool:
     return ret == 0
 
 
+def c_access_r(path: String) -> Bool:
+    # R_OK = 4 in POSIX unistd.h
+    var p = path.as_bytes()
+    var p_z = List[UInt8]()
+    for i in range(len(p)):
+        p_z.append(p[i])
+    p_z.append(0)
+    var ret = external_call["access", Int32](p_z.unsafe_ptr(), Int32(4))
+    return ret == 0
+
+
 def get_file_size(path: String) -> Int:
     try:
         var f = open(path, "r")

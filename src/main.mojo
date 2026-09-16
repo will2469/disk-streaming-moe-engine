@@ -8,6 +8,7 @@ from cli.cmd_forward import cmd_forward
 from cli.cmd_head import cmd_head
 from cli.cmd_layer import cmd_layer
 from cli.errors import eprint_json, fail, fail_layer
+from cli.m4_errors import m4_error_json
 from std.collections import List
 from std.sys.arg import argv
 from std.sys.terminate import exit
@@ -55,6 +56,20 @@ def main() raises:
         var pass_args = List[String]()
         for i in range(len(args)):
             pass_args.append(String(args[i]))
-        cmd_forward(pass_args^)
+        try:
+            cmd_forward(pass_args^)
+        except e:
+            var err_s = String(e)
+            if err_s.startswith("{"):
+                eprint_json(err_s)
+            else:
+                eprint_json(
+                    m4_error_json(
+                        "M4_ERR_LAYER_FORWARD",
+                        "forward",
+                        err_s,
+                    )
+                )
+            exit(5)
     else:
         fail("USAGE", String("subcommand tak dikenal: ", cmd), "", "")

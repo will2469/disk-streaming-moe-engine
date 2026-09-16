@@ -8,6 +8,7 @@ from cli.errors import dirname
 from cli.m4_errors import fail_m4
 from cli.sys_utils import (
     allocate_run_id_and_dir,
+    c_access_r,
     c_access_w,
     c_close_fd,
     c_mkdir,
@@ -373,13 +374,19 @@ def cmd_forward(args: List[String]) raises:
                 det,
             )
 
-    # (5) model dir ada
+    # (5) model dir ada dan readable
     var model_canon = c_realpath(model_dir)
     if model_canon.byte_length() == 0:
         fail_m4(
             "M4_ERR_INPUT",
             "input",
             "model directory not found: " + model_dir,
+        )
+    if not c_access_r(model_canon):
+        fail_m4(
+            "M4_ERR_INPUT",
+            "input",
+            "model directory not readable: " + model_canon,
         )
 
     # (6) workdir writable
@@ -683,12 +690,32 @@ def cmd_forward(args: List[String]) raises:
             tmp_files=tmp_files,
         )
 
-    var cfg_tuple = parse_model_config(config_path)
+    var cfg_tuple = (ModelConfig(2048, 24, 16, 151936), Float32(1e-6))
+    try:
+        cfg_tuple = parse_model_config(config_path)
+    except e:
+        fail_m4(
+            "M4_ERR_INDEX",
+            "index_load",
+            "failed parsing model config: " + String(e),
+            run_dir=run_dir,
+            tmp_files=tmp_files,
+        )
     var cfg = cfg_tuple[0].copy()
     var eps = cfg_tuple[1]
 
     # Parse index packed dan bangun weight_map
-    var packed = parse_index(index_path)
+    var packed = List[String]()
+    try:
+        packed = parse_index(index_path)
+    except e:
+        fail_m4(
+            "M4_ERR_INDEX",
+            "index_load",
+            "failed parsing index file: " + String(e),
+            run_dir=run_dir,
+            tmp_files=tmp_files,
+        )
     var num_tensors = 0
     var cs = packed[0].as_bytes()
     for ci in range(len(cs)):
@@ -783,7 +810,17 @@ def cmd_forward(args: List[String]) raises:
 
     for u in range(len(unique_shards)):
         var sf = unique_shards[u]
-        var sp = resolve_within_root(model_canon, sf)
+        var sp = String("")
+        try:
+            sp = resolve_within_root(model_canon, sf)
+        except:
+            fail_m4(
+                "M4_ERR_SHARD_IO",
+                "index_load",
+                "shard file not found on disk: " + sf,
+                run_dir=run_dir,
+                tmp_files=tmp_files,
+            )
         if c_realpath(sp) == "":
             fail_m4(
                 "M4_ERR_SHARD_IO",
