@@ -1,0 +1,122 @@
+{
+  "name": "M4 golden set",
+  "description": "5 prompts \u00d7 16 tokens for full forward streaming gate",
+  "vocab_size": 151936,
+  "prompts": [
+    {
+      "id": "prompt1",
+      "category": "factual",
+      "text": "What is the capital of France and what are the most famous historical landmarks in Paris?",
+      "tokens": [
+        3838,
+        374,
+        279,
+        6722,
+        315,
+        9625,
+        323,
+        1128,
+        525,
+        279,
+        1429,
+        11245,
+        13656,
+        59924,
+        304,
+        12095
+      ]
+    },
+    {
+      "id": "prompt2",
+      "category": "technical",
+      "text": "Explain quantum computing briefly, including qubits, superposition, and quantum entanglement in modern physics systems.",
+      "tokens": [
+        840,
+        20772,
+        30128,
+        24231,
+        26753,
+        11,
+        2670,
+        2804,
+        81402,
+        11,
+        2256,
+        3487,
+        11,
+        323,
+        30128,
+        1197
+      ]
+    },
+    {
+      "id": "prompt3",
+      "category": "code",
+      "text": "Write a Python function to sort a list of numbers using the quicksort algorithm efficiently.",
+      "tokens": [
+        7985,
+        264,
+        13027,
+        729,
+        311,
+        3378,
+        264,
+        1140,
+        315,
+        5109,
+        1667,
+        279,
+        3974,
+        6860,
+        12111,
+        29720
+      ]
+    },
+    {
+      "id": "prompt4",
+      "category": "basic_knowledge",
+      "text": "What are the primary colors and how do they combine to form secondary colors in painting?",
+      "tokens": [
+        3838,
+        525,
+        279,
+        6028,
+        7987,
+        323,
+        1246,
+        653,
+        807,
+        15963,
+        311,
+        1352,
+        14246,
+        7987,
+        304,
+        18824
+      ]
+    },
+    {
+      "id": "prompt5",
+      "category": "summary",
+      "text": "Summarize the history of the internet from the early ARPANET experiments to the modern World Wide Web.",
+      "tokens": [
+        9190,
+        5612,
+        551,
+        279,
+        3840,
+        315,
+        279,
+        7602,
+        504,
+        279,
+        4124,
+        91337,
+        1093,
+        1348,
+        21204,
+        311
+      ]
+    }
+  ]
+}
