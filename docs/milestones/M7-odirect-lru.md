@@ -447,7 +447,9 @@ flowchart TD
 
 ## Rumus (F13)
 
-$$HR = \text{hits}/(\text{hits}+\text{misses}),\quad BW_{eff} ≈ HR·BW_{RAM} + (1-HR)·BW_{disk}^{O\_DIRECT}$$
+$$HR_{req}=\text{hits}/(\text{hits}+\text{misses}),\quad \rho_B=B_{RAM}/(B_{RAM}+B_{disk}),\quad BW_{eff}=\left(\rho_B/BW_{RAM}+(1-\rho_B)/BW_{disk}^{O\_DIRECT}\right)^{-1}$$
+
+Gunakan $\rho_B$ untuk prediksi waktu; $HR_{req}$ hanya sama dengannya jika seluruh blok sama besar.
 
 Koreksi via F9: bila $CV$ routing tinggi (expert panas), pin expert panas di LRU/page cache → $ρ$ efektif naik. Baseline F9 dari M3 dipakai di sini.
 

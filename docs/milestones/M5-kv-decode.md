@@ -434,9 +434,9 @@ Trial MHA: $2×24×16×128×2$ B = 196.608 B/token = **0,1875 MiB/token** → @4
 
 F3b: $N_{stream}≈2{,}0668$ B → $B_{tok}^{decode}≈4{,}134$ GB/token (BF16).
 
-F5: $T_{tok}=B_{tok}/BW_{eff}+T_{comp}$, $BW_{eff}=ρ·BW_{RAM}+(1-ρ)·BW_{SSD}$, $ρ≈\min(1,C_{pc}/W_{stream})$.
+F5: $T_{data}=B_{tok}(\rho_B/BW_{RAM}+(1-\rho_B)/BW_{SSD})$, $BW_{eff}=B_{tok}/T_{data}$, dan forecast serial $T_{tok}=T_{data}+T_{comp}+T_{ovh}$. $\rho_C≈\min(1,C_{pc}/W_{stream})$ hanya estimasi kapasitas awal untuk fraksi byte terukur $\rho_B$.
 
-Contoh estimasi (bukan acceptance): $C_{pc}=3$ GB, $W_{stream}=26$ GB → $ρ≈0{,}1154$ → $BW_{eff}≈4{,}3846$ GB/s → $T_{I/O}≈0{,}943$ s/token; + placeholder $T_{comp}=0{,}05$ s → ≈0,993 s/token ≈1,01 tok/s. Placeholder wajib diganti ukur.
+Contoh estimasi (bukan acceptance): $C_{pc}=3$ GB, $W_{stream}=26$ GB → $\rho_C≈0{,}1154$. Jika $\rho_B=\rho_C$, $BW_{RAM}=15$ GB/s, dan $BW_{SSD}=3$ GB/s, maka $BW_{eff}≈3{,}305$ GB/s dan $T_{data}≈1{,}251$ s/token; + placeholder $T_{comp}=0{,}05$ s → ≈1,301 s/token ≈0,77 tok/s. Placeholder wajib diganti ukur.
 
 F4: $I_{decode}≈1$ FLOP/byte (self-canceling) → memory-bound; optimasi = kurangi bytes atau naikkan BW, bukan FLOPs.
 

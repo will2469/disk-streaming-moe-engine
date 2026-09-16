@@ -103,11 +103,11 @@ python tools/oracle/oracle_quant.py \
 1. Load model BF16 dari safetensors (8 shard → merge).
 2. Per tensor:
    - Split ke grup G (default: 128).
-   - Compute scale $s_g = \max|w_j|/7$ per grup.
-   - Quantize: $q_j = \text{clip}(\text{round}(w_j/s_g), -8, 7)$.
-   - Dequantize: $\hat{w}_j = s_g q_j$.
+   - Compute scale tersimpan $s_g=\mathrm{ceil}_{\mathrm{F16}}(\max|w_j|/7)$ per grup; grup nol memakai $s_g=1$, $q=0$.
+   - Quantize: $q_j = \text{clip}(\text{round}(w_j/s_g), -7, 7)$.
+   - Dequantize ke FP32: $\hat{w}^{(32)}_j = \mathrm{fp32}(s_g)q_j$.
    - Compute $\varepsilon_{rel} = \sqrt{\text{MSE}} / \sqrt{\text{var}(w)}$.
-   - Verify property: $|w_j - \hat{w}_j| \le s_g/2$.
+   - Verify property FP32: $|\mathrm{fp32}(w_j)-\hat{w}^{(32)}_j| \le s_g/2$.
 3. Collect semua per-tensor $\varepsilon_{rel}$.
 4. Compute $\max \varepsilon_{rel}$ (untuk G-M6-1).
 
@@ -184,8 +184,8 @@ Fixture `tools/fixtures/m6_ppl_corpus.json` berisi corpus 100×256 untuk gate G-
 2. Load model BF16 original (baseline).
 3. Per document:
    - Tokenize → [s] token IDs.
-   - Compute PPL dengan model quant: $\mathrm{PPL}_{quant} = \exp(-1/s \sum \ln p_{quant})$.
-   - Compute PPL dengan model BF16: $\mathrm{PPL}_{bf16} = \exp(-1/s \sum \ln p_{bf16})$.
+   - Compute PPL dengan model quant: $\mathrm{PPL}_{quant} = \exp(-1/N_{pred} \sum \ln p_{quant})$.
+   - Compute PPL dengan model BF16: $\mathrm{PPL}_{bf16} = \exp(-1/N_{pred} \sum \ln p_{bf16})$.
 4. Compute $\Delta\mathrm{PPL} = \mathrm{PPL}_{quant} - \mathrm{PPL}_{bf16}$.
 5. Compute argmax agreement $\mathbb{A}$ (percentage of matching argmax).
 
@@ -330,7 +330,7 @@ Byte b: [w1 (4 bits)][w0 (4 bits)]
 Per group G:
 
 ```python
-s_g = max(|w_j|) / 7  # FP16 scale
+s_g = ceil_to_fp16(max(|w_j|) / 7)  # FP16 scale; zero group => s_g=1, q=0
 ```
 
 - Scale disimpan sebagai FP16 (2 bytes).
@@ -399,16 +399,16 @@ flowchart TD
 
 ## Rumus (F11, grup G=128, skala fp16)
 
-$$s_g = \max|w_j|/7,\quad q_j=\mathrm{clip}(\mathrm{round}(w_j/s_g),-8,7),\quad \hat{w}_j=s_g q_j \tag{F11a}$$
+$$s_g=\mathrm{ceil}_{\mathrm{F16}}(\max|w_j|/7),\quad q_j=\mathrm{clip}(\mathrm{round}(w_j/s_g),-7,7),\quad \hat w_j^{(32)}=\mathrm{fp32}(s_g)q_j \tag{F11a}$$
 $$\mathrm{MSE},\ \varepsilon_{rel},\ \text{bytes}≈N·bpw_{eff}/8 \tag{F11b}$$
 
 $bpw_{eff}=4+16/128=\mathbf{4{,}125}$ (+metadata). $N_{total}=14{,}32$ B → file ≈ **7,384 GB**.
 
-Property: $|w_j-\hat{w}_j| \le s_g/2$.
+Property FP32: $|\mathrm{fp32}(w_j)-\hat w_j^{(32)}| \le s_g/2$. `ceil_F16` mencegah saturasi nilai maksimum akibat scale FP16 yang dibulatkan ke bawah.
 
-Kualitas F12: $\mathrm{PPL}=\exp(-1/N\sum\ln p)$, $\Delta\mathrm{PPL}=\mathrm{PPL}_{quant}-\mathrm{PPL}_{bf16}$.
+Kualitas F12: $\mathrm{PPL}=\exp(-1/N_{pred}\sum_{t\in\mathcal P}\ln p)$, $\Delta\mathrm{PPL}=\mathrm{PPL}_{quant}-\mathrm{PPL}_{bf16}$.
 
-Dampak ke F5: $B_{tok}^{4bit}≈2{,}0668\text{B}×4{,}125/8≈\mathbf{1{,}066}$ GB; $W_{stream,quant}≈7{,}06$ GB → $ρ≈0{,}4248$ → $BW_{eff}≈8{,}097$ GB/s → forecast ≈0,182 s/token ≈5,51 tok/s (forecast, bukan acceptance).
+Dampak ke F5: $B_{tok}^{4bit}≈2{,}0668\text{B}×4{,}125/8≈\mathbf{1{,}066}$ GB; $W_{stream,quant}≈7{,}06$ GB → $\rho_B≈\rho_C≈0{,}4248$. Pada $BW_{RAM}=15$ GB/s dan $BW_{SSD}=3$ GB/s, $BW_{eff}≈4{,}544$ GB/s → forecast serial ≈0,285 s/token ≈3,51 tok/s (forecast, bukan acceptance).
 
 ## Gate
 
@@ -440,7 +440,7 @@ Dampak ke F5: $B_{tok}^{4bit}≈2{,}0668\text{B}×4{,}125/8≈\mathbf{1{,}066}$ 
 | IT-M6-7  | PPL measurement                             | Exit 0, G-M6-3 PASS             | HIGH     |
 | IT-M6-8  | Deterministic output                        | SHA-256 match di 2 run          | MEDIUM   |
 | IT-M6-9  | Custom group-size (64)                      | Exit 0, file size ±10%          | MEDIUM   |
-| IT-M6-10 | Property test:                              | w - ŵ                           | ≤ s_g/2  | 100% pass | MEDIUM |
+| IT-M6-10 | Property test FP32                          | fp32(w) - ŵ^(32)                | ≤ s_g/2  | 100% pass | MEDIUM |
 
 ### Test Automation
 
@@ -816,9 +816,9 @@ kimo quantize \
 - [ ] F11a algorithm terimplementasi: s_g = max|w|/7, q = clip(round(w/s_g), -8, 7), ŵ = s_g q
 - [ ] Group splitting: 128 weights per group
 - [ ] Scale computation per group (FP16)
-- [ ] Quantization: BF16 → 4-bit clip(-8, 7)
+- [ ] Quantization: BF16 → 4-bit clip(-7, 7)
 - [ ] Dequantization: 4-bit × scale → BF16
-- [ ] Property verification: |w - ŵ| ≤ s_g/2 untuk semua weights
+- [ ] Property verification FP32: |fp32(w) - ŵ^(32)| ≤ s_g/2 untuk semua weights
 
 ### Dequant Kernel
 
@@ -830,7 +830,7 @@ kimo quantize \
 ### Numerical Correctness
 
 - [ ] G-M6-1 quantization error ≤ 1e-2 (max epsilon_rel per tensor)
-- [ ] Property test: |w - ŵ| ≤ s_g/2 untuk semua weights
+- [ ] Property test FP32: |fp32(w) - ŵ^(32)| ≤ s_g/2 untuk semua weights
 - [ ] Roundtrip error: BF16 → 4-bit → BF16 ε_rel ≤ 1e-2
 
 ### PPL Quality

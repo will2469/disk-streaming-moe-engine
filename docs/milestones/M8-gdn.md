@@ -18,7 +18,7 @@ Menyiapkan linear attention untuk port Qwen3.6 (30/40 layer GDN): state ukuran t
 
 ## Rumus (F14) [R9]
 
-$$S_t = \gamma_t\, S_{t-1}(I - \beta_t k_t k_t^\top) + \beta_t v_t k_t^\top,\quad S\in\mathbb{R}^{d_k\times d_v} \tag{F14}$$
+$$S_t = \gamma_t\, S_{t-1}(I - \beta_t k_t k_t^\top) + \beta_t v_t k_t^\top,\quad S\in\mathbb{R}^{d_v\times d_k} \tag{F14}$$
 
 - Tanpa gate: $\gamma_t=1$.
 - Oracle = **loop rekuren naive** Python fp32 (bukan model hybrid publik — R6).

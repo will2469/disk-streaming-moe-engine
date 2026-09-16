@@ -135,7 +135,7 @@ kimo layer --layer 0 activation.bin shard-00001-of-00003.safetensors shard-00002
 
 - SHA-256 attn_ref.bin ter-commit ke repo
 - Oracle dan engine harus pakai config yang sama (ε, base RoPE, dtype fp32)
-- Softmax stabil wajib: $\operatorname{softmax}(z) = \dfrac{\exp(z - \max z)}{\sum \exp(z - \max z)}$
+- Softmax stabil wajib: $\mathrm{softmax}(z) = \dfrac{\exp(z - \max z)}{\sum \exp(z - \max z)}$
 
 ## Fixture M2-Specific
 

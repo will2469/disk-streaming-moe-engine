@@ -440,7 +440,7 @@ Total: 10 blocks × (3 GDN + 1 GatedAttn) = 30 GDN + 10 GatedAttn = 40 layers.
 
 **GDN State Transfer**:
 
-- Setiap GDN layer memiliki state $S \in \mathbb{R}^{d_k \times d_v}$ (dari M8).
+- Setiap GDN layer memiliki state $S \in \mathbb{R}^{d_v \times d_k}$ (dari M8).
 - State di-transfer antar GDN layer secara berurutan.
 - Setelah GDN terakhir dalam block, state disimpan untuk block berikutnya.
 - State tidak di-reset antar block (continuation).
@@ -1001,7 +1001,7 @@ GGUF (GPT-Generated Unified Format) adalah format quantized untuk LLM yang digun
 
 **Quantization formula** (dari F11):
 
-$$s_g = \frac{\max_{j \in G} |w_j|}{7}, \qquad q_j = \operatorname{clip}\left(\operatorname{round}\left(\frac{w_j}{s_g}\right), -8, 7\right), \qquad \hat{w}_j = s_g \cdot q_j$$
+$$s_g=\mathrm{ceil}_{\mathrm{F16}}\left(\frac{\max_{j\in G}|w_j|}{7}\right), \qquad q_j=\mathrm{clip}\left(\mathrm{round}\left(\frac{w_j}{s_g}\right),-7,7\right), \qquad \hat w_j^{(32)}=\mathrm{fp32}(s_g)q_j$$
 
 **Group size**: $G = 128$ weights per scale.
 

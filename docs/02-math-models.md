@@ -29,9 +29,9 @@
 
 **F2 — KV cache** (hanya layer dengan attention penuh):
 
-$$M_{KV}(s) = 2 \cdot L_{att} \cdot H_{kv} \cdot d_h \cdot s \cdot b \tag{F2}$$
+$$M_{KV}(s) = 2 \cdot L_{att} \cdot H_{kv} \cdot d_h \cdot s \cdot b_{KV} \tag{F2}$$
 
-Trial (MHA, semua layer): $2 \times 24 \times 16 \times 128 \times 2\,\text{B} = 196.608$ B/token = **0,1875 MiB/token** → @4096 ctx = **0,75 GiB** → konteks praktis trial ≤ 8K di RAM 8 GB. Port M9: berdasarkan layout resmi `10 × (3 × Gated DeltaNet → MoE) → 1 × (Gated Attention → MoE)`, ada **10/40 = 1/4** layer full-attention; GQA = 2 KV heads. Maka F2 memakai $L_{att}=10$ dan $H_{kv}=2$ untuk KV attention. [R4]
+Dengan $b_{KV}$ = byte per elemen **yang disimpan** di cache (trial: BF16, jadi 2 B; jangan otomatis mengikuti dtype bobot/dequant). Trial (MHA, semua layer): $2 \times 24 \times 16 \times 128 \times 2\,\text{B} = 196.608$ B/token = **0,1875 MiB/token** → @4096 ctx = **0,75 GiB** → konteks praktis trial ≤ 8K di RAM 8 GB. Port M9: berdasarkan layout resmi `10 × (3 × Gated DeltaNet → MoE) → 1 × (Gated Attention → MoE)`, ada **10/40 = 1/4** layer full-attention; GQA = 2 KV heads. Maka F2 memakai $L_{att}=10$ dan $H_{kv}=2$ untuk KV attention. [R4]
 Dipakai di: `milestones/M5-kv-decode.md`, `milestones/M9-port.md`.
 
 **F3 — Bytes yang dibaca dari disk:**
@@ -50,26 +50,37 @@ Catatan penting: tanpa KV cache (M0–M4), menghasilkan $n$ token baru berarti m
 
 $$I = \frac{\text{FLOPs}}{\text{bytes dibaca}}, \qquad P = \min\left(P_{peak},\; I \cdot BW\right) \tag{F4}$$
 
-$$I_{decode} \approx \frac{2 N_{stream}}{B_{tok}} = 1\ \text{FLOP/byte}$$
+$$I_{decode}^{weight} \approx \frac{2 N_{stream}}{B_{tok}} = 1\ \text{FLOP/byte}$$
+Ini adalah intensitas **weight-only** (FMA dihitung 2 FLOP), bukan intensitas end-to-end: pembacaan KV/aktivasi dan kerja selain matmul belum dimodelkan. Transfer tambahan biasanya menurunkan intensitas, tetapi FLOPs tambahan harus dihitung juga; verdict tetap berasal dari benchmark.
 Karena numerator dan denominator memakai himpunan bobot yang sama, rasio ini **self-canceling** terhadap perubahan definisi $N_{act}$ yang memasukkan embedding/lm_head. Kesimpulan memory-bound tetap bergantung pada posisi ridge point mesin target, sehingga verdict final tetap harus berasal dari benchmark `P_cpu` dan bandwidth nyata.
 
 Implikasi arsitektural: optimasi performa = **kurangi bytes** (F3b, kuantisasi M6) atau **naikkan bandwidth efektif** (F5, F13), bukan optimasi FLOPs. Prefill dengan $s$ besar bergerak ke compute-bound — itu sebabnya konteks sangat panjang mahal di CPU meski KV-nya kecil.
 
 **F5 — Waktu per token & bandwidth efektif:**
 
-$$T_{tok} = \frac{B_{tok}}{BW_{eff}} + T_{comp}, \qquad BW_{eff} = \rho \cdot BW_{RAM} + (1-\rho) \cdot BW_{SSD} \tag{F5}$$
+Jika fraksi byte $\rho_B$ datang dari RAM dan sisanya dari disk, waktu transfernya yang dijumlahkan:
 
-$$\rho \approx \min\left(1, \frac{C_{pc}}{W_{stream}}\right) \quad \text{(asumsi routing seragam; jika bias, koreksi via F9)}$$
+$$T_{data}=B_{tok}\left(\frac{\rho_B}{BW_{RAM}}+\frac{1-\rho_B}{BW_{SSD}}\right), \qquad BW_{eff}\equiv\frac{B_{tok}}{T_{data}}=\left(\frac{\rho_B}{BW_{RAM}}+\frac{1-\rho_B}{BW_{SSD}}\right)^{-1} \tag{F5a}$$
 
-Contoh trial (estimasi, bukan hasil ukur): $C_{pc} \approx 3$ GB, $W_{stream} \approx 26$ GB → $\rho=3/26\approx\mathbf{0{,}1154}$ → $BW_{eff}\approx\mathbf{4{,}3846}$ GB/s. Dengan $B_{tok}=4{,}134$ GB, komponen I/O memberi $T_{I/O}\approx\mathbf{0{,}943}$ s/token. Bila sementara dipakai placeholder $T_{comp}=0{,}05$ s, maka $T_{tok}\approx\mathbf{0{,}993}$ s/token ≈ **1,01 tok/s**. Placeholder `T_comp` wajib diganti hasil ukur sebelum dipakai untuk acceptance; angka ini hanya forecast engineering.
+Rata-rata aritmetika $\rho_B BW_{RAM}+(1-\rho_B)BW_{SSD}$ salah untuk sumber bytes serial; ia hanya berlaku bila bandwidth sumber benar-benar dipakai paralel untuk byte yang sama. Untuk jadwal tanpa overlap (forecast konservatif yang dipakai contoh di bawah),
 
-**Floor bandwidth (gate minimal, bukan estimasi):** $BW_{RAM}$ tipikal memakai 15 GB/s (kelas DDR4 umum), sedangkan **floor minimal $BW_{RAM} \ge 10$ GB/s** (G-M5-6, single-thread Copy read-equiv). Di floor ini target M7-3 tetap lolos: $BW_{eff,quant}\approx0{,}4248\cdot10+0{,}5752\cdot2{,}5\approx5{,}69$ GB/s → $T_{tok}\approx1{,}066/5{,}69+0{,}05\approx0{,}24$ s/token ≈ 4,2 tok/s ≥ 2 tok/s. Teoritis DDR4-3200 = 3200 MT/s × 8 B = 25,6 GB/s per kanal; yang di-gate adalah bandwidth *sustainable* terukur ala STREAM [R21], bukan angka teoritis.
+$$T_{tok}^{serial}=T_{data}+T_{comp}+T_{ovh}. \tag{F5b}$$
+
+Prefetch yang terukur dapat menumpangtindihkan compute dan I/O, sehingga batas idealnya $T_{tok}=\max(T_{data},T_{comp})+T_{ovh}$; laporan wajib menyebut jadwal yang dipakai, bukan mengklaim overlap dari rumus saja.
+
+$$\rho_B=\frac{B_{RAM}}{B_{RAM}+B_{SSD}}, \qquad \rho_C\approx\min\left(1,\frac{C_{pc}}{W_{stream}}\right) \tag{F5c}$$
+
+$\rho_B$ adalah fraksi **byte** terukur. $\rho_C$ hanya estimasi kapasitas awal untuk $\rho_B$, dengan asumsi blok yang direuse/routing seragam dan seluruh $C_{pc}$ tersedia; bias routing dikoreksi melalui F9 dan hasil ukur cache (F13).
+
+Contoh trial (estimasi, bukan hasil ukur): $C_{pc} \approx 3$ GB, $W_{stream} \approx 26$ GB → $\rho_C=3/26\approx\mathbf{0{,}1154}$. Dengan asumsi $\rho_B=\rho_C$, $BW_{RAM}=15$ GB/s, dan $BW_{SSD}=3$ GB/s, diperoleh $BW_{eff}\approx\mathbf{3{,}305}$ GB/s. Dengan $B_{tok}=4{,}134$ GB, komponen I/O memberi $T_{data}\approx\mathbf{1{,}251}$ s/token. Untuk forecast serial dengan placeholder $T_{comp}=0{,}05$ s dan $T_{ovh}=0$, $T_{tok}\approx\mathbf{1{,}301}$ s/token ≈ **0,77 tok/s**. Placeholder `T_comp` wajib diganti hasil ukur sebelum dipakai untuk acceptance; angka ini hanya forecast engineering.
+
+**Floor bandwidth (gate minimal, bukan estimasi):** $BW_{RAM}$ tipikal memakai 15 GB/s (kelas DDR4 umum), sedangkan **floor minimal $BW_{RAM} \ge 10$ GB/s** (G-M5-6, single-thread Copy read-equiv). Di floor ini target M7-3 tetap lolos dalam forecast serial: $BW_{eff,quant}=\left(0{,}4248/10+0{,}5752/2{,}5\right)^{-1}\approx\mathbf{3{,}67}$ GB/s → $T_{tok}\approx1{,}066/3{,}67+0{,}05\approx\mathbf{0{,}34}$ s/token ≈ **2,94 tok/s** ≥ 2 tok/s. Teoritis DDR4-3200 = 3200 MT/s × 8 B = 25,6 GB/s per kanal; yang di-gate adalah bandwidth *sustainable* terukur ala STREAM [R21], bukan angka teoritis.
 
 ## 3.2 Komponen Model
 
 **F6 — RMSNorm:**
 
-$$y = \frac{x}{\operatorname{RMS}(x)} \odot \gamma, \qquad \operatorname{RMS}(x) = \sqrt{\tfrac{1}{d}\textstyle\sum_i x_i^2 + \varepsilon}$$
+$$y = \frac{x}{\mathrm{RMS}(x)} \odot \gamma, \qquad \mathrm{RMS}(x) = \sqrt{\tfrac{1}{d}\textstyle\sum_i x_i^2 + \varepsilon}$$
 
 $\varepsilon$ dan dtype (fp32) wajib identik dengan oracle; nilai $\varepsilon$ diambil dari config dan diverifikasi silang ke kode modeling Qwen (TBM). Dipakai di M1/M2.
 
@@ -81,13 +92,13 @@ Invariant (property test P-3): $\lVert q' \rVert = \lVert q \rVert$ — rotasi o
 
 **F8 — Router + shared expert + SwiGLU (bagian paling kritis, M3) [R2][R3]:**
 
-$$p = \operatorname{softmax}(W_r x) \in \mathbb{R}^{60} \quad \text{(dihitung di fp32)} \tag{F8a}$$
+$$p = \mathrm{softmax}(W_r x) \in \mathbb{R}^{60} \quad \text{(dihitung di fp32)} \tag{F8a}$$
 
-$$\mathcal{A} = \operatorname{Top-4}(p) \quad \text{TANPA renormalisasi } (\texttt{norm\_topk\_prob=false} \Rightarrow p_i \text{ dipakai apa adanya}) \tag{F8b}$$
+$$\mathcal{A} = \mathrm{Top\text{-}4}(p) \quad \text{TANPA renormalisasi } (\texttt{norm\_topk\_prob=false} \Rightarrow p_i \text{ dipakai apa adanya}) \tag{F8b}$$
 
 $$y = \sum_{i \in \mathcal{A}} p_i \cdot E_i(x) \; + \; \sigma(g_{sh}) \cdot E_{sh}(x) \tag{F8c}$$
 
-$$E(x) = W_{down}\left(\operatorname{SiLU}(W_{gate} x) \odot (W_{up} x)\right), \qquad \operatorname{SiLU}(z) = z \cdot \sigma(z) \tag{F8d}$$
+$$E(x) = W_{down}\left(\mathrm{SiLU}(W_{gate} x) \odot (W_{up} x)\right), \qquad \mathrm{SiLU}(z) = z \cdot \sigma(z) \tag{F8d}$$
 
 Dua invariant keras: (a) **SET expert terpilih** ($\mathcal{A}$) harus identik dengan oracle untuk semua input uji — pergeseran probabilitas kecil boleh, flip seleksi = FAIL kategori `router-selection` (`03-testing.md` §4.3); (b) gate shared = **sigmoid** (F8c), bukan softmax. Dipakai di `milestones/M3-moe.md`.
 
@@ -99,13 +110,15 @@ Dipakai untuk: (a) mendeteksi bias routing pada corpus golden; (b) mengoreksi as
 
 ## 3.3 Ekivalensi Numerik (F10) — kontrak semua gate MATCH
 
-$$\Delta_{max} = \max_i |\hat{x}_i - x_i|, \qquad \varepsilon_{rel} = \frac{\lVert \hat{x} - x \rVert_2}{\lVert x \rVert_2}, \qquad \cos\theta = \frac{\langle \hat{x}, x \rangle}{\lVert \hat{x} \rVert\, \lVert x \rVert} \tag{F10a}$$
+$$\Delta_{max} = \max_i |\hat{x}_i - x_i|, \qquad \varepsilon_{rel} = \frac{\lVert \hat{x} - x \rVert_2}{\max(\lVert x \rVert_2,\tau)}, \qquad \cos\theta = \frac{\langle \hat{x}, x \rangle}{\lVert \hat{x} \rVert\, \lVert x \rVert} \tag{F10a}$$
 
 $$\mathbb{A} = \frac{1}{n}\sum_t \mathbb{1}\left[\arg\max \hat{x}_t = \arg\max x_t\right], \qquad \Delta_{CE} = \left|\mathrm{CE}(\hat{x}) - \mathrm{CE}(x)\right| \tag{F10b}$$
 
+Untuk $\lVert x\rVert_2<\tau$, cosine tidak terdefinisi jika salah satu vektor nol; laporkan `N/A` dan gunakan $\Delta_{max}$/error absolut. Tetapkan $\tau$ di artefak benchmark agar metrik tidak berubah karena pembagian nol.
+
 **Propagasi error antar-layer:** jika tiap layer menyumbang error relatif $\le \delta$, bound kasar untuk full forward adalah $\varepsilon_{full} \lesssim L \cdot \delta = 24\delta$ (asumsi amplifikasi kecil). Bound ini hanya penunjuk arah — yang di-gate adalah hasil ukur M4, bukan bound-nya.
 
-**Softmax stabil wajib** (oracle dan engine sama-sama): $\operatorname{softmax}(z) = \dfrac{\exp(z - \max z)}{\sum \exp(z - \max z)}$ — tanpa pengurangan max, fp32 meluap pada logits besar dan verdict jadi tidak bermakna.
+**Softmax stabil wajib** (oracle dan engine sama-sama): $\mathrm{softmax}(z) = \dfrac{\exp(z - \max z)}{\sum \exp(z - \max z)}$ — tanpa pengurangan max, fp32 meluap pada logits besar dan verdict jadi tidak bermakna.
 
 Threshold verdict per milestone ada di `03-testing.md` §4.3 dan diulang di tiap file `milestones/M*.md`.
 
@@ -113,15 +126,19 @@ Threshold verdict per milestone ada di `03-testing.md` §4.3 dan diulang di tiap
 
 **F11 — Kuantisasi simetris per-grup** (M6; grup $G$ = 128 bobot, skala fp16):
 
-$$s_g = \frac{\max_{j \in G} |w_j|}{7}, \qquad q_j = \operatorname{clip}\left(\operatorname{round}\left(\frac{w_j}{s_g}\right), -8, 7\right), \qquad \hat{w}_j = s_g \cdot q_j \tag{F11a}$$
+$$a_g=\max_{j \in G}|w_j|, \qquad s_g=\mathrm{ceil}_{\mathrm{F16}}\left(\frac{a_g}{7}\right), \qquad q_j=\mathrm{clip}\left(\mathrm{round}\left(\frac{w_j}{s_g}\right),-7,7\right), \qquad \hat w_j^{(32)}=\mathrm{fp32}(s_g)q_j \tag{F11a}$$
 
-$$\mathrm{MSE} = \frac{1}{n}\sum_j (w_j - \hat{w}_j)^2, \qquad \varepsilon_{rel} = \frac{\sqrt{\mathrm{MSE}}}{\sqrt{\tfrac{1}{n}\sum_j w_j^2}}, \qquad \text{bytes(file)} \approx N \cdot \frac{bpw_{eff}}{8} \tag{F11b}$$
+Dengan $\mathrm{ceil}_{\mathrm{F16}}$ = nilai FP16 finite terkecil yang tidak kurang dari argumennya. Bila $a_g=0$, tetapkan $s_g=1$ dan seluruh $q_j=0$; bila $a_g/7$ tidak dapat diwakili FP16 finite, kuantisasi gagal (`SCALE_OVERFLOW`). Kode 4-bit bernilai $-8$ tetap representable, tetapi tidak dipancarkan oleh skema simetris ini. Pembulatan scale ke atas penting: memakai hasil pembulatan FP16 terdekat dapat membuat nilai maksimum tersaturasi dan membatalkan bound berikut.
 
-dengan $bpw_{eff} = 4 + 16/128 = \mathbf{4{,}125}$ (+ metadata). Untuk $N_{total}=14{,}32$ B, prediksi file = $14{,}32\times4{,}125/8\approx\mathbf{7{,}384\ GB}$. Gate G-M6-2 tetap **±10%** terhadap ukuran terukur. Property test: $|w_j - \hat{w}_j| \le s_g/2$ untuk semua $j$. Dipakai di `milestones/M6-quantizer.md`.
+$$\mathrm{MSE} = \frac{1}{n}\sum_j (\mathrm{fp32}(w_j)-\hat{w}_j^{(32)})^2, \qquad \varepsilon_{rel} = \frac{\sqrt{\mathrm{MSE}}}{\sqrt{\tfrac{1}{n}\sum_j \mathrm{fp32}(w_j)^2}}, \qquad \text{bytes(payload)}=\left\lceil\frac{N}{2}\right\rceil+2\left\lceil\frac{N}{G}\right\rceil \tag{F11b}$$
+
+dengan $bpw_{eff}=4+16/128=\mathbf{4{,}125}$ bit/bobot secara asimtotik; ukuran file = payload + header/alignment. Untuk $N_{total}=14{,}32$ B, prediksi payload = $14{,}32\times4{,}125/8\approx\mathbf{7{,}384\ GB}$ sebelum metadata. Gate G-M6-2 tetap **±10%** terhadap ukuran terukur. Property test (dequant FP32 dari scale FP16 tersimpan): $|\mathrm{fp32}(w_j)-\hat w_j^{(32)}|\le s_g/2$ untuk semua $j$; bila output akhirnya dibulatkan lagi ke BF16, ukur error output itu terpisah. Dipakai di `milestones/M6-quantizer.md`.
 
 **F12 — Perplexity & degrade kuantisasi:**
 
-$$\mathrm{PPL} = \exp\left(-\frac{1}{N}\sum_{t=1}^{N} \ln p(x_t \mid x_{<t})\right), \qquad \Delta\mathrm{PPL} = \mathrm{PPL}_{quant} - \mathrm{PPL}_{bf16}$$
+$$\mathrm{PPL}=\exp\left(-\frac{1}{N_{pred}}\sum_{t\in\mathcal P}\ln p(x_t\mid x_{<t})\right), \qquad \Delta\mathrm{PPL}=\mathrm{PPL}_{quant}-\mathrm{PPL}_{bf16} \tag{F12}$$
+
+$\mathcal P$ adalah seluruh posisi yang benar-benar diprediksi (untuk satu urutan biasa, bukan token pertama) dan $N_{pred}=|\mathcal P|$; untuk corpus, agregasikan NLL dan jumlah token dahulu agar PPL token-weighted. $\Delta\mathrm{PPL}$ dapat negatif, sehingga ambang degradasi adalah batas atas seperti G-M6-3, bukan nilai absolut.
 
 Dipakai di M6 dan M9.
 
@@ -129,13 +146,17 @@ Dipakai di M6 dan M9.
 
 **F13 — LRU hit rate & bandwidth efektif (M7):**
 
-$$HR = \frac{\text{hits}}{\text{hits} + \text{misses}}, \qquad BW_{eff} \approx HR \cdot BW_{RAM} + (1 - HR) \cdot BW_{disk}^{O\_DIRECT}$$
+$$HR_{req}=\frac{\text{hits}}{\text{hits}+\text{misses}}, \qquad \rho_B=\frac{B_{RAM}}{B_{RAM}+B_{disk}}, \qquad BW_{eff}=\left(\frac{\rho_B}{BW_{RAM}}+\frac{1-\rho_B}{BW_{disk}^{O\_DIRECT}}\right)^{-1} \tag{F13}$$
+
+$HR_{req}$ adalah diagnostik frekuensi request. F5/F13 memakai $\rho_B$ karena ukuran request/blok dapat tidak seragam; hanya untuk blok sama besar $HR_{req}=\rho_B$. Hit/miss dan byte dari buffered cache maupun LRU aplikasi harus dicatat terpisah agar sumber data tidak terhitung dua kali.
 
 Dipakai di `milestones/M7-odirect-lru.md`.
 
 **F14 — Delta rule / Gated DeltaNet (M8) [R9]:**
 
-$$S_t = \gamma_t \, S_{t-1}\left(I - \beta_t\, k_t k_t^\top\right) + \beta_t\, v_t k_t^\top, \qquad S \in \mathbb{R}^{d_k \times d_v} \;\; \text{(ukuran tetap, tidak tumbuh dengan } s\text{)} \tag{F14}$$
+$$S_t=\gamma_t\,S_{t-1}\left(I-\beta_t k_tk_t^\top\right)+\beta_t v_tk_t^\top, \qquad S\in\mathbb{R}^{d_v\times d_k} \;\; \text{(ukuran tetap, tidak tumbuh dengan }s\text{)} \tag{F14}$$
+
+Di sini $k_t\in\mathbb{R}^{d_k}$ dan $v_t\in\mathbb{R}^{d_v}$; maka kedua suku pembaruan berukuran $d_v\times d_k$. Orientasi sebelumnya $d_k\times d_v$ tidak konsisten dengan perkalian kanan dan outer product $v_tk_t^\top$.
 
 Versi tanpa gate: $\gamma_t = 1$. Oracle M8 = **loop rekuren naive** (Python fp32); implementasi Mojo = chunked scan (paralel per blok, representasi WY) dan wajib MATCH strict (F10) terhadap naive. Sifat kunci yang diuji: ukuran state konstan terhadap $s$ (G-M8-2) — kontras langsung dengan F2. Dipakai di `milestones/M8-gdn.md`.
 
@@ -158,7 +179,7 @@ dengan $\mathrm{size} = \{\mathrm{BF16}{:}2, \mathrm{F16}{:}2, \mathrm{F32}{:}4,
 
 dengan $\mathcal{D} = \{\mathrm{BF16}, \mathrm{F32}, \mathrm{F16}, \mathrm{F64}\}$ (himpunan eksak proyek — bukan "dll") dan batas keras **`header_len` ≤ 100 MB**, jumlah tensor ≤ 100.000, header JSON diawali `{`, tanpa rekursi parser. Himpunan R7 sendiri non-exhaustive dan kini mencakup BOOL, int/uint, F4/F6/F8*, C64 (docs.rs `safetensors::tensor::Dtype`); proyek menolak semuanya — int/bool tanpa semantik engine, sub-byte bermasalah alignment [R7], kompleks tak dipakai — dan menolak varian masa depan yang tak dikenal. Checkpoint trial terbukti 100% BF16 (metadata HF `safetensors.parameters`), jadi F32/F16/F64 hanya untuk fixture/forward-compat. Batas 100 MB mengikuti implementasi `safetensors` saat ini; offset tensor divalidasi terhadap ukuran file **setelah dikonversi ke koordinat file**. [R7][R8] Dipakai di `milestones/M0-reader.md`.
 
-**Batas lapisan (normatif):** F15 murni struktural — berhenti di "file ini safetensors yang well-formed". Integritas artefak ($\operatorname{SHA-256}(\text{file}) = d_{pinned}$, revision pin) adalah **SEC-1/K1, bukan F15**: file valid-struktural dengan hash salah = FAIL SEC-1 (tolak start), bukan FAIL F15 (malformed). Mencampur keduanya mengaburkan debugging (parser vs provenance).
+**Batas lapisan (normatif):** F15 murni struktural — berhenti di "file ini safetensors yang well-formed". Integritas artefak ($\mathrm{SHA\text{-}256}(\text{file}) = d_{pinned}$, revision pin) adalah **SEC-1/K1, bukan F15**: file valid-struktural dengan hash salah = FAIL SEC-1 (tolak start), bukan FAIL F15 (malformed). Mencampur keduanya mengaburkan debugging (parser vs provenance).
 
 ## 3.7 Skala Core (F16) — rasio, tanpa angka device di spec
 
