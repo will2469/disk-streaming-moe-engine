@@ -81,3 +81,13 @@ from layers.decode_loop import (
     compare_tensors_loose,
     recompute_attention_at_position,
 )
+from layers.gdn import (
+    GDNConfig,
+    GDNState,
+    apply_wy_chunk_update,
+    chunked_gdn_scan,
+    compose_chunk_operators,
+    compute_wy_coefficients,
+    extract_chunk_operator,
+    project_tokens_to_kv_beta,
+)
