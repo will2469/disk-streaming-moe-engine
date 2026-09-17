@@ -441,49 +441,136 @@ def _find_config_float(
 
 
 def parse_model_config(path: String) raises -> Tuple[ModelConfig, Float32]:
+    return parse_model_config_adapter(path, "trial")
+
+
+def parse_model_config_adapter(
+    path: String, expected_arch: String
+) raises -> Tuple[ModelConfig, Float32]:
+    """Parse model config dengan deteksi arsitektur dan mismatch detector (M9).
+
+    Exit 2 (M9_ERR_ARCHITECTURE) bila --architecture mismatch terhadap checkpoint.
+    Exit 3 (M9_ERR_CONFIG) bila dimensi arsitektur (vocab/layer/expert/topk) mismatch.
+    """
+    if expected_arch != "trial" and expected_arch != "qwen3.6":
+        raise Error(
+            '{"error_code":2,"error_type":"ARCHITECTURE_ERROR","detail":"unsupported'
+            " architecture: "
+            + expected_arch
+            + '","stage":"config"}'
+        )
+
     var raw_bytes: List[UInt8]
     try:
         raw_bytes = read_small_file(path)
     except:
         raise Error(
-            '{"error_type":"CONFIG_ERROR","detail":"cannot open'
-            " model_config.json: "
+            '{"error_code":1,"error_type":"CONFIG_ERROR","detail":"cannot open'
+            " config file: "
             + path
             + '","stage":"config"}'
         )
     var raw = String(from_utf8_lossy=Span(raw_bytes))
     var fields = _parse_config_object(raw)
 
+    # Deteksi nested text_config (seperti pada Qwen3.6-35B-A3B)
+    if "text_config" in fields:
+        var text_raw = fields["text_config"]
+        var tb = text_raw.as_bytes()
+        if len(tb) > 2 and tb[0] == 123 and tb[len(tb) - 1] == 125:
+            var text_fields = _parse_config_object(text_raw)
+            var top_model_type = (
+                fields["model_type"] if "model_type" in fields else ""
+            )
+            fields = text_fields^
+            if "model_type" not in fields and top_model_type != "":
+                fields["model_type"] = top_model_type
+
+    var model_type = fields["model_type"] if "model_type" in fields else ""
+    var raw_vocab = _find_config_int_optional(fields, "vocab_size", -1)
+    var raw_experts = _find_config_int_optional(fields, "num_experts", -1)
+
+    # Validasi Mismatch Arsitektur (Exit 2)
+    if expected_arch == "trial":
+        if (
+            model_type == '"qwen3_5_moe"'
+            or model_type == '"qwen3_5_moe_text"'
+            or model_type == '"qwen3.6"'
+            or raw_vocab == 248320
+            or raw_experts == 256
+        ):
+            raise Error(
+                '{"error_code":2,"error_type":"ARCHITECTURE_MISMATCH","detail":"checkpoint'
+                " is Qwen3.6 architecture, but --architecture trial was"
+                ' specified","stage":"config"}'
+            )
+    elif expected_arch == "qwen3.6":
+        if (
+            model_type == '"qwen2_moe"'
+            or raw_vocab == 151936
+            or (raw_experts == 60 and raw_vocab != 1024)
+        ):
+            raise Error(
+                '{"error_code":2,"error_type":"ARCHITECTURE_MISMATCH","detail":"checkpoint'
+                " is Trial architecture, but --architecture qwen3.6 was"
+                ' specified","stage":"config"}'
+            )
+
     var hidden_size = _find_config_int(fields, "hidden_size")
     var vocab_size = _find_config_int(fields, "vocab_size")
+    var def_layers = 24 if expected_arch == "trial" else 40
     var num_hidden_layers = _find_config_int_optional(
-        fields, "num_hidden_layers", 28
+        fields, "num_hidden_layers", def_layers
     )
     var num_attention_heads = _find_config_int_optional(
         fields, "num_attention_heads", 16
     )
     var eps = _find_config_float(fields, "rms_norm_eps")
 
-    # NaN <= 0 adalah false, jadi tanpa isnan/isinf eksplisit NaN lolos.
-    # (Unreachable setelah _parse_strict_float, tapi dipertahankan eksplisit
-    # sebagai defense-in-depth di titik validasi.)
     if isnan(eps) or isinf(eps) or eps <= Float32(0.0):
         raise Error(
-            '{"error_type":"CONFIG_ERROR","detail":"rms_norm_eps must be'
-            ' finite and > 0",'
-            '"stage":"config"}'
+            '{"error_code":3,"error_type":"CONFIG_ERROR","detail":"rms_norm_eps'
+            ' must be finite and > 0","stage":"config"}'
         )
 
-    var num_experts = _find_config_int_optional(fields, "num_experts", 60)
+    var def_experts = 60 if expected_arch == "trial" else 256
+    var def_topk = 4 if expected_arch == "trial" else 8
+    var def_inter = 1408 if expected_arch == "trial" else 512
+    var def_shared = 5632 if expected_arch == "trial" else 512
+
+    var num_experts = _find_config_int_optional(
+        fields, "num_experts", def_experts
+    )
     var num_experts_per_tok = _find_config_int_optional(
-        fields, "num_experts_per_tok", 4
+        fields, "num_experts_per_tok", def_topk
     )
     var moe_intermediate_size = _find_config_int_optional(
-        fields, "moe_intermediate_size", 1408
+        fields, "moe_intermediate_size", def_inter
     )
     var shared_expert_intermediate_size = _find_config_int_optional(
-        fields, "shared_expert_intermediate_size", 5632
+        fields, "shared_expert_intermediate_size", def_shared
     )
+
+    var def_kv_heads = num_attention_heads if expected_arch == "trial" else 2
+    var num_key_value_heads = _find_config_int_optional(
+        fields, "num_key_value_heads", def_kv_heads
+    )
+
+    var head_dim_override = _find_config_int_optional(fields, "head_dim", 0)
+    var full_attention_interval = _find_config_int_optional(
+        fields, "full_attention_interval", 4
+    )
+
+    var attention_bias = False
+    if "attention_bias" in fields:
+        var ab = fields["attention_bias"]
+        if ab == "true":
+            attention_bias = True
+        elif ab == "false":
+            attention_bias = False
+    elif expected_arch == "trial":
+        attention_bias = True
+
     var norm_topk_prob = False
     if "norm_topk_prob" in fields:
         var val = fields["norm_topk_prob"]
@@ -493,8 +580,91 @@ def parse_model_config(path: String) raises -> Tuple[ModelConfig, Float32]:
             norm_topk_prob = False
         else:
             raise Error(
-                '{"error_type":"CONFIG_ERROR","detail":"norm_topk_prob must be'
-                ' boolean","stage":"config"}'
+                '{"error_code":3,"error_type":"CONFIG_ERROR","detail":"norm_topk_prob'
+                ' must be boolean","stage":"config"}'
+            )
+
+    # Mismatch Detector (Exit 3): Validasi Dimensi Arsitektur Normatif
+    if expected_arch == "qwen3.6":
+        var is_canonical = (
+            num_experts == 256
+            or vocab_size == 248320
+            or num_hidden_layers == 40
+        )
+        var is_mini = (
+            num_experts == 8 or vocab_size == 1024 or num_hidden_layers == 4
+        )
+        if is_canonical:
+            if num_experts != 256:
+                raise Error(
+                    '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"canonical'
+                    " Qwen3.6 requires num_experts=256, got "
+                    + String(num_experts)
+                    + '","stage":"config"}'
+                )
+            if num_experts_per_tok != 8:
+                raise Error(
+                    '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"canonical'
+                    " Qwen3.6 requires num_experts_per_tok=8, got "
+                    + String(num_experts_per_tok)
+                    + '","stage":"config"}'
+                )
+            if vocab_size != 248320:
+                raise Error(
+                    '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"canonical'
+                    " Qwen3.6 requires vocab_size=248320, got "
+                    + String(vocab_size)
+                    + '","stage":"config"}'
+                )
+            if num_hidden_layers != 40:
+                raise Error(
+                    '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"canonical'
+                    " Qwen3.6 requires num_hidden_layers=40, got "
+                    + String(num_hidden_layers)
+                    + '","stage":"config"}'
+                )
+            if num_key_value_heads != 2:
+                raise Error(
+                    '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"canonical'
+                    " Qwen3.6 requires num_key_value_heads=2 (GQA 16Q/2KV),"
+                    " got "
+                    + String(num_key_value_heads)
+                    + '","stage":"config"}'
+                )
+        elif is_mini:
+            if num_experts != 8:
+                raise Error(
+                    '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"synthetic'
+                    " mini port requires num_experts=8, got "
+                    + String(num_experts)
+                    + '","stage":"config"}'
+                )
+            if num_experts_per_tok != 2:
+                raise Error(
+                    '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"synthetic'
+                    " mini port requires num_experts_per_tok=2, got "
+                    + String(num_experts_per_tok)
+                    + '","stage":"config"}'
+                )
+            if vocab_size != 1024:
+                raise Error(
+                    '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"synthetic'
+                    " mini port requires vocab_size=1024, got "
+                    + String(vocab_size)
+                    + '","stage":"config"}'
+                )
+            if num_hidden_layers != 4:
+                raise Error(
+                    '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"synthetic'
+                    " mini port requires num_hidden_layers=4, got "
+                    + String(num_hidden_layers)
+                    + '","stage":"config"}'
+                )
+        else:
+            raise Error(
+                '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"Qwen3.6'
+                " config does not match canonical (40L/256E/248K) or mini"
+                ' (4L/8E/1K) dimensions","stage":"config"}'
             )
 
     var cfg = ModelConfig(
@@ -507,5 +677,10 @@ def parse_model_config(path: String) raises -> Tuple[ModelConfig, Float32]:
         moe_intermediate_size,
         shared_expert_intermediate_size,
         norm_topk_prob,
+        architecture=expected_arch,
+        num_key_value_heads=num_key_value_heads,
+        head_dim_override=head_dim_override,
+        full_attention_interval=full_attention_interval,
+        attention_bias=attention_bias,
     )
     return (cfg^, eps)

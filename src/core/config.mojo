@@ -20,6 +20,11 @@ struct ModelConfig(Copyable, Movable):
     var moe_intermediate_size: Int
     var shared_expert_intermediate_size: Int
     var norm_topk_prob: Bool
+    var architecture: String
+    var num_key_value_heads: Int
+    var head_dim_override: Int
+    var full_attention_interval: Int
+    var attention_bias: Bool
 
     def __init__(
         out self,
@@ -32,6 +37,11 @@ struct ModelConfig(Copyable, Movable):
         moe_intermediate_size: Int = 1408,
         shared_expert_intermediate_size: Int = 5632,
         norm_topk_prob: Bool = False,
+        architecture: String = "trial",
+        num_key_value_heads: Int = -1,
+        head_dim_override: Int = 0,
+        full_attention_interval: Int = 4,
+        attention_bias: Bool = False,
     ) raises:
         # Invariant arsitektur: konstruktor menolak konfigurasi absurd
         # (fail hard, bukan default diam-diam). Default parameter hanya
@@ -52,7 +62,7 @@ struct ModelConfig(Copyable, Movable):
                     "",
                 )
             )
-        if hidden_size % num_attention_heads != 0:
+        if hidden_size % num_attention_heads != 0 and head_dim_override <= 0:
             raise Error(
                 error_json(
                     "CONFIG_ERROR",
@@ -86,6 +96,33 @@ struct ModelConfig(Copyable, Movable):
                     "",
                 )
             )
+
+        var kv_heads = num_key_value_heads
+        if kv_heads <= 0:
+            kv_heads = num_attention_heads
+        if num_attention_heads % kv_heads != 0:
+            raise Error(
+                error_json(
+                    "CONFIG_ERROR",
+                    (
+                        "num_attention_heads must be divisible by"
+                        " num_key_value_heads"
+                    ),
+                    "",
+                    "",
+                )
+            )
+
+        if architecture != "trial" and architecture != "qwen3.6":
+            raise Error(
+                error_json(
+                    "ARCHITECTURE_ERROR",
+                    "unsupported architecture: " + architecture,
+                    "",
+                    "",
+                )
+            )
+
         self.hidden_size = hidden_size
         self.num_hidden_layers = num_hidden_layers
         self.num_attention_heads = num_attention_heads
@@ -95,9 +132,43 @@ struct ModelConfig(Copyable, Movable):
         self.moe_intermediate_size = moe_intermediate_size
         self.shared_expert_intermediate_size = shared_expert_intermediate_size
         self.norm_topk_prob = norm_topk_prob
+        self.architecture = architecture
+        self.num_key_value_heads = kv_heads
+        self.head_dim_override = head_dim_override
+        self.full_attention_interval = (
+            full_attention_interval if full_attention_interval > 0 else 4
+        )
+        self.attention_bias = attention_bias
 
     def head_dim(self) -> Int:
+        if self.head_dim_override > 0:
+            return self.head_dim_override
         return self.hidden_size // self.num_attention_heads
+
+    def is_gdn_layer(self, layer_idx: Int) -> Bool:
+        if self.architecture == "trial":
+            return False
+        return (layer_idx % self.full_attention_interval) != (
+            self.full_attention_interval - 1
+        )
+
+    def is_attention_layer(self, layer_idx: Int) -> Bool:
+        if self.architecture == "trial":
+            return True
+        return (layer_idx % self.full_attention_interval) == (
+            self.full_attention_interval - 1
+        )
+
+    def num_attention_layers(self) -> Int:
+        if self.architecture == "trial":
+            return self.num_hidden_layers
+        return self.num_hidden_layers // self.full_attention_interval
+
+    def num_gdn_layers(self) -> Int:
+        return self.num_hidden_layers - self.num_attention_layers()
+
+    def gqa_group_size(self) -> Int:
+        return self.num_attention_heads // self.num_key_value_heads
 
 
 @fieldwise_init

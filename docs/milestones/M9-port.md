@@ -2047,7 +2047,7 @@ Mengambil ukuran KV cache dari agregasi memori proses (VmHWM / RSS) adalah metod
 
 ### Migrasi & Loader
 
-- [ ] Config adapter trial→port (tabel § Panduan Migrasi); mismatch → exit 3
+- [x] Config adapter trial→port (tabel § Panduan Migrasi); mismatch → exit 3
 - [ ] Scheduler block `10×(3×GDN+1×GatedAttn)+MoE`; GDN no-op KV; reuse kernel M2/M3/M8
 - [ ] Router top-8 terparameterisasi + verifikasi `norm_topk_prob`/sigmoid dari config port
 - [ ] Weight loader ganda (BF16 26 shard + GGUF Q3/IQ3) + SEC-1/SEC-3 port + models.lock port

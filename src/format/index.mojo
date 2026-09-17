@@ -12,7 +12,7 @@ from std.collections import Dict, List
 def parse_index(path: String) raises -> List[String]:
     """Parse index json dan kembalikan [count, names[0], files[0], ...]."""
     var raw = read_small_file(path)
-    var sc = Scanner(raw^, path)
+    var sc = Scanner(raw^, path, allow_float=True)
     var names = List[String]()
     var files = List[String]()
     var seen = Dict[String, Int]()

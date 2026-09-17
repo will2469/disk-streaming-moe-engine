@@ -14,11 +14,15 @@ struct Scanner(Movable):
     var buf: List[UInt8]
     var pos: Int
     var shard: String
+    var allow_float: Bool
 
-    def __init__(out self, var buf: List[UInt8], shard: String):
+    def __init__(
+        out self, var buf: List[UInt8], shard: String, allow_float: Bool = False
+    ):
         self.buf = buf^
         self.pos = 0
         self.shard = shard
+        self.allow_float = allow_float
 
     def eof(self) -> Bool:
         return self.pos >= len(self.buf)
@@ -145,16 +149,39 @@ struct Scanner(Movable):
             if not self.eof():
                 var c = self.peek()
                 if c == 46 or c == 69 or c == 101:
-                    raise Error(
-                        String(
-                            STError(
-                                "JSON_PARSE_ERROR",
-                                "pecahan/eksponen di luar subset",
-                                self.shard,
-                                "",
+                    if not self.allow_float:
+                        raise Error(
+                            String(
+                                STError(
+                                    "JSON_PARSE_ERROR",
+                                    "pecahan/eksponen di luar subset",
+                                    self.shard,
+                                    "",
+                                )
                             )
                         )
-                    )
+                    if c == 46:
+                        self.pos += 1
+                        while (
+                            not self.eof()
+                            and self.peek() >= 48
+                            and self.peek() <= 57
+                        ):
+                            self.pos += 1
+                    if not self.eof() and (
+                        self.peek() == 69 or self.peek() == 101
+                    ):
+                        self.pos += 1
+                        if not self.eof() and (
+                            self.peek() == 43 or self.peek() == 45
+                        ):
+                            self.pos += 1
+                        while (
+                            not self.eof()
+                            and self.peek() >= 48
+                            and self.peek() <= 57
+                        ):
+                            self.pos += 1
             return
         if b == 116:
             self.expect_literal("true")
@@ -224,16 +251,39 @@ struct Scanner(Movable):
                 if not self.eof():
                     var d = self.peek()
                     if d == 46 or d == 69 or d == 101:
-                        raise Error(
-                            String(
-                                STError(
-                                    "JSON_PARSE_ERROR",
-                                    "pecahan/eksponen di luar subset",
-                                    self.shard,
-                                    "",
+                        if not self.allow_float:
+                            raise Error(
+                                String(
+                                    STError(
+                                        "JSON_PARSE_ERROR",
+                                        "pecahan/eksponen di luar subset",
+                                        self.shard,
+                                        "",
+                                    )
                                 )
                             )
-                        )
+                        if d == 46:
+                            self.pos += 1
+                            while (
+                                not self.eof()
+                                and self.peek() >= 48
+                                and self.peek() <= 57
+                            ):
+                                self.pos += 1
+                        if not self.eof() and (
+                            self.peek() == 69 or self.peek() == 101
+                        ):
+                            self.pos += 1
+                            if not self.eof() and (
+                                self.peek() == 43 or self.peek() == 45
+                            ):
+                                self.pos += 1
+                            while (
+                                not self.eof()
+                                and self.peek() >= 48
+                                and self.peek() <= 57
+                            ):
+                                self.pos += 1
             elif c == 32 or c == 10 or c == 13 or c == 9:
                 self.pos += 1
             else:
