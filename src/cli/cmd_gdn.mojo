@@ -110,6 +110,8 @@ def cmd_gdn(args: List[String]) raises:
     var threads = 1
     var use_odirect = False
     var lru_capacity = 0
+    var run_id = String("M8-RUN")
+    var timing_profile = False
 
     var i = 2
     while i < len(args):
@@ -150,11 +152,18 @@ def cmd_gdn(args: List[String]) raises:
         elif a == "--lru-capacity" and i + 1 < len(args):
             lru_capacity = Int(String(args[i + 1]))
             i += 2
+        elif a == "--run-id" and i + 1 < len(args):
+            run_id = String(args[i + 1])
+            i += 2
+        elif a == "--timing-profile":
+            timing_profile = True
+            i += 1
         elif a == "--help" or a == "-h":
             print(
                 "Usage: kimo gdn --model-dir <dir> --tokens <path> --output"
                 " <path> [--state-input <path>] [--layers N] [--dk N] [--dv N]"
                 " [--chunk-size N] [--workdir <dir>] [--threads N]"
+                " [--run-id <id>] [--timing-profile]"
             )
             exit(0)
         else:
@@ -163,6 +172,7 @@ def cmd_gdn(args: List[String]) raises:
     _ = workdir
     _ = threads
     _ = use_odirect
+    _ = timing_profile
     _ = lru_capacity
 
     # 1. Validasi Chunk Size [8, 4096] (Error Code 7)
@@ -319,6 +329,7 @@ def cmd_gdn(args: List[String]) raises:
         )
 
     # 8. State Lifecycle: Zero-init atau Continuation dari --state-input
+    var t_init_start = perf_counter_ns()
     var state = GDNState(layers, dv, dk)
     if state_input_path != "":
         if not c_access_r(state_input_path):
@@ -371,8 +382,10 @@ def cmd_gdn(args: List[String]) raises:
     else:
         # Fresh zero-init
         state.zero()
+    var t_init_end = perf_counter_ns()
 
     # 9. Memuat Model Weights dari Safetensors
+    var t_load_start = perf_counter_ns()
     var telemetry = LoadMemoryTelemetry()
     var embed_table = List[Float32]()
     var data_base = 0
@@ -411,6 +424,8 @@ def cmd_gdn(args: List[String]) raises:
 
     # 11. Eksekusi Forward GDN Chunked Scan Layer demi Layer
     var t_scan_start = perf_counter_ns()
+    var wy_coeff_ns: Int = 0
+    var wy_update_ns: Int = 0
     var p_embed = embed_table.unsafe_ptr()
 
     for lyr in range(layers):
@@ -493,10 +508,15 @@ def cmd_gdn(args: List[String]) raises:
                 x_chunk, w_k, w_v, w_beta, m, dk, dk, dv
             )
 
+            var t_c0 = perf_counter_ns()
             var w_chunk = compute_wy_coefficients(proj.k_mat, proj.beta, m, dk)
+            wy_coeff_ns += perf_counter_ns() - t_c0
+
+            var t_u0 = perf_counter_ns()
             apply_wy_chunk_update(
                 s_layer, proj.k_mat, proj.v_mat, w_chunk, m, dk, dv
             )
+            wy_update_ns += perf_counter_ns() - t_u0
 
             # Cek finite / NaN / INF per chunk
             for idx in range(dv * dk):
@@ -524,6 +544,7 @@ def cmd_gdn(args: List[String]) raises:
     var t_scan_end = perf_counter_ns()
 
     # 12. Serialisasi State Final Atomic ke GDNS v1 (Error Code 6)
+    var t_write_start = perf_counter_ns()
     try:
         write_gdns_v1(output_path, state)
     except:
@@ -532,16 +553,29 @@ def cmd_gdn(args: List[String]) raises:
             "OUTPUT_ERROR",
             String("Output error: failed atomic write to ", output_path),
         )
+    var t_write_end = perf_counter_ns()
 
     var t_end = perf_counter_ns()
 
     # 13. Perhitungan Metrik dan Telemetri
     var walltime_sec = Float64(t_end - t_start) / 1000000000.0
     var chunked_scan_sec = Float64(t_scan_end - t_scan_start) / 1000000000.0
+    var init_state_sec = Float64(t_init_end - t_init_start) / 1000000000.0
+    var load_weights_sec = Float64(t_scan_start - t_load_start) / 1000000000.0
+    var write_output_sec = Float64(t_write_end - t_write_start) / 1000000000.0
+    var wy_coeff_ms = Float64(wy_coeff_ns) / 1000000.0
+    var wy_update_ms = Float64(wy_update_ns) / 1000000.0
+
     if walltime_sec <= 0.0:
         walltime_sec = 0.000001
     if chunked_scan_sec <= 0.0:
         chunked_scan_sec = 0.000001
+    if load_weights_sec <= 0.0:
+        load_weights_sec = 0.000001
+    if init_state_sec <= 0.0:
+        init_state_sec = 0.000001
+    if write_output_sec <= 0.0:
+        write_output_sec = 0.000001
 
     var tokens_per_sec = Float64(seq_len) / walltime_sec
     var core_tokens_per_sec = Float64(seq_len * layers) / chunked_scan_sec
@@ -554,7 +588,7 @@ def cmd_gdn(args: List[String]) raises:
     # 14. Cetak Output Sukses JSON Strict ke stdout
     print("{")
     print('  "status": "success",')
-    print('  "run_id": "M8-RUN",')
+    print('  "run_id": "' + run_id + '",')
     print('  "model": "qwen-moe",')
     print('  "layers": ' + String(layers) + ",")
     print('  "dk": ' + String(dk) + ",")
@@ -595,6 +629,44 @@ def cmd_gdn(args: List[String]) raises:
     )
     print('    "vmhwm_bytes": ' + String(vmhwm_bytes) + ",")
     print('    "peak_state_bytes": ' + String(state_bytes))
+    print("  },")
+    print('  "phases": {')
+    print(
+        '    "load_weights_sec": '
+        + String(chunk_scan_str(load_weights_sec))
+        + ","
+    )
+    print(
+        '    "init_state_sec": ' + String(chunk_scan_str(init_state_sec)) + ","
+    )
+    print(
+        '    "chunked_scan_sec": '
+        + String(chunk_scan_str(chunked_scan_sec))
+        + ","
+    )
+    print(
+        '    "serialize_state_sec": '
+        + String(chunk_scan_str(write_output_sec))
+        + ","
+    )
+    print('    "write_output_sec": ' + String(chunk_scan_str(write_output_sec)))
+    print("  },")
+    print('  "timing_profile": {')
+    print(
+        '    "wy_coeff_time_ms": ' + String(chunk_scan_str(wy_coeff_ms)) + ","
+    )
+    print(
+        '    "wy_update_time_ms": ' + String(chunk_scan_str(wy_update_ms)) + ","
+    )
+    print('    "sync_time_ms": 0.000')
+    print("  },")
+    print('  "io_config": {')
+    print(
+        '    "use_odirect": '
+        + (String("true") if use_odirect else String("false"))
+        + ","
+    )
+    print('    "lru_capacity": ' + String(lru_capacity))
     print("  }")
     print("}")
 
