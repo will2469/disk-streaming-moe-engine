@@ -135,7 +135,7 @@ def write_gdns_v1(
         p_dst_z.append(p_dst[i])
     p_dst_z.append(0)
 
-    var ret = external_call["rename", Int](
+    var ret = external_call["rename", Int32](
         p_tmp_z.unsafe_ptr(), p_dst_z.unsafe_ptr()
     )
     if ret != 0:

@@ -5,6 +5,7 @@
 
 from cli.cmd_check_index import cmd_check_index
 from cli.cmd_decode import cmd_decode
+from cli.cmd_gdn import cmd_gdn
 from cli.cmd_head import cmd_head
 from cli.cmd_layer import cmd_layer
 from cli.config_parser import parse_model_config, parse_tokens_json
@@ -18,6 +19,7 @@ from cli.errors import (
     fail_layer,
     fail_routing_violation,
 )
+from cli.m8_errors import fail_m8, m8_error_json
 from cli.io_utils import (
     atomic_write_attn_output,
     atomic_write_logits,

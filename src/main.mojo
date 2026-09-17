@@ -7,6 +7,7 @@ from cli.cmd_check_index import cmd_check_index
 from cli.cmd_compare import cmd_compare
 from cli.cmd_decode import cmd_decode
 from cli.cmd_forward import cmd_forward
+from cli.cmd_gdn import cmd_gdn
 from cli.cmd_head import cmd_head
 from cli.cmd_layer import cmd_layer
 from cli.cmd_quantize import cmd_quantize
@@ -26,7 +27,8 @@ def main() raises:
             "USAGE",
             (
                 "pakai: kimo"
-                " (check-index|head|layer|forward|decode|quantize|compare) ..."
+                " (check-index|head|layer|forward|decode|quantize|compare|gdn)"
+                " ..."
             ),
             "",
             "",
@@ -143,5 +145,10 @@ def main() raises:
         for i in range(len(args)):
             pass_args.append(String(args[i]))
         cmd_compare(pass_args^)
+    elif cmd == "gdn":
+        var pass_args = List[String]()
+        for i in range(len(args)):
+            pass_args.append(String(args[i]))
+        cmd_gdn(pass_args^)
     else:
         fail("USAGE", String("subcommand tak dikenal: ", cmd), "", "")
