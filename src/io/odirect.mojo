@@ -22,7 +22,6 @@ comptime EINVAL = 22
 comptime ENOSPC = 28
 
 
-
 @fieldwise_init
 struct ReadToken(Copyable, Movable):
     """Token identitas operasi I/O asinkron dua-fase."""
@@ -181,7 +180,6 @@ struct ODirectReader:
                 fd=fd_buf,
                 dio_alignment=4096,
                 is_odirect=False,
-
                 queue_depth=queue_depth,
                 block_size=requested_block_size,
             )
@@ -245,7 +243,8 @@ struct ODirectReader:
                         m7_error_json(
                             "M7_ERR_ODIRECT_EIO",
                             "io_direct",
-                            "buffered pread failed with error code: " + String(n),
+                            "buffered pread failed with error code: "
+                            + String(n),
                         )
                     )
                 total_read += n
@@ -273,7 +272,6 @@ struct ODirectReader:
                         "O_DIRECT pread failed with error code: " + String(n),
                     )
                 )
-
 
             if n % A != 0:
                 # UNEXPECTED short read: sisa tak representable via O_DIRECT.

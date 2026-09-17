@@ -218,7 +218,6 @@ def test_streaming_dequant_single_layer_step() raises:
     )
     assert_equal(len(out_bf16), meta.num_elements())
 
-
     # Verifikasi bukan data kosong/sampah
     var non_zero = False
     for i in range(min(1024, len(out_bf16))):
