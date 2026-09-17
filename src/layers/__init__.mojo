@@ -91,3 +91,14 @@ from layers.gdn import (
     extract_chunk_operator,
     project_tokens_to_kv_beta,
 )
+from layers.gated_attention import (
+    GatedAttentionWeights,
+    GatedAttnKVCache,
+    gated_attention_forward,
+)
+from layers.port_scheduler import (
+    PortBlockWeights,
+    create_synthetic_block_weights,
+    forward_port_block,
+    forward_port_macro_scheduler,
+)

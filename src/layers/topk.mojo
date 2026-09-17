@@ -23,8 +23,8 @@ def select_topk(
     if norm_topk_prob:
         raise Error(
             '{"error_type":"ROUTER_ERROR","detail":"norm_topk_prob=true'
-            " forbidden in trial configuration; renormalization"
-            ' leak","stage":"router","layer":'
+            " forbidden; unrenormalized routing invariant"
+            ' violated","stage":"router","layer":'
             + String(layer_idx)
             + "}"
         )

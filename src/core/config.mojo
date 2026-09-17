@@ -152,6 +152,9 @@ struct ModelConfig(Copyable, Movable):
             self.full_attention_interval - 1
         )
 
+    def is_linear_attn_layer(self, layer_idx: Int) -> Bool:
+        return self.is_gdn_layer(layer_idx)
+
     def is_attention_layer(self, layer_idx: Int) -> Bool:
         if self.architecture == "trial":
             return True

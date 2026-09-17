@@ -16,9 +16,59 @@ from cli.sys_utils import c_access_r, c_realpath, get_file_size
 from core.config import ModelConfig
 from format.file_io import read_small_file
 from format.index import parse_index
+from format.kmss import read_kmss_v1, write_kmss_v1
 from format.types import json_escape
+from layers.gated_attention import GatedAttnKVCache
+from layers.gdn import GDNState
+from layers.port_scheduler import (
+    PortBlockWeights,
+    create_synthetic_block_weights,
+    forward_port_macro_scheduler,
+)
 from std.collections import Dict, List
+from std.math import max, min
 from std.sys.terminate import exit
+
+
+def _parse_tokens_from_file(path: String) raises -> List[Int]:
+    var raw = read_small_file(path)
+    var n = len(raw)
+    var i = 0
+    while i < n and (
+        raw[i] == 32 or raw[i] == 9 or raw[i] == 10 or raw[i] == 13
+    ):
+        i += 1
+    if i < n and raw[i] == 123:  # '{'
+        while i < n and raw[i] != 91:  # '['
+            i += 1
+    if i >= n or raw[i] != 91:
+        raise Error("Expected '[' in tokens file")
+    i += 1
+    var tokens = List[Int]()
+    while i < n:
+        while i < n and (
+            raw[i] == 32 or raw[i] == 9 or raw[i] == 10 or raw[i] == 13
+        ):
+            i += 1
+        if i < n and raw[i] == 93:  # ']'
+            break
+        var val = 0
+        var is_digit = False
+        while i < n and (raw[i] >= 48 and raw[i] <= 57):
+            val = val * 10 + (Int(raw[i]) - 48)
+            is_digit = True
+            i += 1
+        if is_digit:
+            tokens.append(val)
+        while i < n and (
+            raw[i] == 32 or raw[i] == 9 or raw[i] == 10 or raw[i] == 13
+        ):
+            i += 1
+        if i < n and raw[i] == 44:  # ','
+            i += 1
+        elif i < n and raw[i] == 93:  # ']'
+            break
+    return tokens^
 
 
 def _cross_validate_checkpoint_index(
@@ -126,6 +176,8 @@ def cmd_forward_port(args: List[String]) raises:
     var model_dir = String("")
     var architecture = String("")
     var tokens_path = String("")
+    var save_session_path = String("")
+    var load_session_path = String("")
     var output_file = String("")
     var check_config_only = False
     var threads = 1
@@ -161,6 +213,24 @@ def cmd_forward_port(args: List[String]) raises:
                     "missing argument for --tokens",
                 )
             tokens_path = String(args[i + 1])
+            i += 2
+        elif a == "--save-session":
+            if i + 1 >= len(args):
+                fail_m9(
+                    M9_ERR_INPUT,
+                    "INPUT_ERROR",
+                    "missing argument for --save-session",
+                )
+            save_session_path = String(args[i + 1])
+            i += 2
+        elif a == "--load-session" or a == "--session":
+            if i + 1 >= len(args):
+                fail_m9(
+                    M9_ERR_INPUT,
+                    "INPUT_ERROR",
+                    "missing argument for --load-session",
+                )
+            load_session_path = String(args[i + 1])
             i += 2
         elif a == "--output":
             if i + 1 >= len(args):
@@ -276,7 +346,124 @@ def cmd_forward_port(args: List[String]) raises:
             "checkpoint index mismatch: " + String(e),
         )
 
-    # 7. Output Laporan JSON Preflight
+    # 7. Eksekusi Hybrid Scheduler bila --tokens diberikan
+    var exec_json = String("")
+    if tokens_path.byte_length() > 0:
+        var tokens = _parse_tokens_from_file(tokens_path)
+        var seq_len = len(tokens)
+        if seq_len == 0:
+            fail_m9(M9_ERR_INPUT, "INPUT_ERROR", "tokens array is empty")
+
+        var kv_layers = cfg.num_attention_layers()
+        var kv_heads = cfg.num_key_value_heads
+        var head_dim = cfg.head_dim()
+        var gdn_layers = cfg.num_gdn_layers()
+        var dk = 32
+        var dv = 32
+
+        var kv_cache = GatedAttnKVCache(
+            max(seq_len + 64, 512), kv_layers, kv_heads, head_dim
+        )
+        var gdn_states = GDNState(gdn_layers, dv, dk)
+        var prev_tokens = List[Int]()
+        var pos_offset = 0
+        var recompute_tokens = seq_len
+        var gdn_state_reused = False
+
+        if load_session_path.byte_length() > 0:
+            try:
+                var session_res = read_kmss_v1(load_session_path)
+                kv_cache = session_res[1].copy()
+                gdn_states = session_res[2].copy()
+                prev_tokens = session_res[3].copy()
+                pos_offset = len(prev_tokens)
+                recompute_tokens = 0
+                gdn_state_reused = True
+            except e:
+                fail_m9(
+                    M9_ERR_INPUT,
+                    "SESSION_LOAD_FAILED",
+                    "failed loading session: " + String(e),
+                )
+
+        var kv_tokens_after = pos_offset + seq_len
+
+        # Buat bobot sintetis untuk seluruh layer
+        var blocks = List[PortBlockWeights]()
+        for l in range(cfg.num_hidden_layers):
+            blocks.append(create_synthetic_block_weights(cfg, l, dv, dk))
+
+        # Inisialisasi token embedding aktivasi
+        var x = List[Float32]()
+        x.resize(seq_len * cfg.hidden_size, Float32(0.0))
+        for t in range(seq_len):
+            var tid = tokens[t]
+            for d in range(cfg.hidden_size):
+                x[t * cfg.hidden_size + d] = Float32(
+                    (tid * 17 + d * 3) % 100
+                ) * Float32(0.001)
+
+        # Jalankan macro scheduler transformer penuh
+        try:
+            _ = forward_port_macro_scheduler(
+                x,
+                blocks,
+                gdn_states,
+                kv_cache,
+                pos_offset,
+                seq_len,
+                cfg,
+                dk,
+                dv,
+                eps,
+            )
+        except e:
+            fail_m9(
+                M9_ERR_CONFIG,
+                "SCHEDULER_EXEC_FAILED",
+                "forward scheduler failed: " + String(e),
+            )
+
+        # Simpan session jika diminta
+        if save_session_path.byte_length() > 0:
+            var all_tokens = List[Int]()
+            for t in range(len(prev_tokens)):
+                all_tokens.append(prev_tokens[t])
+            for t in range(seq_len):
+                all_tokens.append(tokens[t])
+            try:
+                write_kmss_v1(
+                    save_session_path, kv_cache, gdn_states, all_tokens, cfg
+                )
+            except e:
+                fail_m9(
+                    M9_ERR_INPUT,
+                    "SESSION_SAVE_FAILED",
+                    "failed saving session: " + String(e),
+                )
+
+        var kv_cache_bytes = (
+            2 * kv_tokens_after * kv_layers * kv_heads * head_dim * 4
+        )
+        var gdn_state_bytes = gdn_layers * dv * dk * 4
+
+        exec_json = String(
+            ',\n  "execution": {\n    "status": "COMPLETED",\n    "seq_len": ',
+            String(seq_len),
+            ',\n    "recompute_tokens": ',
+            String(recompute_tokens),
+            ',\n    "kv_tokens_after": ',
+            String(kv_tokens_after),
+            ',\n    "gdn_state_reused": ',
+            "true" if gdn_state_reused else "false",
+            ',\n    "kv_cache_bytes": ',
+            String(kv_cache_bytes),
+            ',\n    "gdn_state_bytes": ',
+            String(gdn_state_bytes),
+            "\n  }",
+        )
+
+    # 8. Output Laporan JSON Preflight & Eksekusi
     var out_json = String(
         (
             '{\n  "status": "success",\n  "command": "forward-port",\n '
@@ -318,7 +505,9 @@ def cmd_forward_port(args: List[String]) raises:
         "\n  },\n",
         (
             '  "mismatch_detector": {\n    "status": "VERIFIED",\n   '
-            ' "verdict": "PASS"\n  }\n}'
+            ' "verdict": "PASS"\n  }'
         ),
+        exec_json,
+        "\n}",
     )
     print(out_json)
