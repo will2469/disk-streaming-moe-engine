@@ -15,20 +15,38 @@ comptime QUANT_SCALE_DTYPE: String = "FP16"
 comptime QUANTIZED_DTYPE_NAME: String = "4-bit"
 
 
-def pack_4bit_pair(w0: Int8, w1: Int8) -> UInt8:
-    """Mengemas dua bobot bertanda [-8, 7] ke dalam 1 byte Little-Endian.
+def is_allowed_group_size(group_size: Int) -> Bool:
+    """Himpunan izin G ∈ {32, 64, 128, 256} (SSOT M6; satu-satunya definisi)."""
+    return (
+        group_size == 32
+        or group_size == 64
+        or group_size == 128
+        or group_size == 256
+    )
+
+
+def pack_4bit_pair(w0: Int8, w1: Int8) raises -> UInt8:
+    """Mengemas dua bobot bertanda [-7, 7] ke dalam 1 byte Little-Endian.
 
     w0 berada di low nibble (bits 0-3), w1 berada di high nibble (bits 4-7).
+    Nibble 0x8 (-8) reserved/invalid: encoder tak pernah memancarkannya.
     """
+    if Int(w0) < -7 or Int(w0) > 7 or Int(w1) < -7 or Int(w1) > 7:
+        raise Error("pack_4bit_pair: values must be in [-7, 7] (0x8 reserved)")
     var u0 = UInt8(Int(w0) & 0x0F)
     var u1 = UInt8(Int(w1) & 0x0F)
     return (u1 << 4) | u0
 
 
-def unpack_4bit_pair(b: UInt8) -> Tuple[Int8, Int8]:
-    """Membongkar 1 byte Little-Endian menjadi dua bobot bertanda [-8, 7]."""
+def unpack_4bit_pair(b: UInt8) raises -> Tuple[Int8, Int8]:
+    """Membongkar 1 byte Little-Endian menjadi dua bobot bertanda [-7, 7].
+
+    Menolak nibble reserved 0x8 (-8) dengan Error.
+    """
     var u0 = Int(b & 0x0F)
     var u1 = Int((b >> 4) & 0x0F)
+    if u0 == 8 or u1 == 8:
+        raise Error("unpack_4bit_pair: reserved nibble 0x8 (-8)")
     var w0 = Int8(u0 - 16 if u0 >= 8 else u0)
     var w1 = Int8(u1 - 16 if u1 >= 8 else u1)
     return (w0, w1)
@@ -232,7 +250,11 @@ struct QuantTensorMetadata(Copyable, Movable):
         shape: List[Int],
         dtype: String = "BF16",
         group_size: Int = QUANT_DEFAULT_GROUP_SIZE,
-    ):
+    ) raises:
+        if not is_allowed_group_size(group_size):
+            raise Error(
+                "QuantTensorMetadata: group_size not in {32, 64, 128, 256}"
+            )
         self.name = name
         self.shape = shape.copy()
         self.dtype = dtype
@@ -243,7 +265,11 @@ struct QuantTensorMetadata(Copyable, Movable):
         for i in range(len(shape)):
             n_elem *= shape[i]
 
-        self.num_groups = (n_elem + group_size - 1) // group_size
+        if n_elem % group_size != 0:
+            raise Error(
+                "QuantTensorMetadata: N % G != 0 (tail group not supported)"
+            )
+        self.num_groups = n_elem // group_size
         self.scale_offset = 0
         self.data_offset = self.num_groups * 2
 
@@ -370,7 +396,9 @@ struct QuantTensorMetadata(Copyable, Movable):
             if sc.peek() == 44:
                 sc.pos += 1
 
-        var meta = QuantTensorMetadata(name=name, shape=shape, dtype=dtype)
+        var meta = QuantTensorMetadata(
+            name=name, shape=shape, dtype=dtype, group_size=group_size
+        )
         meta.quantized_dtype = q_dtype
         meta.group_size = group_size
         meta.num_groups = num_groups
@@ -381,16 +409,26 @@ struct QuantTensorMetadata(Copyable, Movable):
 
 def calculate_tensor_quant_size(
     shape: List[Int], group_size: Int = QUANT_DEFAULT_GROUP_SIZE
-) -> Tuple[Int, Int, Int, Int]:
+) raises -> Tuple[Int, Int, Int, Int]:
     """Menghitung metrik ukuran kuantisasi untuk sebuah shape tensor.
 
+    Kontrak (SSOT M6): group_size wajib himpunan izin dan N % G == 0
+    (tanpa grup parsial); num_groups eksak.
     Mengembalikan Tuple (num_groups, scales_bytes, weights_bytes, total_bytes).
     Contoh: [2048, 2048] -> (32768, 65536, 2097152, 2162688).
     """
+    if not is_allowed_group_size(group_size):
+        raise Error(
+            "calculate_tensor_quant_size: group_size not in {32, 64, 128, 256}"
+        )
     var n = 1
     for i in range(len(shape)):
         n *= shape[i]
-    var num_groups = (n + group_size - 1) // group_size
+    if n % group_size != 0:
+        raise Error(
+            "calculate_tensor_quant_size: N % G != 0 (tail group not supported)"
+        )
+    var num_groups = n // group_size
     var scales_bytes = num_groups * 2
     var weights_bytes = (n + 1) // 2
     var total_bytes = scales_bytes + weights_bytes
@@ -408,10 +446,11 @@ def validate_quant_header(header: QuantHeader, file_size: Int = -1) raises:
         raise Error(
             "Group size must be positive, got " + String(header.group_size)
         )
-    # Group size harus pangkat 2
-    if (header.group_size & (header.group_size - 1)) != 0:
+    # Group size wajib himpunan izin SSOT (bukan sembarang pangkat 2)
+    if not is_allowed_group_size(header.group_size):
         raise Error(
-            "Group size must be power of 2, got " + String(header.group_size)
+            "Group size must be one of {32, 64, 128, 256}, got "
+            + String(header.group_size)
         )
     if header.format != QUANT_FORMAT_NAME:
         raise Error("Unsupported quantization format: " + header.format)
@@ -435,6 +474,11 @@ def validate_tensor_meta(meta: QuantTensorMetadata) raises:
     """Memvalidasi integritas metadata tensor."""
     if meta.name.byte_length() == 0:
         raise Error("Tensor name cannot be empty")
+    if not is_allowed_group_size(meta.group_size):
+        raise Error(
+            "Group size must be one of {32, 64, 128, 256}, got "
+            + String(meta.group_size)
+        )
     if len(meta.shape) == 0:
         raise Error("Tensor shape cannot be empty")
     var n = 1
@@ -442,7 +486,9 @@ def validate_tensor_meta(meta: QuantTensorMetadata) raises:
         if meta.shape[i] <= 0:
             raise Error("Dimension must be positive: " + String(meta.shape[i]))
         n *= meta.shape[i]
-    var exp_groups = (n + meta.group_size - 1) // meta.group_size
+    if n % meta.group_size != 0:
+        raise Error("N % G != 0 (tail group not supported)")
+    var exp_groups = n // meta.group_size
     if meta.num_groups != exp_groups:
         raise Error(
             "Mismatch in num_groups: expected "
@@ -464,7 +510,10 @@ def validate_tensor_meta(meta: QuantTensorMetadata) raises:
 def validate_quant_payload(
     scales: List[Float16], packed_weights: List[UInt8], num_elements: Int
 ) -> Bool:
-    """Memvalidasi bahwa scales finite dan weights dalam range [-8, 7]."""
+    """Memvalidasi bahwa scales finite dan weights dalam range [-7, 7].
+
+    Nibble reserved 0x8 (-8) ditolak; panjang buffer wajib eksak.
+    """
     for i in range(len(scales)):
         var s = scales[i]
         var u = float16_to_u16(s)
@@ -479,5 +528,12 @@ def validate_quant_payload(
     var exp_packed = (num_elements + 1) // 2
     if len(packed_weights) != exp_packed:
         return False
+
+    for i in range(len(packed_weights)):
+        var b = packed_weights[i]
+        var lo = Int(b & 0x0F)
+        var hi = Int((b >> 4) & 0x0F)
+        if lo == 8 or hi == 8:
+            return False
 
     return True

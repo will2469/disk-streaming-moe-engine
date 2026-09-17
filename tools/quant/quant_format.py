@@ -11,27 +11,34 @@ import numpy as np
 
 QUANT_HEADER_SIZE = 256
 QUANT_DEFAULT_GROUP_SIZE = 128
+QUANT_ALLOWED_GROUP_SIZES = frozenset({32, 64, 128, 256})
 QUANT_FORMAT_NAME = "4-bit per-group"
 QUANT_SCALE_DTYPE = "FP16"
 QUANTIZED_DTYPE_NAME = "4-bit"
 
 
 def pack_4bit_pair(w0: int, w1: int) -> int:
-    """Pack two signed integers in range [-8, 7] into a single Little-Endian byte.
+    """Pack two signed integers in range [-7, 7] into a single Little-Endian byte.
 
     w0 is stored in the low nibble (bits 0-3), w1 in the high nibble (bits 4-7).
+    Nibble 0x8 (-8) is reserved/invalid: the encoder never emits it.
     """
-    if not (-8 <= w0 <= 7) or not (-8 <= w1 <= 7):
-        raise ValueError(f"Values must be in [-8, 7], got w0={w0}, w1={w1}")
+    if not (-7 <= w0 <= 7) or not (-7 <= w1 <= 7):
+        raise ValueError(f"Values must be in [-7, 7], got w0={w0}, w1={w1}")
     u0 = w0 & 0x0F
     u1 = w1 & 0x0F
     return (u1 << 4) | u0
 
 
 def unpack_4bit_pair(b: int) -> tuple[int, int]:
-    """Unpack a single Little-Endian byte into two signed integers in [-8, 7]."""
+    """Unpack a single Little-Endian byte into two signed integers in [-7, 7].
+
+    Raises ValueError on reserved nibble 0x8 (-8).
+    """
     u0 = b & 0x0F
     u1 = (b >> 4) & 0x0F
+    if u0 == 0x08 or u1 == 0x08:
+        raise ValueError(f"Reserved nibble 0x8 (-8) in byte 0x{b:02X}")
     w0 = u0 - 16 if u0 >= 8 else u0
     w1 = u1 - 16 if u1 >= 8 else u1
     return w0, w1
@@ -58,11 +65,24 @@ def compute_fp16_scale_ceil(max_abs: float) -> float:
 def calculate_tensor_quant_size(
     shape: list[int], group_size: int = QUANT_DEFAULT_GROUP_SIZE
 ) -> tuple[int, int, int, int]:
-    """Calculate (num_groups, scales_bytes, weights_bytes, total_bytes)."""
+    """Calculate (num_groups, scales_bytes, weights_bytes, total_bytes).
+
+    Contract (M6 SSOT): group_size must be in the allowed set and N % G == 0
+    (no partial tail group); num_groups is then exact.
+    """
+    if group_size not in QUANT_ALLOWED_GROUP_SIZES:
+        raise ValueError(
+            f"group_size must be one of {sorted(QUANT_ALLOWED_GROUP_SIZES)}, "
+            f"got {group_size}"
+        )
     n_elem = 1
     for d in shape:
         n_elem *= d
-    num_groups = (n_elem + group_size - 1) // group_size
+    if n_elem % group_size != 0:
+        raise ValueError(
+            f"N % G != 0 (tail group not supported): N={n_elem}, G={group_size}"
+        )
+    num_groups = n_elem // group_size
     scales_bytes = num_groups * 2
     weights_bytes = (n_elem + 1) // 2
     total_bytes = scales_bytes + weights_bytes
@@ -110,8 +130,11 @@ def parse_quant_header(raw: bytes) -> dict[str, Any]:
     if q_spec.get("scale_dtype") != QUANT_SCALE_DTYPE:
         raise ValueError(f"Unsupported scale_dtype: {q_spec.get('scale_dtype')}")
     g_sz = q_spec.get("group_size", 0)
-    if g_sz <= 0 or (g_sz & (g_sz - 1)) != 0:
-        raise ValueError(f"group_size must be positive power of 2, got {g_sz}")
+    if g_sz not in QUANT_ALLOWED_GROUP_SIZES:
+        raise ValueError(
+            f"group_size must be one of {sorted(QUANT_ALLOWED_GROUP_SIZES)}, "
+            f"got {g_sz}"
+        )
     return data
 
 
@@ -170,6 +193,25 @@ def read_tensor_record(
         raise ValueError("Truncated file: cannot read metadata JSON")
     meta = json.loads(raw[offset : offset + meta_len].decode("utf-8"))
     offset += meta_len
+
+    g_sz = meta.get("group_size", 0)
+    if g_sz not in QUANT_ALLOWED_GROUP_SIZES:
+        raise ValueError(
+            f"group_size must be one of {sorted(QUANT_ALLOWED_GROUP_SIZES)}, "
+            f"got {g_sz}"
+        )
+    num_elem_check = 1
+    for d in meta["shape"]:
+        num_elem_check *= d
+    if num_elem_check % g_sz != 0:
+        raise ValueError(
+            f"N % G != 0 (tail group not supported): N={num_elem_check}, G={g_sz}"
+        )
+    if meta["num_groups"] != num_elem_check // g_sz:
+        raise ValueError(
+            f"num_groups mismatch: expected {num_elem_check // g_sz}, "
+            f"got {meta['num_groups']}"
+        )
 
     num_groups = meta["num_groups"]
     scales_len = num_groups * 2

@@ -16,6 +16,7 @@ from format.quant_format import (
     calculate_tensor_quant_size,
     compute_fp16_scale_ceil,
     float16_to_u16,
+    is_allowed_group_size,
     pack_4bit_pair,
     u16_to_float16,
     unpack_4bit_pair,

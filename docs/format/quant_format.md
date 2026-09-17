@@ -3,6 +3,13 @@
 > Milestone M6 — Gelombang 1 (`m6-w1-format.md`).
 > Standar format custom disk-streaming-moe-engine (ADR D6 — "Menemukan kembali GGUF").
 > Status: **FROZEN (DIBEKUKAN)**.
+>
+> **Amendemen A1 (audit M6, disetujui pemilik):** nibble `0b1000` adalah
+> reserved/invalid — encoder dilarang memancarkan, decoder wajib menolak
+> (sebelumnya "valid tapi tak dipancarkan"); $G \in \{32,64,128,256\}$
+> (satu-satunya definisi, menggantikan "pangkat dua"); $N \% G == 0$ wajib
+> (opsi A — formula `ceil` di bawah berimpit dengan pembagian eksak untuk
+> input konform). SSOT: `../milestones/M6-quantizer.md` § SSOT Kontrak M6.
 
 ---
 
@@ -66,7 +73,7 @@ Header berada pada offset byte $0$ hingga $255$. Header ditulis dalam format UTF
 | `version`                  | `integer` | Versi spesifikasi format (harus bernilai `1`).                |
 | `model`                    | `string`  | Identitas arsitektur model target.                            |
 | `quantization.format`      | `string`  | Format kuantisasi (harus `"4-bit per-group"`).                |
-| `quantization.group_size`  | `integer` | Ukuran grup kuantisasi (default $128$, bernilai pangkat dua). |
+| `quantization.group_size`  | `integer` | Ukuran grup kuantisasi: wajib ∈ $\{32, 64, 128, 256\}$ (default $128$; himpunan izin SSOT M6). |
 | `quantization.scale_dtype` | `string`  | Tipe data skala FP16 IEEE 754 (harus `"FP16"`).               |
 | `num_tensors`              | `integer` | Jumlah total tensor yang tersimpan di dalam berkas.           |
 | `total_bytes`              | `integer` | Ukuran total berkas dalam byte untuk validasi integritas.     |
@@ -123,7 +130,7 @@ Data biner per tensor disusun secara kontigu tanpa padding celah:
    - Disimpan dalam format IEEE 754 half-precision float (1 sign bit, 5 exponent bits, 10 mantissa bits, 2 byte per grup).
    - Panjang buffer skala: $G_{num} \times 2$ byte.
 2. **Bobot 4-bit Ter-pack (Packed Weights)**:
-   - Setiap byte mengemas tepat 2 nilai bobot 4-bit simetris $w \in [-8, 7]$.
+   - Setiap byte mengemas tepat 2 nilai bobot 4-bit simetris $w \in [-7, 7]$; nibble `0x8` reserved/invalid (decoder wajib menolak).
    - Panjang buffer bobot: $\lceil N / 2 \rceil$ byte.
 
 ---
@@ -142,7 +149,7 @@ Byte: |      w1       |      w0       |
 
 ### Aturan Packing (Encoding)
 
-Untuk nilai integer bertanda $w_0, w_1 \in [-8, 7]$:
+Untuk nilai integer bertanda $w_0, w_1 \in [-7, 7]$ (nilai $-8$ dilarang di sisi encoder):
 $$b = \Big( (w_1 \ \& \ \text{0x0F}) \ll 4 \Big) \ \Big| \ (w_0 \ \& \ \text{0x0F})$$
 
 ### Aturan Unpacking (Decoding)
@@ -151,7 +158,7 @@ Dari byte unsigned $b \in [0, 255]$:
 $$w_0^{raw} = b \ \& \ \text{0x0F}, \qquad w_0 = \begin{cases} w_0^{raw} - 16 & \text{jika } w_0^{raw} \ge 8 \\ w_0^{raw} & \text{lainnya} \end{cases}$$
 $$w_1^{raw} = (b \gg 4) \ \& \ \text{0x0F}, \qquad w_1 = \begin{cases} w_1^{raw} - 16 & \text{jika } w_1^{raw} \ge 8 \\ w_1^{raw} & \text{lainnya} \end{cases}$$
 
-Kedua nilai hasil decoding terjamin berada pada rentang tertutup $[-8, 7]$.
+Kedua nilai hasil decoding terjamin berada pada rentang tertutup $[-7, 7]$; nibble `0x8` tidak pernah dihasilkan decoder yang konform (wajib ditolak sebagai reserved/invalid).
 
 ---
 
@@ -167,7 +174,9 @@ $$a_g = \max_{j \in G} |w_j|$$
 2. **Kuantisasi Simetris**:
    $$m_j = \mathrm{round}(w_j / s_g)$$
    $$q_j = \mathrm{clamp}(m_j, -7, 7)$$
-   _(Catatan: nilai $-8$ tetap valid dalam skema representasi, namun tidak dipancarkan oleh skema simetris)._
+    _(Catatan Amendemen A1: nibble $-8$ (`0x8`) adalah reserved/invalid —
+    encoder dilarang memancarkan, decoder wajib menolak; bukan "valid tapi
+    tak dipancarkan".)_
 3. **Dequantisasi Rekonstruksi**:
    $$\hat{w}_j = s_g \cdot q_j$$
    Property FP32: $|w_j - \hat{w}_j| \le s_g / 2$.
@@ -208,6 +217,7 @@ Sebuah berkas `.bin` kuantisasi sah jika dan hanya jika:
    - `scale_offset == 0` dan `data_offset == G_{num} * 2`.
 3. **Payload**:
    - Seluruh nilai skala FP16 bertanda positif dan finite ($\text{NaN}$ dan $\pm\infty$ ditolak).
-   - Seluruh nilai kuantisasi ter-pack berada pada rentang $[-8, 7]$.
+   - Seluruh nilai kuantisasi ter-pack berada pada rentang $[-7, 7]$; nibble `0x8` wajib ditolak.
+   - $N \% G == 0$ (tail group ditolak); `group_size` ∈ $\{32, 64, 128, 256\}$.
 4. **Ukuran Berkas**:
    - Ukuran fisik berkas sama persis dengan `total_bytes` di header.

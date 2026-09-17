@@ -6,9 +6,9 @@
 # 1. Header JSON tepat 256 byte terpadatkan (version, model, quantization, num_tensors, total_bytes).
 # 2. Metadata per tensor (name, shape, dtype, group_size, num_groups, scale_offset, data_offset).
 # 3. Layout biner: scales FP16 kontigu + weights 4-bit packed kontigu.
-# 4. Packing 4-bit Little-Endian 2 bobot/byte ([w1][w0], range -8..7); skala s_g = ceil_FP16(max|w|/7).
+# 4. Packing 4-bit Little-Endian 2 bobot/byte ([w1][w0], range -7..7, nibble 0x8 reserved); skala s_g = ceil_FP16(max|w|/7); G ∈ {32,64,128,256}.
 # 5. Validasi integritas format: header valid, nama/shape/group_size cocok, ukuran file eksak,
-#    scales finite, values dalam rentang [-8, 7].
+#    scales finite, values dalam rentang [-7, 7], nibble reserved ditolak, tail ditolak.
 # 6. Contoh 1 tensor [2048, 2048] -> 2.162.688 B (rasio ~3.88x) terhitung tangan dan teruji.
 # ==============================================================================
 
@@ -154,7 +154,14 @@ print(f'   PASS: Berkas quant model biner ({total_file_bytes} B) valid dan terba
 echo ">> [5/5] Uji ketahanan validasi terhadap header corrupt dan nilai di luar bound..."
 
 uv run --python .venv python -c "
-from tools.quant.quant_format import parse_quant_header, pack_4bit_pair, read_tensor_record
+from tools.quant.quant_format import (
+    calculate_tensor_quant_size,
+    make_quant_header,
+    pack_4bit_pair,
+    parse_quant_header,
+    read_tensor_record,
+    unpack_4bit_pair,
+)
 
 # Uji header tidak 256 byte
 try:
@@ -163,7 +170,22 @@ try:
 except ValueError:
     pass
 
-# Uji nilai di luar range [-8, 7]
+# Uji group-size di luar himpunan izin (512: pangkat-2 tapi tidak diizinkan)
+try:
+    hdr512 = make_quant_header('m', 1, 256, group_size=512)
+    parse_quant_header(hdr512)
+    assert False, 'Harus gagal jika group-size ∉ {32,64,128,256}'
+except ValueError:
+    pass
+
+# Uji tail group N % G != 0 ditolak
+try:
+    calculate_tensor_quant_size([32], 128)
+    assert False, 'Harus gagal jika N % G != 0'
+except ValueError:
+    pass
+
+# Uji nilai di luar range [-7, 7] + nibble reserved
 try:
     pack_4bit_pair(8, 0)
     assert False, 'Harus gagal jika w0 > 7'
@@ -172,7 +194,19 @@ except ValueError:
 
 try:
     pack_4bit_pair(0, -9)
-    assert False, 'Harus gagal jika w1 < -8'
+    assert False, 'Harus gagal jika w1 < -7'
+except ValueError:
+    pass
+
+try:
+    pack_4bit_pair(-8, 0)
+    assert False, 'Harus gagal: encoder tak boleh memancarkan -8'
+except ValueError:
+    pass
+
+try:
+    unpack_4bit_pair(0x88)
+    assert False, 'Harus gagal: decoder menolak nibble reserved 0x8'
 except ValueError:
     pass
 
