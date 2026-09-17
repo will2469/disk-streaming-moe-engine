@@ -3,7 +3,7 @@
 # See LICENSE for details.
 """Skema error M7 dan penanganan failure fail-closed untuk Kimo O_DIRECT dan LRU Cache."""
 
-from cli.sys_utils import c_unlink
+from cli.sys_utils import c_unlink, cleanup_run_resources
 from format.types import json_escape
 from std.collections import List
 from std.sys.terminate import exit
@@ -55,14 +55,12 @@ def fail_m7(
     stage: String,
     message: String,
     details_json: String = "{}",
+    run_dir: String = "",
     cleanup_files: List[String] = List[String](),
 ) raises:
-    """Membersihkan file sementara, mencetak JSON error ke stdout, lalu exit."""
-    for i in range(len(cleanup_files)):
-        var p = cleanup_files[i]
-        if p.byte_length() > 0:
-            _ = c_unlink(p)
-
+    """Membersihkan file sementara dan direktori run, mencetak JSON error ke stdout, lalu exit.
+    """
+    cleanup_run_resources(run_dir, cleanup_files)
     var err_doc = m7_error_json(code, stage, message, details_json)
     print(err_doc)
     exit(m7_error_code_to_exit_code(code))

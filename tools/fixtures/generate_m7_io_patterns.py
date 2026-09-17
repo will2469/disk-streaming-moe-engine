@@ -136,6 +136,7 @@ def main():
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, "w") as f:
         json.dump(fixture_data, f, indent=2)
+        f.write("\n")
 
     print(f"Fixture berhasil disimpan ke {output_path}")
     print(f"  Trunk sequential: {len(trunk_offsets)} offsets, SHA: {trunk_sha}")

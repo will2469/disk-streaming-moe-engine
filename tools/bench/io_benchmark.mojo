@@ -170,25 +170,18 @@ def main() raises:
         var current_batch = min(queue_depth, block_count - batch_idx)
         var tokens = List[ReadToken]()
 
+        # Catat waktu awal sustained saat mencapai batas sustained
+        if sustained_start_ns == 0 and batch_idx >= sustained_start_idx:
+            sustained_start_ns = perf_counter_ns()
+            sustained_blocks = block_count - batch_idx
+            if sustained_blocks < 1:
+                sustained_blocks = 1
+
         # Submit batch hingga queue_depth
         for j in range(current_batch):
             var off = offsets[batch_idx + j]
             var tok = reader.submit_read(off, block_size)
             tokens.append(tok^)
-
-        # Catat waktu burst (10% blok awal selesai)
-        if (
-            batch_idx < burst_blocks
-            and (batch_idx + current_batch) >= burst_blocks
-        ):
-            burst_ns = perf_counter_ns() - t_start
-
-        # Catat waktu awal sustained (25% blok akhir dimulai)
-        if (
-            batch_idx < sustained_start_idx
-            and (batch_idx + current_batch) >= sustained_start_idx
-        ):
-            sustained_start_ns = perf_counter_ns()
 
         # Complete seluruh token dalam batch
         for j in range(len(tokens)):
@@ -196,6 +189,11 @@ def main() raises:
             _ = reader.complete_read(tok^)
 
         batch_idx += current_batch
+
+        # Catat waktu burst sesudah blok burst selesai dibaca secara fisik
+        if burst_ns == 0 and batch_idx >= burst_blocks:
+            burst_ns = perf_counter_ns() - t_start
+            burst_blocks = batch_idx
 
     var t_end = perf_counter_ns()
     var total_elapsed_ns = t_end - t_start

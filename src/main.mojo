@@ -88,6 +88,24 @@ def main() raises:
             var err_s = String(e)
             if err_s.startswith("{"):
                 eprint_json(err_s)
+                if err_s.find("M7_ERR_ODIRECT_ALIGNMENT") >= 0:
+                    exit(1)
+                elif (
+                    err_s.find("M7_ERR_FORMAT_ALIGNMENT") >= 0
+                    or err_s.find("M7_ERR_ODIRECT_SHORT_READ") >= 0
+                ):
+                    exit(2)
+                elif (
+                    err_s.find("M7_ERR_ODIRECT_ENOSPC") >= 0
+                    or err_s.find("M7_ERR_ODIRECT_EIO") >= 0
+                ):
+                    exit(3)
+                elif (
+                    err_s.find("M7_ERR_LRU_NO_VICTIM") >= 0
+                    or err_s.find("M7_ERR_LRU_ALLOC") >= 0
+                    or err_s.find("M7_ERR_LRU_CORRUPT") >= 0
+                ):
+                    exit(4)
             else:
                 eprint_json(
                     m5_error_json(

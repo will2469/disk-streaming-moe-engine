@@ -50,6 +50,8 @@ struct ODirectReader:
     var total_bytes_read: Int
     var read_count: Int
     var next_token_id: Int
+    var probe_status: String
+    var readahead_policy: String
 
     def __init__(
         out self,
@@ -59,6 +61,8 @@ struct ODirectReader:
         is_odirect: Bool,
         queue_depth: Int = 16,
         block_size: Int = 4096,
+        probe_status: String = "ok",
+        readahead_policy: String = "NONE",
     ):
         self.path = path
         self.fd = fd
@@ -66,6 +70,8 @@ struct ODirectReader:
         self.is_odirect = is_odirect
         self.queue_depth = queue_depth
         self.block_size = block_size
+        self.probe_status = probe_status
+        self.readahead_policy = readahead_policy
         self.outstanding_count = 0
         self.max_outstanding_observed = 0
         self.total_bytes_read = 0
@@ -100,7 +106,7 @@ struct ODirectReader:
         if force_buffered:
             var fd_buf = Int(
                 external_call["openat", Int32](
-                    Int32(-100), path_z.unsafe_ptr(), Int32(O_RDONLY), Int32(0)
+                    -100, path_z.unsafe_ptr(), O_RDONLY, 0
                 )
             )
             if fd_buf < 0:
@@ -111,6 +117,9 @@ struct ODirectReader:
                         "cannot open path for buffered read: " + path,
                     )
                 )
+            _ = external_call["posix_fadvise", Int32](
+                Int32(fd_buf), Int(0), Int(0), Int32(2)
+            )
             return ODirectReader(
                 path=path,
                 fd=fd_buf,
@@ -118,6 +127,8 @@ struct ODirectReader:
                 is_odirect=False,
                 queue_depth=queue_depth,
                 block_size=requested_block_size,
+                probe_status="buffered",
+                readahead_policy="POSIX_FADV_SEQUENTIAL",
             )
 
         # Discovery Kandidat [512, 4096]
@@ -132,7 +143,7 @@ struct ODirectReader:
             var cand = candidates[c_idx]
             var fd_probe = Int(
                 external_call["openat", Int32](
-                    Int32(-100), path_z.unsafe_ptr(), Int32(O_DIRECT), Int32(0)
+                    -100, path_z.unsafe_ptr(), O_DIRECT, 0
                 )
             )
             if fd_probe < 0:
@@ -162,7 +173,7 @@ struct ODirectReader:
         if chosen_alignment < 0:
             var fd_buf = Int(
                 external_call["openat", Int32](
-                    Int32(-100), path_z.unsafe_ptr(), Int32(O_RDONLY), Int32(0)
+                    -100, path_z.unsafe_ptr(), O_RDONLY, 0
                 )
             )
 
@@ -175,6 +186,18 @@ struct ODirectReader:
                         + path,
                     )
                 )
+            # Log warning ke stderr sesuai kontrak F17 / DoD M7
+            var warn_bytes = (
+                "WARNING: O_DIRECT unsupported on filesystem, falling back to"
+                " buffered I/O\n".as_bytes()
+            )
+            _ = external_call["write", Int](
+                2, warn_bytes.unsafe_ptr(), len(warn_bytes)
+            )
+            _ = external_call["posix_fadvise", Int32](
+                Int32(fd_buf), Int(0), Int(0), Int32(2)
+            )
+
             return ODirectReader(
                 path=path,
                 fd=fd_buf,
@@ -182,6 +205,8 @@ struct ODirectReader:
                 is_odirect=False,
                 queue_depth=queue_depth,
                 block_size=requested_block_size,
+                probe_status="fallback_buffered",
+                readahead_policy="POSIX_FADV_SEQUENTIAL",
             )
 
         # Validasi relasi block-size vs dio_alignment
@@ -208,6 +233,8 @@ struct ODirectReader:
             is_odirect=True,
             queue_depth=queue_depth,
             block_size=requested_block_size,
+            probe_status="ok",
+            readahead_policy="NONE",
         )
 
     def close(mut self):
@@ -264,12 +291,14 @@ struct ODirectReader:
             if n == 0:
                 break  # EOF terdeteksi
             if n < 0:
-                # Kegagalan I/O pada physical span selaras (EINVAL / EIO)
+                # Kegagalan I/O pada physical span selaras (pasca-probe: format alignment / hardware fault, fallback DILARANG)
                 raise Error(
                     m7_error_json(
-                        "M7_ERR_ODIRECT_EIO",
+                        "M7_ERR_FORMAT_ALIGNMENT",
                         "io_direct",
-                        "O_DIRECT pread failed with error code: " + String(n),
+                        "post-probe I/O failure on aligned span (EINVAL /"
+                        " format alignment fault): "
+                        + String(n),
                     )
                 )
 

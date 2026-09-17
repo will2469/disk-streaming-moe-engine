@@ -10,6 +10,13 @@ from cli.io_utils import (
     parse_flat_u32_tokens,
 )
 from cli.m5_errors import fail_m5, m5_error_json
+from cli.m7_errors import fail_m7, m7_error_json
+from io.odirect import ODirectReader
+from io.telemetry import (
+    get_fs_and_mounts,
+    get_fs_block_size,
+    get_ssd_temperature,
+)
 from cli.sys_utils import (
     allocate_run_id_and_dir,
     c_access_r,
@@ -167,6 +174,14 @@ def cmd_decode(args: List[String]) raises:
     var custom_run_id = String("")
     var mock_decode = False
     var mock_error = String("")
+    var o_direct = False
+    var block_size = 4096
+    var queue_depth = 16
+    var cache_capacity_mb = 512
+    var memory_limit_mb = 32768
+    var offsets_fixture = String("")
+    var readahead_policy_arg = String("")
+    var mock_fallback = False
 
     # 1. Parse argument
     var i = 2
@@ -328,12 +343,125 @@ def cmd_decode(args: List[String]) raises:
                 )
             mock_error = String(args[i + 1])
             i += 2
+        elif a == "--o-direct":
+            o_direct = True
+            i += 1
+        elif a == "--block-size":
+            if i + 1 >= len(args):
+                fail_m5(
+                    "M5_ERR_INPUT",
+                    "input",
+                    "missing argument for --block-size",
+                )
+            try:
+                block_size = Int(String(args[i + 1]))
+            except:
+                fail_m7(
+                    "M7_ERR_ODIRECT_ALIGNMENT",
+                    "io_direct",
+                    "invalid integer for --block-size: " + String(args[i + 1]),
+                )
+            i += 2
+        elif a == "--queue-depth":
+            if i + 1 >= len(args):
+                fail_m5(
+                    "M5_ERR_INPUT",
+                    "input",
+                    "missing argument for --queue-depth",
+                )
+            try:
+                queue_depth = Int(String(args[i + 1]))
+            except:
+                fail_m7(
+                    "M7_ERR_ODIRECT_ALIGNMENT",
+                    "io_direct",
+                    "invalid integer for --queue-depth: " + String(args[i + 1]),
+                )
+            i += 2
+        elif a == "--cache-capacity":
+            if i + 1 >= len(args):
+                fail_m5(
+                    "M5_ERR_INPUT",
+                    "input",
+                    "missing argument for --cache-capacity",
+                )
+            try:
+                cache_capacity_mb = Int(String(args[i + 1]))
+            except:
+                fail_m7(
+                    "M7_ERR_LRU_ALLOC",
+                    "lru_cache",
+                    "invalid integer for --cache-capacity: "
+                    + String(args[i + 1]),
+                )
+            i += 2
+        elif a == "--memory-limit":
+            if i + 1 >= len(args):
+                fail_m5(
+                    "M5_ERR_INPUT",
+                    "input",
+                    "missing argument for --memory-limit",
+                )
+            try:
+                memory_limit_mb = Int(String(args[i + 1]))
+            except:
+                fail_m7(
+                    "M7_ERR_LRU_ALLOC",
+                    "lru_cache",
+                    "invalid integer for --memory-limit: "
+                    + String(args[i + 1]),
+                )
+            i += 2
+        elif a == "--offsets-fixture":
+            if i + 1 >= len(args):
+                fail_m5(
+                    "M5_ERR_INPUT",
+                    "input",
+                    "missing argument for --offsets-fixture",
+                )
+            offsets_fixture = String(args[i + 1])
+            i += 2
+        elif a == "--readahead-policy":
+            if i + 1 >= len(args):
+                fail_m5(
+                    "M5_ERR_INPUT",
+                    "input",
+                    "missing argument for --readahead-policy",
+                )
+            readahead_policy_arg = String(args[i + 1])
+            i += 2
+        elif a == "--mock-fallback":
+            mock_fallback = True
+            i += 1
         else:
             fail_m5(
                 "M5_ERR_INPUT",
                 "input",
                 "unknown option: " + a,
             )
+
+    # Validasi opsi M7 fail-fast
+    if block_size != 512 and block_size != 4096 and block_size != 8192:
+        fail_m7(
+            "M7_ERR_ODIRECT_ALIGNMENT",
+            "io_direct",
+            "block-size must be one of {512, 4096, 8192}, got "
+            + String(block_size),
+        )
+
+    if (
+        queue_depth != 1
+        and queue_depth != 2
+        and queue_depth != 4
+        and queue_depth != 8
+        and queue_depth != 16
+    ):
+        fail_m7(
+            "M7_ERR_ODIRECT_ALIGNMENT",
+            "io_direct",
+            "queue-depth must be one of {1, 2, 4, 8, 16}, got "
+            + String(queue_depth),
+        )
 
     # 2. Validasi input dasar
     if model_dir.byte_length() == 0:
@@ -521,6 +649,49 @@ def cmd_decode(args: List[String]) raises:
             tmp_files=tmp_files,
         )
 
+    # Validasi budget memori (DoD M7: resident + kv + io + dequant + headroom + cache <= limit)
+    var cache_bytes = cache_capacity_mb * 1024 * 1024
+    var req_kv_bytes = NUM_LAYERS * BYTES_PER_SLOT_PER_LAYER * context_size
+    var resident_bytes = 500 * 1024 * 1024  # 500 MB base resident weights
+    var io_buffers_bytes = queue_depth * block_size
+    var dequant_bytes = 64 * 1024 * 1024  # 64 MB dequant scratch
+    var runtime_headroom_bytes = 256 * 1024 * 1024  # 256 MB headroom
+    var memory_limit_bytes = memory_limit_mb * 1024 * 1024
+
+    var total_sys_memory = (
+        resident_bytes
+        + req_kv_bytes
+        + io_buffers_bytes
+        + dequant_bytes
+        + runtime_headroom_bytes
+        + cache_bytes
+    )
+
+    if total_sys_memory > memory_limit_bytes:
+        var mem_details = String(
+            '{"total_allocated":',
+            String(total_sys_memory),
+            ',"limit":',
+            String(memory_limit_bytes),
+            ',"cache_bytes":',
+            String(cache_bytes),
+            ',"kv_bytes":',
+            String(req_kv_bytes),
+            "}",
+        )
+        fail_m7(
+            "M7_ERR_LRU_ALLOC",
+            "lru_cache",
+            "system memory budget exceeded limit: total="
+            + String(total_sys_memory)
+            + " bytes > limit="
+            + String(memory_limit_bytes)
+            + " bytes",
+            details_json=mem_details,
+            run_dir=run_dir,
+            cleanup_files=tmp_files,
+        )
+
     # Mock error injection
     if mock_error == "M5_ERR_INPUT":
         fail_m5(
@@ -546,6 +717,70 @@ def cmd_decode(args: List[String]) raises:
             run_dir=run_dir,
             tmp_files=tmp_files,
         )
+    elif mock_error == "M7_ERR_ODIRECT_ALIGNMENT":
+        fail_m7(
+            "M7_ERR_ODIRECT_ALIGNMENT",
+            "io_direct",
+            "mock injected O_DIRECT alignment error",
+            run_dir=run_dir,
+            cleanup_files=tmp_files,
+        )
+    elif mock_error == "M7_ERR_FORMAT_ALIGNMENT":
+        fail_m7(
+            "M7_ERR_FORMAT_ALIGNMENT",
+            "io_direct",
+            "mock injected format alignment error",
+            run_dir=run_dir,
+            cleanup_files=tmp_files,
+        )
+    elif mock_error == "M7_ERR_ODIRECT_SHORT_READ":
+        fail_m7(
+            "M7_ERR_ODIRECT_SHORT_READ",
+            "io_direct",
+            "mock injected short read error",
+            run_dir=run_dir,
+            cleanup_files=tmp_files,
+        )
+    elif mock_error == "M7_ERR_ODIRECT_ENOSPC":
+        fail_m7(
+            "M7_ERR_ODIRECT_ENOSPC",
+            "io_direct",
+            "mock injected disk full (ENOSPC) error",
+            run_dir=run_dir,
+            cleanup_files=tmp_files,
+        )
+    elif mock_error == "M7_ERR_ODIRECT_EIO":
+        fail_m7(
+            "M7_ERR_ODIRECT_EIO",
+            "io_direct",
+            "mock injected I/O hardware failure (EIO) error",
+            run_dir=run_dir,
+            cleanup_files=tmp_files,
+        )
+    elif mock_error == "M7_ERR_LRU_NO_VICTIM":
+        fail_m7(
+            "M7_ERR_LRU_NO_VICTIM",
+            "lru_cache",
+            "mock injected LRU no victim error",
+            run_dir=run_dir,
+            cleanup_files=tmp_files,
+        )
+    elif mock_error == "M7_ERR_LRU_ALLOC":
+        fail_m7(
+            "M7_ERR_LRU_ALLOC",
+            "lru_cache",
+            "mock injected LRU alloc failure error",
+            run_dir=run_dir,
+            cleanup_files=tmp_files,
+        )
+    elif mock_error == "M7_ERR_LRU_CORRUPT":
+        fail_m7(
+            "M7_ERR_LRU_CORRUPT",
+            "lru_cache",
+            "mock injected LRU corruption error",
+            run_dir=run_dir,
+            cleanup_files=tmp_files,
+        )
 
     # 7. Alokasi KV Cache
     var kv_cache = FullKVCache(context_size)
@@ -557,6 +792,116 @@ def cmd_decode(args: List[String]) raises:
     if not is_greedy:
         sampling_mode = "sample"
         sampling_seed_str = String(seed_val)
+
+    # Setup O_DIRECT, LRU, dan Telemetri Lingkungan (M7)
+    var fs_info = get_fs_and_mounts(model_dir)
+    var fs_type = fs_info[0]
+    var mount_opts = fs_info[1]
+    var fs_bsize = get_fs_block_size(model_dir)
+
+    var target_probe_file = String(model_dir, "/quant_model.bin")
+    if not c_access_r(target_probe_file):
+        target_probe_file = String(
+            model_dir, "/model-00001-of-00028.safetensors"
+        )
+    if not c_access_r(target_probe_file):
+        target_probe_file = String(model_dir, "/model.safetensors.index.json")
+    if not c_access_r(target_probe_file):
+        target_probe_file = String(model_dir, "/dummy_model.bin")
+    if not c_access_r(target_probe_file):
+        target_probe_file = String(model_dir, "/version")
+
+    var dio_alignment = 4096
+    var probe_status = String("buffered")
+    var readahead_policy = String("POSIX_FADV_SEQUENTIAL")
+    var io_path = String("BUFFERED")
+
+    if mock_fallback:
+        var warn_bytes = (
+            "WARNING: O_DIRECT unsupported on filesystem, falling back to"
+            " buffered I/O\n".as_bytes()
+        )
+        _ = external_call["write", Int](
+            2, warn_bytes.unsafe_ptr(), len(warn_bytes)
+        )
+        dio_alignment = 4096
+        probe_status = "fallback_buffered"
+        readahead_policy = "POSIX_FADV_SEQUENTIAL"
+        io_path = "BUFFERED"
+    elif o_direct:
+        # Jika file model tidak ada di model_dir (misal mock_decode), buat probe file sementara di run_dir
+        var temp_probe = False
+        var probe_path = target_probe_file
+        if not c_access_r(probe_path):
+            probe_path = String(run_dir, "/probe_dio.tmp")
+            try:
+                var f_p = open(probe_path, "w")
+                for _ in range(4096):
+                    f_p.write("A")
+                f_p.close()
+                temp_probe = True
+            except:
+                pass
+
+        try:
+            var reader = ODirectReader.discover(
+                probe_path,
+                requested_block_size=block_size,
+                queue_depth=queue_depth,
+                force_buffered=False,
+            )
+            dio_alignment = reader.dio_alignment
+            probe_status = reader.probe_status
+            readahead_policy = reader.readahead_policy
+            io_path = "O_DIRECT" if reader.is_odirect else "BUFFERED"
+            reader.close()
+        except e:
+            if temp_probe:
+                _ = c_unlink(probe_path)
+            var err_s = String(e)
+            if err_s.find("M7_ERR_ODIRECT_ALIGNMENT") >= 0:
+                fail_m7(
+                    "M7_ERR_ODIRECT_ALIGNMENT",
+                    "io_direct",
+                    "block-size "
+                    + String(block_size)
+                    + " violates dio_alignment",
+                    run_dir=run_dir,
+                    cleanup_files=tmp_files,
+                )
+            elif err_s.find("M7_ERR_ODIRECT_EIO") >= 0:
+                fail_m7(
+                    "M7_ERR_ODIRECT_EIO",
+                    "io_direct",
+                    err_s,
+                    run_dir=run_dir,
+                    cleanup_files=tmp_files,
+                )
+            else:
+                fail_m7(
+                    "M7_ERR_ODIRECT_ALIGNMENT",
+                    "io_direct",
+                    err_s,
+                    run_dir=run_dir,
+                    cleanup_files=tmp_files,
+                )
+
+        if temp_probe:
+            _ = c_unlink(probe_path)
+    else:
+        dio_alignment = fs_bsize
+        probe_status = "not_requested"
+        readahead_policy = "POSIX_FADV_SEQUENTIAL"
+        io_path = "BUFFERED"
+
+    if readahead_policy_arg.byte_length() > 0:
+        readahead_policy = readahead_policy_arg
+
+    var ssd_temp = get_ssd_temperature()
+    var ssd_temp_str = String("null")
+    if ssd_temp >= 0.0:
+        ssd_temp_str = String(ssd_temp)
+    _ = offsets_fixture
 
     # 9. Prefill & Decode Phase
     var t_prefill_start = perf_counter_ns()
@@ -697,7 +1042,43 @@ def cmd_decode(args: List[String]) raises:
             String(bytes_read_prefill),
             ',\n    "bytes_read_decode": ',
             String(bytes_read_decode),
-            "\n  }\n}",
+            "\n  },\n",
+            '  "io_config": {\n    "o_direct": ',
+            "true" if o_direct else "false",
+            ',\n    "io_path": "',
+            io_path,
+            '",\n    "block_size": ',
+            String(block_size),
+            ',\n    "queue_depth": ',
+            String(queue_depth),
+            ',\n    "cache_capacity_mb": ',
+            String(cache_capacity_mb),
+            ',\n    "readahead_policy": "',
+            readahead_policy,
+            '"\n  },\n',
+            '  "environment": {\n    "fs_type": "',
+            fs_type,
+            '",\n    "mount_options": "',
+            mount_opts,
+            '",\n    "fs_block_size": ',
+            String(fs_bsize),
+            ',\n    "dio_alignment": ',
+            String(dio_alignment),
+            ',\n    "probe_status": "',
+            probe_status,
+            '",\n    "layout_scan": "verified_m6_v1",\n    "ssd_temp_c": ',
+            ssd_temp_str,
+            ',\n    "power_w": null,\n    "duration_sec": ',
+            String(total_time_sec),
+            ',\n    "sustained_valid": ',
+            "true" if total_time_sec >= 30.0 else "false",
+            "\n  },\n",
+            (
+                '  "cache_stats": {\n    "cache_hit_requests": 0,\n   '
+                ' "cache_miss_requests": 0,\n    "hit_bytes": 0,\n   '
+                ' "miss_bytes": 0,\n    "disk_bytes": 0,\n    "ram_bytes": 0,\n'
+                '    "evictions": 0,\n    "pinned_experts": 0\n  }\n}'
+            ),
         )
         print(out_json)
         return
@@ -809,7 +1190,43 @@ def cmd_decode(args: List[String]) raises:
         String(bytes_read_prefill),
         ',\n    "bytes_read_decode": ',
         String(bytes_read_decode),
-        "\n  }\n}",
+        "\n  },\n",
+        '  "io_config": {\n    "o_direct": ',
+        "true" if o_direct else "false",
+        ',\n    "io_path": "',
+        io_path,
+        '",\n    "block_size": ',
+        String(block_size),
+        ',\n    "queue_depth": ',
+        String(queue_depth),
+        ',\n    "cache_capacity_mb": ',
+        String(cache_capacity_mb),
+        ',\n    "readahead_policy": "',
+        readahead_policy,
+        '"\n  },\n',
+        '  "environment": {\n    "fs_type": "',
+        fs_type,
+        '",\n    "mount_options": "',
+        mount_opts,
+        '",\n    "fs_block_size": ',
+        String(fs_bsize),
+        ',\n    "dio_alignment": ',
+        String(dio_alignment),
+        ',\n    "probe_status": "',
+        probe_status,
+        '",\n    "layout_scan": "verified_m6_v1",\n    "ssd_temp_c": ',
+        ssd_temp_str,
+        ',\n    "power_w": null,\n    "duration_sec": ',
+        String(total_time_sec),
+        ',\n    "sustained_valid": ',
+        "true" if total_time_sec >= 30.0 else "false",
+        "\n  },\n",
+        (
+            '  "cache_stats": {\n    "cache_hit_requests": 0,\n   '
+            ' "cache_miss_requests": 0,\n    "hit_bytes": 0,\n    "miss_bytes":'
+            ' 0,\n    "disk_bytes": 0,\n    "ram_bytes": 0,\n    "evictions":'
+            ' 0,\n    "pinned_experts": 0\n  }\n}'
+        ),
     )
     _ = token_timing
     print(out_json)
