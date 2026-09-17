@@ -3,6 +3,11 @@
 # See LICENSE for details.
 """Modul algoritma kuantisasi dan dekuantisasi 4-bit."""
 
+from quant.dequant_kernel import (
+    audit_kernel_domain_bound,
+    dequant_kernel_simd,
+    dequant_kernel_simd_f32,
+)
 from quant.quant_algo import (
     QuantMetrics,
     QuantizedTensor,

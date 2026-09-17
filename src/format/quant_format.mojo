@@ -14,6 +14,21 @@ comptime QUANT_DEFAULT_GROUP_SIZE: Int = 128
 comptime QUANT_FORMAT_NAME: String = "4-bit per-group"
 comptime QUANT_SCALE_DTYPE: String = "FP16"
 comptime QUANTIZED_DTYPE_NAME: String = "4-bit"
+comptime CONFIGURED_MAX_TENSORS: Int = 100000
+comptime CONFIGURED_MAX_NAME: Int = 512
+comptime CONFIGURED_MAX_NDIM: Int = 8
+
+
+def safe_multiply_int(a: Int, b: Int) raises -> Int:
+    """Checked multiplication preventing integer overflow (SEC-4)."""
+    if a < 0 or b < 0:
+        raise Error("safe_multiply_int: negative operands not allowed")
+    if a == 0 or b == 0:
+        return 0
+    var max_int = 0x7FFFFFFFFFFFFFFF
+    if a > max_int // b:
+        raise Error("safe_multiply_int: integer multiplication overflow")
+    return a * b
 
 
 def is_allowed_group_size(group_size: Int) -> Bool:
@@ -465,6 +480,13 @@ def validate_quant_header(header: QuantHeader, file_size: Int = -1) raises:
             "Header num_tensors must be positive, got "
             + String(header.num_tensors)
         )
+    if header.num_tensors > CONFIGURED_MAX_TENSORS:
+        raise Error(
+            "Header num_tensors exceeds configured max: "
+            + String(header.num_tensors)
+            + " > "
+            + String(CONFIGURED_MAX_TENSORS)
+        )
     if file_size > 0 and header.total_bytes != file_size:
         raise Error(
             "File size mismatch: header total_bytes="
@@ -478,6 +500,13 @@ def validate_tensor_meta(meta: QuantTensorMetadata) raises:
     """Memvalidasi integritas metadata tensor."""
     if meta.name.byte_length() == 0:
         raise Error("Tensor name cannot be empty")
+    if meta.name.byte_length() > CONFIGURED_MAX_NAME:
+        raise Error(
+            "Tensor name length exceeds configured max: "
+            + String(meta.name.byte_length())
+            + " > "
+            + String(CONFIGURED_MAX_NAME)
+        )
     if not is_allowed_group_size(meta.group_size):
         raise Error(
             "Group size must be one of {32, 64, 128, 256}, got "
@@ -485,11 +514,18 @@ def validate_tensor_meta(meta: QuantTensorMetadata) raises:
         )
     if len(meta.shape) == 0:
         raise Error("Tensor shape cannot be empty")
+    if len(meta.shape) > CONFIGURED_MAX_NDIM:
+        raise Error(
+            "Tensor ndim exceeds configured max: "
+            + String(len(meta.shape))
+            + " > "
+            + String(CONFIGURED_MAX_NDIM)
+        )
     var n = 1
     for i in range(len(meta.shape)):
         if meta.shape[i] <= 0:
             raise Error("Dimension must be positive: " + String(meta.shape[i]))
-        n *= meta.shape[i]
+        n = safe_multiply_int(n, meta.shape[i])
     if n % meta.group_size != 0:
         raise Error("N % G != 0 (tail group not supported)")
     var exp_groups = n // meta.group_size
