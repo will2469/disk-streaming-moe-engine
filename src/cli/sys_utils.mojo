@@ -280,7 +280,7 @@ def get_current_yyyymmdd() -> String:
 
 
 def allocate_run_id_and_dir(
-    workdir_canon: String, custom_run_id: String = ""
+    workdir_canon: String, custom_run_id: String = "", prefix: String = "M4"
 ) raises -> Tuple[String, String]:
     var runs_parent = String(workdir_canon, "/runs")
     _ = c_mkdir(runs_parent)
@@ -297,7 +297,7 @@ def allocate_run_id_and_dir(
             n_str = String("00", n)
         elif n < 100:
             n_str = String("0", n)
-        var run_id = String("M4-", ymd, "-", n_str)
+        var run_id = String(prefix, "-", ymd, "-", n_str)
         var run_dir = String(runs_parent, "/", run_id)
         var ret = c_mkdir(run_dir)
         if ret == 0:

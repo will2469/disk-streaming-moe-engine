@@ -509,6 +509,14 @@ struct FullKVCache(Movable):
             return self.layers[0].current_len
         return 0
 
+    def set_current_len(mut self, len_val: Int):
+        for i in range(len(self.layers)):
+            self.layers[i].current_len = len_val
+
+    def increment_len(mut self):
+        for i in range(len(self.layers)):
+            self.layers[i].current_len += 1
+
     def clear(mut self):
         for i in range(len(self.layers)):
             self.layers[i].clear()

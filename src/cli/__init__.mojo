@@ -4,6 +4,7 @@
 """Kimo CLI subcommands and utilities."""
 
 from cli.cmd_check_index import cmd_check_index
+from cli.cmd_decode import cmd_decode
 from cli.cmd_head import cmd_head
 from cli.cmd_layer import cmd_layer
 from cli.config_parser import parse_model_config, parse_tokens_json

@@ -17,6 +17,7 @@ from cli.sys_utils import (
 from format.file_io import read_small_file
 from format.types import decode_f32_le
 from std.collections import List
+from std.ffi import external_call
 from std.math import abs, isinf, isnan
 
 
@@ -252,3 +253,159 @@ def check_moe_output_sanity(
             "residual",
             layer_val,
         )
+
+
+def parse_flat_u32_tokens(
+    raw: List[UInt8], tokens_path: String
+) raises -> List[Int]:
+    """Parse JSON array of unsigned 32-bit integer token IDs."""
+    var n = len(raw)
+    var pos = 0
+
+    # Lewati whitespace di awal
+    while pos < n and (
+        raw[pos] == 32 or raw[pos] == 9 or raw[pos] == 10 or raw[pos] == 13
+    ):
+        pos += 1
+
+    if pos >= n or raw[pos] != 91:  # '['
+        raise Error("tokens JSON must start with '['")
+    pos += 1
+
+    var out = List[Int]()
+
+    # Cek array kosong ']'
+    while pos < n and (
+        raw[pos] == 32 or raw[pos] == 9 or raw[pos] == 10 or raw[pos] == 13
+    ):
+        pos += 1
+
+    if pos < n and raw[pos] == 93:  # ']'
+        pos += 1
+        while pos < n and (
+            raw[pos] == 32 or raw[pos] == 9 or raw[pos] == 10 or raw[pos] == 13
+        ):
+            pos += 1
+        if pos < n:
+            raise Error("trailing characters after closing ']'")
+        return out^
+
+    while True:
+        while pos < n and (
+            raw[pos] == 32 or raw[pos] == 9 or raw[pos] == 10 or raw[pos] == 13
+        ):
+            pos += 1
+
+        if pos >= n:
+            raise Error("unterminated tokens array (missing ']')")
+
+        var b = raw[pos]
+        if b == 91:
+            raise Error("nested array not allowed, expected flat u32 array")
+        if b == 45:
+            raise Error("negative integer not allowed, expected unsigned u32")
+        if b == 34:
+            raise Error("string element not allowed, expected unsigned u32")
+        if b < 48 or b > 57:
+            raise Error("expected unsigned integer digit")
+
+        # Cek leading zero
+        if (
+            b == 48
+            and pos + 1 < n
+            and (raw[pos + 1] >= 48 and raw[pos + 1] <= 57)
+        ):
+            raise Error("leading zero in integer is not valid JSON")
+
+        var val = 0
+        while pos < n and (raw[pos] >= 48 and raw[pos] <= 57):
+            var d = Int(raw[pos] - 48)
+            if val > 429496729 or (val == 429496729 and d > 5):
+                raise Error("token integer exceeds u32 range")
+            val = val * 10 + d
+            pos += 1
+
+        # Cek float
+        if pos < n and (raw[pos] == 46 or raw[pos] == 101 or raw[pos] == 69):
+            raise Error("float not allowed, expected integer")
+
+        out.append(val)
+
+        while pos < n and (
+            raw[pos] == 32 or raw[pos] == 9 or raw[pos] == 10 or raw[pos] == 13
+        ):
+            pos += 1
+
+        if pos >= n:
+            raise Error("unterminated tokens array (missing ']')")
+
+        var next_c = raw[pos]
+        pos += 1
+        if next_c == 93:  # ']'
+            break
+        elif next_c == 44:  # ','
+            var p_peek = pos
+            while p_peek < n and (
+                raw[p_peek] == 32
+                or raw[p_peek] == 9
+                or raw[p_peek] == 10
+                or raw[p_peek] == 13
+            ):
+                p_peek += 1
+            if p_peek < n and raw[p_peek] == 93:
+                raise Error("trailing comma not allowed in JSON array")
+        else:
+            raise Error("expected ',' or ']' after token integer")
+
+    while pos < n and (
+        raw[pos] == 32 or raw[pos] == 9 or raw[pos] == 10 or raw[pos] == 13
+    ):
+        pos += 1
+
+    if pos < n:
+        raise Error("trailing characters after closing ']'")
+
+    return out^
+
+
+def atomic_write_tokens_json(target_path: String, tokens: List[Int]) raises:
+    """Atomic write list of token IDs to formatted JSON file with rollback protection.
+    """
+    var tmp_path: String
+    var attempt = 0
+    while attempt < 8:
+        tmp_path = make_unique_tmp_path(target_path, attempt)
+        var fd = c_open_tmp_excl(tmp_path)
+        if fd >= 0:
+            _ = c_close_fd(fd)
+            var json_str = String("[\n")
+            for i in range(len(tokens)):
+                json_str += String("  ", tokens[i])
+                if i + 1 < len(tokens):
+                    json_str += String(",\n")
+                else:
+                    json_str += String("\n")
+            json_str += String("]\n")
+            try:
+                var f = open(tmp_path, "w")
+                f.write(json_str)
+                f.close()
+            except:
+                _ = c_unlink(tmp_path)
+                raise Error(String("cannot write tmp tokens file: ", tmp_path))
+            var ren_ret = c_rename(tmp_path, target_path)
+            if ren_ret != 0:
+                _ = c_unlink(tmp_path)
+                raise Error(
+                    String(
+                        "atomic rename failed from ",
+                        tmp_path,
+                        " to ",
+                        target_path,
+                    )
+                )
+            return
+        attempt += 1
+    raise Error(
+        String("cannot create tmp tokens file securely for: ", target_path)
+    )
