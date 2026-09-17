@@ -1,0 +1,12 @@
+{
+  "name": "M5 KV decode set - 4K context",
+  "description": "Prompt for KV decode memory test @ 4K context size (G-M5-3)",
+  "prompt": {
+    "id": "kv_test_4k",
+    "category": "extended_context",
+    "text": "A very long prompt that tests memory at 4K context size. System architecture analysis for high-throughput distributed mixture-of-experts streaming engine. System architecture analysis for high-throughput distributed mixture-of-experts streaming engine. System architecture analysis for high-throughput distributed mixture-of-experts streaming engine. System architecture analysis for high-throughput distributed mixture-of-experts streaming engine. System architecture analysis for high-throughput distributed mixture-of-experts streaming engine. System architecture analysis for high-throughput distributed mixture-of-experts streaming engine. System architecture analysis for high-throughput distributed mixture-of-experts streaming engine. System architecture analysis for high-throughput distributed mixture-of-experts streaming engine. System architecture analysis for high-throughput distributed mixture-of-experts streaming engine. System architecture analysis for high-throughput distributed mixture-of-experts streaming engine. ",
+    "expected_tokens": 64,
+    "context_size": 4096
+  },
+  "token_count": 101
+}

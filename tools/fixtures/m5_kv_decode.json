@@ -1,0 +1,12 @@
+{
+  "name": "M5 KV decode set",
+  "description": "Prompt for KV decode vs recompute gate (64 token @ ctx 2K)",
+  "prompt": {
+    "id": "kv_test_1",
+    "category": "factual_explanation",
+    "text": "The quick brown fox jumps over the lazy dog. Explain this sentence in detail, exploring its pangrammatic properties, historical origin, linguistic structure, phonetic diversity, and common usage in typing tests and telegraphy.",
+    "expected_tokens": 64,
+    "context_size": 2048
+  },
+  "token_count": 32
+}
