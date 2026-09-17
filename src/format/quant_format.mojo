@@ -6,6 +6,7 @@
 from format.scanner import Scanner
 from format.types import json_escape
 from std.collections import List
+from std.math import isinf, isnan
 
 
 comptime QUANT_HEADER_SIZE: Int = 256
@@ -73,7 +74,10 @@ def compute_fp16_scale_ceil(max_abs: Float32) raises -> Float16:
 
     Bila max_abs == 0, mengembalikan 1.0 (grup nol, q = 0).
     Pembulatan ke atas menjamin Float32(s_g) * 7.0 >= max_abs (tanpa saturasi).
+    Menolak NaN dan Inf dengan Error (M6_ERR_QUANT).
     """
+    if isnan(max_abs) or isinf(max_abs):
+        raise Error("compute_fp16_scale_ceil: NaN or Inf encountered in scale")
     if max_abs <= 0.0:
         return Float16(1.0)
 

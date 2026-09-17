@@ -49,7 +49,10 @@ def compute_fp16_scale_ceil(max_abs: float) -> float:
 
     Zero-group returns 1.0 (with q=0).
     Ensures float(s_g) * 7.0 >= max_abs strictly without saturation.
+    Raises ValueError on NaN, Inf, or scale overflow.
     """
+    if np.isnan(max_abs) or np.isinf(max_abs):
+        raise ValueError(f"NaN or Inf encountered in scale computation: {max_abs}")
     if max_abs <= 0.0:
         return 1.0
     target = max_abs / 7.0
