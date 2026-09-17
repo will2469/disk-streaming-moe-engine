@@ -48,17 +48,17 @@ flowchart TB
 
 ## 2.2 Komponen & Kontrak
 
-| ID  | Komponen                 | Tanggung jawab                                                                                                           | Kontrak internal                                            |
-| --- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
-| C1  | `main.mojo` (CLI)        | subperintah `check-index / head / layer / forward`, exit code, output biner                                              | exit 0 = sukses; error → stderr terstruktur, bukan panic    |
-| C2  | `model.mojo`             | config loader, kernels (rmsnorm, rope rotate_half, attn, moe + router + sigmoid gate), forward streaming                 | setiap kernel punya oracle pasangan (M2/M3)                 |
-| C3  | `safetensors.mojo`       | parser header JSON, merge index multi-shard (8 pada checkpoint trial), pread | F15 = 100% tensor (kebenaran independen cache); benchmark parse fixture < 1 s (terkendali) |
-| C4  | kv-state (M5)            | cache K/V incremental per layer                                                                                          | ukur memori = prediksi F2 ± 5%                              |
-| C5  | quantizer (M6)           | kuantisasi 4-bit per-grup + dequant di kernel                                                                            | ε_rel per tensor ≤ 1e-2 (F11)                               |
-| C6  | io_direct + LRU (M7)     | reader O_DIRECT + LRU cache expert                                                                                       | BW cold ≥ 2,5 GB/s; model F13 terkalibrasi                  |
-| C7 | `tools/` (Rust + Python) | **Rust:** CLI/orchestration, index/metadata, compare, benchmark, report. **Python/PyTorch:** oracle + fixture generation | report JSON deterministik |
-| C8  | fixtures                 | synthetic mini-checkpoint + golden set 50 prompt                                                                         | deterministik (seed 42), commit ke repo                     |
-| C9  | llama.cpp baseline       | pembanding sanity ("harusnya kira-kira seperti ini")                                                                     | **tidak boleh** dipakai ground truth (`03-testing.md` §4.1) |
+| ID  | Komponen                 | Tanggung jawab                                                                                                           | Kontrak internal                                                                           |
+| --- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| C1  | `main.mojo` (CLI)        | subperintah `check-index / head / layer / forward`, exit code, output biner                                              | exit 0 = sukses; error → stderr terstruktur, bukan panic                                   |
+| C2  | `model.mojo`             | config loader, kernels (rmsnorm, rope rotate_half, attn, moe + router + sigmoid gate), forward streaming                 | setiap kernel punya oracle pasangan (M2/M3)                                                |
+| C3  | `safetensors.mojo`       | parser header JSON, merge index multi-shard (8 pada checkpoint trial), pread                                             | F15 = 100% tensor (kebenaran independen cache); benchmark parse fixture < 1 s (terkendali) |
+| C4  | kv-state (M5)            | cache K/V incremental per layer                                                                                          | ukur memori = prediksi F2 ± 5%                                                             |
+| C5  | quantizer (M6)           | kuantisasi 4-bit per-grup + dequant di kernel                                                                            | ε_rel per tensor ≤ 1e-2 (F11)                                                              |
+| C6  | io_direct + LRU (M7)     | reader O_DIRECT + LRU cache expert                                                                                       | BW cold ≥ 2,5 GB/s; model F13 terkalibrasi                                                 |
+| C7  | `tools/` (Rust + Python) | **Rust:** CLI/orchestration, index/metadata, compare, benchmark, report. **Python/PyTorch:** oracle + fixture generation | report JSON deterministik                                                                  |
+| C8  | fixtures                 | synthetic mini-checkpoint + golden set 50 prompt                                                                         | deterministik (seed 42), commit ke repo                                                    |
+| C9  | llama.cpp baseline       | pembanding sanity ("harusnya kira-kira seperti ini")                                                                     | **tidak boleh** dipakai ground truth (`03-testing.md` §4.1)                                |
 
 Pemakaian per milestone:
 
@@ -74,11 +74,11 @@ Pemakaian per milestone:
 
 ## 2.2.1 Batas Bahasa & Runtime
 
-| Lapisan                 | Teknologi            | Tanggung jawab                                                                                                                 | Tahap jalan |
-| ----------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------- |
-| Orchestration / tooling | **Rust**             | CLI, subcommand, config/index validation, shard discovery, SHA-256, process launch, benchmark, binary compare, JSON/CSV report | runtime + offline tooling                            |
-| Inference engine        | **Mojo**             | tensor loading path, streaming, KV cache, quant/dequant, attention, MoE, GDN, forward/decode                                   | runtime inference                            |
-| Independent oracle      | **Python + PyTorch** | oracle head/layer/full, fixture/golden generation, tokenizer parity saat dibutuhkan                                            | offline (oracle/fixture)                         |
+| Lapisan                 | Teknologi            | Tanggung jawab                                                                                                                 | Tahap jalan               |
+| ----------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
+| Orchestration / tooling | **Rust**             | CLI, subcommand, config/index validation, shard discovery, SHA-256, process launch, benchmark, binary compare, JSON/CSV report | runtime + offline tooling |
+| Inference engine        | **Mojo**             | tensor loading path, streaming, KV cache, quant/dequant, attention, MoE, GDN, forward/decode                                   | runtime inference         |
+| Independent oracle      | **Python + PyTorch** | oracle head/layer/full, fixture/golden generation, tokenizer parity saat dibutuhkan                                            | offline (oracle/fixture)  |
 
 **Kontrak boundary:** Python/PyTorch menghasilkan artefak referensi (`*.bin`, metadata, fixture) yang dibaca/dibandingkan oleh Rust tooling. Engine Mojo dan tooling Rust berkomunikasi via artefak file tersebut, sehingga validasi tetap independen dan setiap bahasa berjalan di tahap yang paling pas.
 
@@ -134,45 +134,55 @@ Detail per milestone: `milestones/M0-reader.md` … `milestones/M4-full-forward.
 
 ## 2.5 Anggaran Memori
 
-$$M_{peak} = W_{res} + M_{KV} + M_{ws} + M_{io} \le M_{gate} \tag{F1}$$
+Formula umum memori puncak ($M_{peak}$):
 
-| Suku                             | Trial M0–M4     | Trial M5 (@4K ctx) | Port M9 (TBM)           |
-| -------------------------------- | --------------- | ------------------ | ----------------------- |
-| $W_{res}$ (emb+lm_head F32)      | **2,318 GiB**   | **2,318 GiB**      | ≤ 1 GiB (quant, target) |
-| $M_{KV}$ (F2)                    | 0               | ≈ 0,75 GB          | TBM (GQA, hanya L_att)  |
-| $M_{ws}$ (aktivasi + workspace)  | ≤ 0,3 GB        | ≤ 0,4 GB           | TBM                     |
-| $M_{io}$ (buffer pread/O_DIRECT) | ≤ 0,1 GB        | ≤ 0,1 GB           | TBM                     |
-| **Gate $M_{gate}$**              | **≤ 3,5–5 GiB** | **≤ 5 GiB**        | **≤ 7,5 GiB**           |
+$$M_{peak}^{trial} = W_{res} + M_{KV} + M_{ws} + M_{io} \le M_{gate} \tag{F1}$$
 
-Implikasi di mesin 8 GB: $H_{mem} = (8 - M_{peak})/8 \ge 37{,}5\%$ (trial) — sisanya diserahkan ke OS/page cache dan cgroup (`05-security.md` §6.3-K4).
+Untuk Port M9 (arsitektur streaming hybrid 35B), formula diperluas secara bottom-up untuk mencakup cache LRU expert, buffer expert aktif, dan recurrent state GDN:
+
+$$M_{peak}^{port} = W_{res} + M_{cache} + M_{expert} + M_{KV} + M_{GDN} + M_{scratch} + M_{ws\_runtime} \le M_{gate} \tag{F1-Port}$$
+
+| Suku                                   | Trial M0–M4          | Trial M5 (@4K ctx)   | Port M9 Streaming (Nominal / Cap)                                           |
+| -------------------------------------- | -------------------- | -------------------- | --------------------------------------------------------------------------- |
+| $W_{res}$ (emb+lm_head)                | **2,318 GiB** (FP32) | **2,318 GiB** (FP32) | **≤ 1,00 GiB** (Q4_K/Q8_0 quant target)                                     |
+| $M_{cache}$ (LRU expert cache)         | 0 (tidak ada LRU)    | 0 (tidak ada LRU)    | **≈ 1,00 GiB** (cap ≤ 2,00 GiB; ~1000 expert Q3_K)                          |
+| $M_{expert}$ (active expert scratch)   | dalam $M_{ws}$       | dalam $M_{ws}$       | **≈ 0,11 GiB** (cap ≤ 0,15 GiB; 9 expert FP32)                              |
+| $M_{KV}$ (F2)                          | 0                    | ≈ 0,75 GB (MHA 24L)  | **≈ 0,04 GiB** (@4K ctx; cap ≤ 0,50 GiB @32K–50K)                           |
+| $M_{GDN}$ (recurrent states)           | 0                    | 0                    | **≈ 0,002 GiB** ($30 \times 128 \times 128 \times 4\text{ B}$ FP32, $O(1)$) |
+| $M_{io} + M_{scratch}$ (pread/dequant) | ≤ 0,1 GB             | ≤ 0,1 GB             | **≈ 0,16 GiB** (cap ≤ 0,25 GiB)                                             |
+| $M_{ws\_runtime}$ (aktivasi+engine)    | ≤ 0,3 GB             | ≤ 0,4 GB             | **≈ 0,30 GiB** (cap ≤ 0,50 GiB)                                             |
+| **Estimasi $M_{peak}$**                | **≤ 2,72 GiB**       | **≤ 3,57 GiB**       | **≈ 2,11 GiB** (worst-case ≤ 4,41 GiB)                                      |
+| **Gate $M_{gate}$**                    | **≤ 3,5–5 GiB**      | **≤ 5 GiB**          | **≤ 7,5 GiB** (G-M9-2)                                                      |
+
+Implikasi di mesin 8 GB: $H_{mem} = (8 - M_{peak})/8 \ge 37{,}5\%$ (trial) dan $H_{mem} \ge 47{,}1\%\text{--}73{,}6\%$ (port streaming nominal/worst-case) — sisanya diserahkan ke OS/page cache dan cgroup (`05-security.md` §6.3-K4). Batas keras cgroup port dikunci pada `MemoryMax=7.5G` (Gate G-M9-2).
 
 ## 2.6 Keputusan Arsitektur (ADR)
 
-| ADR | Keputusan                                                                    | Alternatif yang ditolak            | Alasan                                                                                                                                                                 |
-| --- | ---------------------------------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ADR | Keputusan                                                                    | Alternatif yang ditolak            | Alasan                                                                                                                                                                          |
+| --- | ---------------------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | D1  | **Mojo inference + Rust tooling**                                            | seluruh glue di Python / C         | Mojo dipertahankan untuk engine/kernels; Rust memberi CLI, I/O orchestration, verification, benchmark, dan security boundary; Python/PyTorch fokus di oracle/fixture generation |
-| D2  | pread dulu, mmap belakangan                                                  | mmap + page cache sejak awal       | kontrol penuh atas buffer & bounds (SEC-3); O_DIRECT/LRU (M7) adalah evolusi alami pread                                                                               |
-| D3  | Komputasi fp32 (bobot BF16 di-dequant ke fp32 saat dipakai)                  | komputasi BF16 langsung            | kesederhanaan numerik; oracle fp32 jadi pembanding natural; konversi termasuk bagian yang divalidasi                                                                   |
-| D4  | **Oracle PyTorch fp32 = satu-satunya ground truth; Rust compare = verifier** | llama.cpp sebagai pembanding utama | quant ≠ fp32 → tidak byte-comparable (README §7)                                                                                                                       |
-| D5  | Router tanpa renorm, gate shared sigmoid                                     | mengikuti intuisi umum MoE         | kepatuhan checkpoint (§2.3) — bukan preferensi                                                                                                                         |
-| D6  | Quantizer 4-bit ditulis sendiri (M6)                                         | pakai GGUF/llama.cpp quant         | di sinilah "menemukan kembali GGUF" — inti kurikulum; kendali penuh atas format                                                                                        |
-| D7  | O_DIRECT + LRU setelah pread bekerja (M7)                                    | langsung O_DIRECT                  | buktikan kebenaran dulu, optimasi I/O kemudian (Prinsip P1)                                                                                                            |
-| D8  | MTP/NextN tidak ada di roadmap inti                                          | mengejar speedup 2×                | out of scope trial; kandidat eksperimen pasca-M9                                                                                                                       |
-| D9  | **Pembagian peran Rust / Mojo / Python**                      | Python orchestration runtime       | menjaga independent reference; boundary sederhana: `Rust → Mojo`, `Python → golden artifacts`                  |
+| D2  | pread dulu, mmap belakangan                                                  | mmap + page cache sejak awal       | kontrol penuh atas buffer & bounds (SEC-3); O_DIRECT/LRU (M7) adalah evolusi alami pread                                                                                        |
+| D3  | Komputasi fp32 (bobot BF16 di-dequant ke fp32 saat dipakai)                  | komputasi BF16 langsung            | kesederhanaan numerik; oracle fp32 jadi pembanding natural; konversi termasuk bagian yang divalidasi                                                                            |
+| D4  | **Oracle PyTorch fp32 = satu-satunya ground truth; Rust compare = verifier** | llama.cpp sebagai pembanding utama | quant ≠ fp32 → tidak byte-comparable (README §7)                                                                                                                                |
+| D5  | Router tanpa renorm, gate shared sigmoid                                     | mengikuti intuisi umum MoE         | kepatuhan checkpoint (§2.3) — bukan preferensi                                                                                                                                  |
+| D6  | Quantizer 4-bit ditulis sendiri (M6)                                         | pakai GGUF/llama.cpp quant         | di sinilah "menemukan kembali GGUF" — inti kurikulum; kendali penuh atas format                                                                                                 |
+| D7  | O_DIRECT + LRU setelah pread bekerja (M7)                                    | langsung O_DIRECT                  | buktikan kebenaran dulu, optimasi I/O kemudian (Prinsip P1)                                                                                                                     |
+| D8  | MTP/NextN tidak ada di roadmap inti                                          | mengejar speedup 2×                | out of scope trial; kandidat eksperimen pasca-M9                                                                                                                                |
+| D9  | **Pembagian peran Rust / Mojo / Python**                                     | Python orchestration runtime       | menjaga independent reference; boundary sederhana: `Rust → Mojo`, `Python → golden artifacts`                                                                                   |
 
 ## 2.7 Delta Port ke Qwen3.6-35B-A3B (M9)
 
 Perubahan terhadap trial — **checkpoint resmi Qwen3.6-35B-A3B sudah tersedia**, sehingga fakta arsitektur berikut bukan lagi TBM. Nilai yang tetap bergantung pada implementasi/benchmark lokal tetap ditandai TBM. [R4][R5]:
 
-| Aspek                      | Trial (Qwen1.5-MoE)          | Port (Qwen3.6-35B-A3B)                                                                                                       |
-| -------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Routed expert              | 60, top-4, inter 1408        | **256, top-8, inter 512** [R4]                                                                                               |
-| Shared expert              | inter 5632, sigmoid gate     | **1 shared + 8 routed aktif; inter 512** [R4]                                                                                |
-| Attention                  | MHA semua layer              | **10 Gated Attention + 30 Gated DeltaNet** (`10 × (3×GDN + 1×Gated Attention)`), GQA 16Q/2KV; jadi $L_{att}=L/4$ tepat. [R4] |
-| Linear attention           | tidak ada                    | **Gated DeltaNet** di layer sisanya (M8 prasyarat)                                                                           |
-| Vocab                      | 151.936                      | **248.320 (padded)** [R4]                                                                                                    |
-| Total / aktif              | 14,3 B / 2,7 B official [R1] | **35 B / 3 B official** [R4]                                                                                                 |
-| Disk                       | 28,63 GB BF16                | GGUF quant ~13–17 GB (Q3/IQ3) atau BF16 ~70 GB untuk oracle shard                                                            |
-| Konteks praktis (RAM 8 GB) | ≤ 8K                         | KV kecil (F2, GQA) — batas nyata = prefill CPU (F4)                                                                          |
+| Aspek                      | Trial (Qwen1.5-MoE)          | Port (Qwen3.6-35B-A3B)                                                                                                                                                                           |
+| -------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Routed expert              | 60, top-4, inter 1408        | **256, top-8, inter 512** [R4]                                                                                                                                                                   |
+| Shared expert              | inter 5632, sigmoid gate     | **1 shared + 8 routed aktif; inter 512** [R4]                                                                                                                                                    |
+| Attention                  | MHA semua layer              | **10 Gated Attention + 30 Gated DeltaNet** (40 Transformer Blocks: `10 × (3×(GDN+MoE) + 1×(Gated Attention+MoE))`), GQA 16Q/2KV; jadi $L_{att}=L/4$ tepat; MoE hadir pada seluruh 40 block. [R4] |
+| Linear attention           | tidak ada                    | **Gated DeltaNet** di layer sisanya (M8 prasyarat)                                                                                                                                               |
+| Vocab                      | 151.936                      | **248.320 (padded)** [R4]                                                                                                                                                                        |
+| Total / aktif              | 14,3 B / 2,7 B official [R1] | **35 B / 3 B official** [R4]                                                                                                                                                                     |
+| Disk                       | 28,63 GB BF16                | GGUF quant ~13–17 GB (Q3/IQ3) atau BF16 ~70 GB untuk oracle shard                                                                                                                                |
+| Konteks praktis (RAM 8 GB) | ≤ 8K                         | KV kecil (F2, GQA) — batas nyata = prefill CPU (F4)                                                                                                                                              |
 
 Detail port: `milestones/M9-port.md`. Prasyarat GDN: `milestones/M8-gdn.md`.

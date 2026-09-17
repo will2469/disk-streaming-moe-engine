@@ -3,36 +3,54 @@
 > Bagian dari `disk-streaming-moe-engine`. Index: `README.md`.
 > Setiap rumus punya ID `F#` yang dirujuk oleh gate di `04-quality.md` dan kontrol security di `05-security.md`. Contoh angka memakai config trial; angka port ditandai TBM.
 
-| ID | Rumus | Dipakai di |
-|---|---|---|
-| F1 | Anggaran memori peak | `01-architecture.md` §2.5, G-M1..M9, SEC-4 |
-| F2 | Ukuran KV cache | M5, M9, Lampiran A |
-| F3 | Bytes per forward / per token | M5–M7, benchmark |
-| F4 | Model roofline (memory- vs compute-bound) | `03-testing.md` §4.4, M9 |
-| F5 | Waktu per token + bandwidth efektif | M5–M7, M9 |
-| F6 | RMSNorm | M2 |
-| F7 | RoPE rotate_half + invariant isometri | M2, property test |
-| F8 | Router top-k tanpa renorm + shared sigmoid gate + SwiGLU | M3 (paling kritis) |
-| F9 | Diagnostik load-balance expert | analisis routing, koreksi F5 |
-| F10 | Metrik ekivalensi numerik + propagasi error | `03-testing.md` §4.3, semua gate MATCH |
-| F11 | Kuantisasi simetris 4-bit per-grup | M6 |
-| F12 | Perplexity & ΔPPL | M6, M9 |
-| F13 | Hit rate LRU + bandwidth efektif | M7 |
-| F14 | Delta rule / Gated DeltaNet | M8 |
-| F15 | Predikat validitas struktural safetensors (F15a/b/c; SHA = SEC-1, bukan F15) | `05-security.md` (SEC-1..3) |
-| F16 | Kurva skala core (rasio, device-agnostic) | M5, M7, benchmark |
-| F17 | Pola I/O storage (seq vs expert-size, QD, sustained) | M7, benchmark |
+| ID  | Rumus                                                                        | Dipakai di                                 |
+| --- | ---------------------------------------------------------------------------- | ------------------------------------------ |
+| F1  | Anggaran memori peak                                                         | `01-architecture.md` §2.5, G-M1..M9, SEC-4 |
+| F2  | Ukuran KV cache                                                              | M5, M9, Lampiran A                         |
+| F3  | Bytes per forward / per token                                                | M5–M7, benchmark                           |
+| F4  | Model roofline (memory- vs compute-bound)                                    | `03-testing.md` §4.4, M9                   |
+| F5  | Waktu per token + bandwidth efektif                                          | M5–M7, M9                                  |
+| F6  | RMSNorm                                                                      | M2                                         |
+| F7  | RoPE rotate_half + invariant isometri                                        | M2, property test                          |
+| F8  | Router top-k tanpa renorm + shared sigmoid gate + SwiGLU                     | M3 (paling kritis)                         |
+| F9  | Diagnostik load-balance expert                                               | analisis routing, koreksi F5               |
+| F10 | Metrik ekivalensi numerik + propagasi error                                  | `03-testing.md` §4.3, semua gate MATCH     |
+| F11 | Kuantisasi simetris 4-bit (M6); Distorsi multi-format GGUF F11-GGUF (M9)     | M6, M9                                     |
+| F12 | Perplexity & ΔPPL                                                            | M6, M9                                     |
+| F13 | Hit rate LRU + bandwidth efektif                                             | M7                                         |
+| F14 | Delta rule / Gated DeltaNet                                                  | M8                                         |
+| F15 | Predikat validitas struktural safetensors (F15a/b/c; SHA = SEC-1, bukan F15) | `05-security.md` (SEC-1..3)                |
+| F16 | Kurva skala core (rasio, device-agnostic)                                    | M5, M7, benchmark                          |
+| F17 | Pola I/O storage (seq vs expert-size, QD, sustained)                         | M7, benchmark                              |
 
 ## 3.1 Memori & Streaming
 
-**F1 — Anggaran memori** (sudah ditulis di `01-architecture.md` §2.5): $M_{peak} = W_{res} + M_{KV} + M_{ws} + M_{io} \le M_{gate}$.
+**F1 — Anggaran memori** (sudah ditulis di `01-architecture.md` §2.5):
+
+- Model trial: $M_{peak}^{trial} = W_{res} + M_{KV} + M_{ws} + M_{io} \le M_{gate}$ ($M_{gate} \le 3{,}5\text{--}5\text{ GiB}$).
+- Model port M9 (streaming hybrid 35B):
+  $$M_{peak}^{port} = W_{res} + M_{cache} + M_{expert} + M_{KV} + M_{GDN} + M_{scratch} + M_{ws\_runtime} \le M_{gate} = 7{,}5\text{ GiB}$$
+  dengan:
+  - $W_{res}$: embedding + `lm_head` terkuantisasi (Q4_K/Q8_0) $\le 1{,}00\text{ GiB}$.
+  - $M_{cache}$: cache LRU terikat (pola M7) bobot terkompresi Q3_K expert panas $\le 2{,}00\text{ GiB}$.
+  - $M_{expert}$: buffer komputasi FP32 untuk 8 routed + 1 shared expert aktif $\le 0{,}15\text{ GiB}$ ($9 \times 3 \times 512 \times 2048 \times 4\text{ B} \approx 113{,}2\text{ MB}$).
+  - $M_{KV}(s)$: KV cache GQA $10\text{ layer} \times 2\text{ KV heads} \times 128 \times s \times 2\text{ B} \approx 10\text{ KiB/tok} \le 0{,}50\text{ GiB}$ (@ $\le 50\text{K}$ ctx).
+  - $M_{GDN}$: 30 recurrent states independen $30 \times 128 \times 128 \times 4\text{ B} = 1{,}875\text{ MiB} \approx 0{,}002\text{ GiB}$ (konstan $O(1)$).
+  - $M_{scratch}$: O_DIRECT aligned pread buffer + scratchpad dequant layer $\le 0{,}25\text{ GiB}$.
+  - $M_{ws\_runtime}$: buffer aktivasi token, GGUF metadata index ($<1\text{ MB}$), thread stacks & allocator pools $\le 0{,}50\text{ GiB}$.
+    Total nominal streaming $M_{peak}^{port} \approx 2{,}11\text{ GiB}$; worst-case alokasi penuh $\le 4{,}41\text{ GiB} \ll 7{,}5\text{ GiB}$ (Gate G-M9-2).
 
 **F2 — KV cache** (hanya layer dengan attention penuh):
 
-$$M_{KV}(s) = 2 L_{att} H_{kv} d_h s b_{KV}$$
+$$M_{KV}(s) = 2 L_{att} H_{kv} d_h(\text{config}) s b_{KV}$$
 
-Dengan $b_{KV}$ = byte per elemen **yang disimpan** di cache (trial: BF16, jadi 2 B; jangan otomatis mengikuti dtype bobot/dequant). Trial (MHA, semua layer): $2 \times 24 \times 16 \times 128 \times 2\,\text{B} = 196.608$ B/token = **0,1875 MiB/token** → @4096 ctx = **0,75 GiB** → konteks praktis trial ≤ 8K di RAM 8 GB. Port M9: berdasarkan layout resmi `10 × (3 × Gated DeltaNet → MoE) → 1 × (Gated Attention → MoE)`, ada **10/40 = 1/4** layer full-attention; GQA = 2 KV heads. Maka F2 memakai $L_{att}=10$ dan $H_{kv}=2$ untuk KV attention. [R4]
-Dipakai di: `milestones/M5-kv-decode.md`, `milestones/M9-port.md`.
+Dengan:
+
+- **Faktor 2**: Merepresentasikan sepasang tensor Key ($K$) dan Value ($V$) yang wajib hidup di data layout fisik: `[2, s, L_{att}, H_{kv}, d_h]` atau dual tensor `(K, V)`.
+- $d_h(\text{config}) = \frac{\text{hidden\_size}}{\text{num\_attention\_heads}} = \frac{2048}{16} = 128$ (dihitung dinamis dari config model).
+- $b_{KV}$ = byte per elemen **yang disimpan** di cache (trial: BF16, jadi 2 B; jangan otomatis mengikuti dtype bobot/dequant). Trial (MHA, semua layer): $2 \times 24 \times 16 \times 128 \times 2\,\text{B} = 196.608$ B/token = **0,1875 MiB/token** → @4096 ctx = **0,75 GiB** → konteks praktis trial ≤ 8K di RAM 8 GB. Port M9: berdasarkan layout resmi `10 × (3 × (Gated DeltaNet → MoE) + 1 × (Gated Attention → MoE))`, ada **10/40 = 1/4** layer full-attention; GQA = 2 KV heads. Maka F2 memakai $L_{att}=10$, $H_{kv}=2$, dan $d_h=128$ untuk KV attention ($5\text{ KiB/tok}$ jika $b_{KV}=1\text{ B}$ atau $10\text{ KiB/tok}$ jika BF16 $2\text{ B}$). [R4]
+- Evaluasi Gate G-M9-4 ($e_{KV} \le 5\%$) membandingkan $M_{KV}(s)$ langsung terhadap `metrics.kv_cache.kv_payload_bytes` yang diekspos engine (bukan diekstrak dari RSS / VmHWM).
+  Dipakai di: `milestones/M5-kv-decode.md`, `milestones/M9-port.md`.
 
 **F3 — Bytes yang dibaca dari disk:**
 
@@ -89,7 +107,7 @@ $\rho_B$ adalah fraksi **byte** terukur. $\rho_C$ hanya estimasi kapasitas awal 
 
 Contoh trial (estimasi, bukan hasil ukur): $C_{pc} \approx 3$ GB, $W_{stream} \approx 26$ GB → $\rho_C=3/26\approx\mathbf{0{,}1154}$. Dengan asumsi $\rho_B=\rho_C$, $BW_{RAM}=15$ GB/s, dan $BW_{SSD}=3$ GB/s, diperoleh $BW_{eff}\approx\mathbf{3{,}305}$ GB/s. Dengan $B_{tok}=4{,}134$ GB, komponen I/O memberi $T_{data}\approx\mathbf{1{,}251}$ s/token. Untuk forecast serial dengan placeholder $T_{comp}=0{,}05$ s dan $T_{ovh}=0$, $T_{tok}\approx\mathbf{1{,}301}$ s/token ≈ **0,77 tok/s**. Placeholder `T_comp` wajib diganti hasil ukur sebelum dipakai untuk acceptance; angka ini hanya forecast engineering.
 
-**Floor bandwidth (gate minimal, bukan estimasi):** $BW_{RAM}$ tipikal memakai 15 GB/s (kelas DDR4 umum), sedangkan **floor minimal $BW_{RAM} \ge 10$ GB/s** (G-M5-6, single-thread Copy read-equiv). Di floor ini target M7-3 tetap lolos dalam forecast serial: $BW_{eff,quant}=\left(0{,}4248/10+0{,}5752/2{,}5\right)^{-1}\approx\mathbf{3{,}67}$ GB/s → $T_{tok}\approx1{,}066/3{,}67+0{,}05\approx\mathbf{0{,}34}$ s/token ≈ **2,94 tok/s** ≥ 2 tok/s. Teoritis DDR4-3200 = 3200 MT/s × 8 B = 25,6 GB/s per kanal; yang di-gate adalah bandwidth *sustainable* terukur ala STREAM [R21], bukan angka teoritis.
+**Floor bandwidth (gate minimal, bukan estimasi):** $BW_{RAM}$ tipikal memakai 15 GB/s (kelas DDR4 umum), sedangkan **floor minimal $BW_{RAM} \ge 10$ GB/s** (G-M5-6, single-thread Copy read-equiv). Di floor ini target M7-3 tetap lolos dalam forecast serial: $BW_{eff,quant}=\left(0{,}4248/10+0{,}5752/2{,}5\right)^{-1}\approx\mathbf{3{,}67}$ GB/s → $T_{tok}\approx1{,}066/3{,}67+0{,}05\approx\mathbf{0{,}34}$ s/token ≈ **2,94 tok/s** ≥ 2 tok/s. Teoritis DDR4-3200 = 3200 MT/s × 8 B = 25,6 GB/s per kanal; yang di-gate adalah bandwidth _sustainable_ terukur ala STREAM [R21], bukan angka teoritis.
 
 ## 3.2 Komponen Model
 
@@ -199,6 +217,77 @@ $$B_{payload}=\left\lceil\frac{N}{2}\right\rceil+2\left\lceil\frac{N}{G}\right\r
 
 dengan $bpw_{eff}=4+16/128=\mathbf{4{,}125}$ bit/bobot secara asimtotik; ukuran file = payload + header/alignment. Untuk $N_{total}=14{,}32$ B, prediksi payload = $14{,}32\times4{,}125/8\approx\mathbf{7{,}384\ GB}$ sebelum metadata. Gate G-M6-2 tetap **±10%** terhadap ukuran terukur. Property test Q-domain (oracle, FP32): $|\mathrm{fp32}(w_j)-\hat w^{(32)}_j|\le s_g/2$ untuk semua $j$ dengan $\hat w^{(32)}_j=\mathrm{fp32}(s_g)q_j$. Kernel produksi mengeluarkan BF16 $\hat w^{(\mathrm{bf16})}_j=\mathrm{bf16}(\hat w^{(32)}_j)$; audit kernel memakai bound Kernel-domain $|\mathrm{fp32}(w_j)-\mathrm{fp32}(\hat w^{(\mathrm{bf16})}_j)|\le s_g/2+|\hat w^{(32)}_j|/256$ (segitiga: error kuantisasi + roundoff BF16 $2^{-8}$, ternormalisasi). Dipakai di `milestones/M6-quantizer.md`.
 
+**F11-GGUF — Distorsi Kuantisasi Multi-Format GGUF (M9):**
+
+Format GGUF v3 pada port M9 menggunakan beragam tipe kuantisasi GGML (`Q8_0`, `Q4_K_M`, `Q3_K_M`, `IQ3_S`) yang berbeda secara fundamental dari skema custom 4-bit M6. Kuantisasi 3-bit memiliki batasan teori laju-distorsi ($R(D)$) yang lebih longgar dibanding 4-bit atau 8-bit, sehingga threshold M6 ($\max \varepsilon_{rel} \le 10^{-2}$) **DILARANG** diwariskan begitu saja, dan angka toleransi ukuran file M6 ($\pm 10\%$) **DILARANG KERAS** disalahartikan sebagai threshold galat kuantisasi tensor.
+
+Validasi kuantisasi GGUF M9 dibagi menjadi dua pilar:
+
+1. **Tier 1 — Bit-Exact Decoder Reference**: Memverifikasi bahwa kernel dekuantisasi Mojo engine menghasilkan float yang identik bit-for-bit terhadap referensi C GGML resmi (`ggml-quants.c`):
+   $$\Delta_{\max}(\hat{W}_{\text{engine}}, \hat{W}_{\text{ggml\_ref}}) \le 10^{-7} \quad (\text{exact up to FP32 rounding})$$
+2. **Tier 2 — Distortion Metrics vs Checkpoint Asli Safetensors BF16** ($W_{\text{orig}}$):
+   Dievaluasi pada tiga hierarki independen:
+   - **Per-Tensor**: Untuk matriks bobot individual $T$ berukuran $N_T$ elemen:
+     $$\text{MSE}(T) = \frac{1}{N_T}\sum_{j=1}^{N_T} (W_{\text{orig}, j}^{(T)} - \hat{W}_j^{(T)})^2, \quad \varepsilon_{rel}(T) = \frac{\sqrt{\text{MSE}(T)}}{\sqrt{\frac{1}{N_T}\sum_{j=1}^{N_T} (W_{\text{orig}, j}^{(T)})^2}}$$
+     _(Bila tensor nol/konstan, laporkan `epsilon_rel: null` dan validasi via kesamaan nilai absolut tanpa fudge)._
+   - **Per-Block**: Untuk transformer block $\ell \in [0, 39]$ dengan himpunan bobot terkuantisasi $\mathcal{T}_\ell$:
+     $$\varepsilon_{rel}^{\text{block}}(\ell) = \frac{\sqrt{\sum_{T \in \mathcal{T}_\ell} \sum_{j=1}^{N_T} (W_{\text{orig}, j}^{(T)} - \hat{W}_j^{(T)})^2}}{\sqrt{\sum_{T \in \mathcal{T}_\ell} \sum_{j=1}^{N_T} (W_{\text{orig}, j}^{(T)})^2}}$$
+   - **Global Model-Wide**: Agregasi seluruh bobot model terkuantisasi $\mathcal{T}_{\text{model}}$:
+     $$\varepsilon_{rel}^{\text{global}} = \frac{\sqrt{\sum_{T \in \mathcal{T}_{\text{model}}} N_T \cdot \text{MSE}(T)}}{\sqrt{\sum_{T \in \mathcal{T}_{\text{model}}} \sum_{j=1}^{N_T} (W_{\text{orig}, j}^{(T)})^2}}$$
+
+**Ambang Batas Spesifik Format & Peran (Format-Specific & Role-Specific Thresholds):**
+
+| Peran Bobot / Komponen               | Format GGUF         | Referensi Bit-Exact ($\Delta_{\max}$)       | Per-Tensor Max ($\max_T \varepsilon_{rel}$) | Per-Tensor Mean ($\overline{\varepsilon_{rel}}$) | Global Model ($\varepsilon_{rel}^{\text{global}}$) |
+| ------------------------------------ | ------------------- | ------------------------------------------- | ------------------------------------------- | ------------------------------------------------ | -------------------------------------------------- |
+| **Norms, Biases, RoPE**              | FP32 / BF16         | Safetensors FP32 ($0$)                      | $\le 10^{-7}$                               | $\le 10^{-7}$                                    | $\le 10^{-7}$                                      |
+| **Router Gating (`gate.weight`)**    | Q8_0 / BF16         | GGML `dequantize_row_q8_0` ($\le 10^{-7}$)  | $\le 0{,}008$ ($0{,}8\%$)                   | $\le 0{,}005$ ($0{,}5\%$)                        | $\le 0{,}005$ ($0{,}5\%$)                          |
+| **Token Mixers (GDN / GatedAttn)**   | Q4_K_M              | GGML `dequantize_row_q4_K` ($\le 10^{-7}$)  | $\le 0{,}045$ ($4{,}5\%$)                   | $\le 0{,}030$ ($3{,}0\%$)                        | $\le 0{,}025$ ($2{,}5\%$)                          |
+| **Shared Expert MLP**                | Q4_K_M              | GGML `dequantize_row_q4_K` ($\le 10^{-7}$)  | $\le 0{,}045$ ($4{,}5\%$)                   | $\le 0{,}030$ ($3{,}0\%$)                        | $\le 0{,}025$ ($2{,}5\%$)                          |
+| **Routed MoE Experts** (256 experts) | **Q3_K_M**          | GGML `dequantize_row_q3_K` ($\le 10^{-7}$)  | $\le \mathbf{0{,}090}$ ($9{,}0\%$)          | $\le \mathbf{0{,}065}$ ($6{,}5\%$)               | $\le \mathbf{0{,}060}$ ($6{,}0\%$)                 |
+| **Routed MoE Experts** (Alternatif)  | **IQ3_S / IQ3_XXS** | GGML `dequantize_row_iq3_s` ($\le 10^{-7}$) | $\le \mathbf{0{,}080}$ ($8{,}0\%$)          | $\le \mathbf{0{,}055}$ ($5{,}5\%$)               | $\le \mathbf{0{,}050}$ ($5{,}0\%$)                 |
+| **LM Head Output**                   | Q4_K_M / Q6_K       | GGML dequantizer ($\le 10^{-7}$)            | $\le 0{,}035$ ($3{,}5\%$)                   | $\le 0{,}020$ ($2{,}0\%$)                        | $\le 0{,}020$ ($2{,}0\%$)                          |
+
+Dipakai di `milestones/M9-port.md`.
+
+**F11b-GGUF — Prediksi Ukuran Berkas GGUF Analitik dari Blok Tensor Nyata:**
+
+Prediksi ukuran berkas GGUF port M9 **DILARANG KERAS** menggunakan estimasi kasar parameter global dikalikan bitrate rata-rata ($35\text{B} \times bpw / 8$), dan **DILARANG KERAS** mencampurkan formula bitrate M6 ($4{,}125\text{ bpw} \implies \sim 18{,}0\text{ GB}$) karena M6 hanya untuk trial 14.3B.
+
+Ukuran berkas fisik GGUF dihitung secara deterministik berbasis struktur blok tensor GGML nyata:
+$$\text{Size}_{\text{GGUF}}^{\text{expected}} = S_{\text{header}} + S_{\text{metadata\_kv}} + S_{\text{tensor\_info\_dir}} + \sum_{T \in \text{Tensors}} \text{PayloadBytes}(T) + S_{\text{alignment\_padding}}$$
+
+dengan ukuran payload masing-masing tensor $T$ beranggotakan $N_T$ elemen:
+$$\text{PayloadBytes}(T) = \left\lceil \frac{N_T}{\text{QK}_K(\text{type}_T)} \right\rceil \times \text{sizeof}(\text{block\_type}_T)$$
+serta padding alokasi 32-byte pada setiap awal tensor payload:
+$$\text{Offset}_{i+1} = \text{align\_to}(\text{Offset}_i + \text{PayloadBytes}(T_i), 32)$$
+
+Spesifikasi ukuran blok GGML:
+
+- `Q3_K`: $\text{QK}_K = 256$, ukuran blok = $114\text{ byte}$ ($3{,}5625\text{ bpw}$)
+- `Q4_K`: $\text{QK}_K = 256$, ukuran blok = $144\text{ byte}$ ($4{,}5000\text{ bpw}$)
+- `Q5_K`: $\text{QK}_K = 256$, ukuran blok = $176\text{ byte}$ ($5{,}5000\text{ bpw}$)
+- `Q6_K`: $\text{QK}_K = 256$, ukuran blok = $210\text{ byte}$ ($6{,}5625\text{ bpw}$)
+- `Q8_0`: $\text{QK}_K = 32$, ukuran blok = $34\text{ byte}$ ($8{,}5000\text{ bpw}$)
+- `IQ3_S`: $\text{QK}_K = 256$, ukuran blok = $110\text{ byte}$ ($3{,}4375\text{ bpw}$)
+- `IQ3_XXS`: $\text{QK}_K = 256$, ukuran blok = $98\text{ byte}$ ($3{,}0625\text{ bpw}$)
+- `BF16`: $\text{QK}_K = 1$, ukuran blok = $2\text{ byte}$ ($16\text{ bpw}$)
+- `FP32`: $\text{QK}_K = 1$, ukuran blok = $4\text{ byte}$ ($32\text{ bpw}$)
+
+**Penjelasan Dispersi Ukuran Berkas 13–17 GB**:
+Variasi rentang berkas GGUF resmi 13–17 GB berasal dari variasi mix tipe kuantisasi antar-lapisan:
+
+1. `Q3_K_S` (MoE Q3_K, Attn Q3_K, Embed Q3_K): $\approx 13{,}5\text{ GB}$.
+2. `Q3_K_M` (Standard: MoE Q3_K, Attn Q4_K, Shared Expert Q4_K, Embed Q4_K): $\approx 15{,}2\text{ GB}$.
+3. `Q3_K_L` (Heavy: MoE Q3_K, Attn Q5_K, Shared Expert Q5_K, Embed Q8_0): $\approx 16{,}8\text{ GB}$.
+4. `IQ3_XXS` / `IQ3_S` (Importance matrix vector quant): $\approx 13{,}5\text{--}14{,}8\text{ GB}$.
+
+**Kontrak Gate Ukuran Berkas GGUF**:
+Gate verifikasi berkas menguji **actual file bytes** (`stat(path).st_size`) terhadap nilai eksak `Size_GGUF_expected` dari header dan daftar blok tensor GGUF aktual:
+$$\Delta_{\text{size}} = |\text{stat}(path).st\_size - \text{Size}_{\text{GGUF}}^{\text{expected}}| \equiv 0\text{ byte} \quad (\text{exact byte-match})$$
+Penyimpangan $\Delta_{\text{size}} \ne 0$ byte menandakan berkas terpotong (truncated), memiliki trailing garbage, atau tabel offset korup (pelanggaran F15/SEC-1).
+
+Dipakai di `milestones/M9-port.md`.
+
 **F12 — Perplexity & degrade kuantisasi:**
 
 Untuk setiap token target, $\ell_t$ adalah log-probability yang diprediksi engine.
@@ -229,15 +318,17 @@ Dipakai di `milestones/M7-odirect-lru.md`.
 
 **F14 — Delta rule / Gated DeltaNet (M8) [R9]:**
 
-$$A_t=I-\beta_tk_tk_t^\top$$
+$$A_t = I_{d_k} - \beta_t k_t k_t^\top \in \mathbb{R}^{d_k \times d_k}, \quad M_t = \gamma_t A_t, \quad B_t = \beta_t v_t k_t^\top \in \mathbb{R}^{d_v \times d_k}$$
 
-$$S_t=\gamma_tS_{t-1}A_t+\beta_tv_tk_t^\top$$
-
-$$S\in\mathbb{R}^{d_v\times d_k}$$
+$$S_t = S_{t-1} M_t + B_t, \quad S\in\mathbb{R}^{d_v\times d_k}$$
 
 Di sini $k_t\in\mathbb{R}^{d_k}$ dan $v_t\in\mathbb{R}^{d_v}$; maka kedua suku pembaruan berukuran $d_v\times d_k$. Orientasi sebelumnya $d_k\times d_v$ tidak konsisten dengan perkalian kanan dan outer product $v_tk_t^\top$.
 
-Versi tanpa gate: $\gamma_t = 1$. Oracle M8 = **loop rekuren naive** (Python fp32); implementasi Mojo = chunked scan (paralel per blok, representasi WY) dan wajib MATCH strict (F10) terhadap naive. Sifat kunci yang diuji: ukuran state konstan terhadap $s$ (G-M8-2) — kontras langsung dengan F2. Dipakai di `milestones/M8-gdn.md`.
+Setiap segmen token kontigu $A$ menginduksi operator affine $\text{ChunkOp}_A(S) = S \mathbf{M}_A + \mathbf{B}_A$. Hukum komposisi dua segmen berurutan $A$ dan $B$ membentuk monoid affine:
+$$(\mathbf{M}_{AB}, \mathbf{B}_{AB}) = (\mathbf{M}_A, \mathbf{B}_A) \star (\mathbf{M}_B, \mathbf{B}_B) \coloneqq (\mathbf{M}_A \mathbf{M}_B, \; \mathbf{B}_A \mathbf{M}_B + \mathbf{B}_B)$$
+yang mendasari validitas aljabar paralelisasi representasi Woodbury (WY) per chunk.
+
+Versi tanpa gate: $\gamma_t = 1$. Oracle M8 = **loop rekuren naive** (Python fp32); implementasi Mojo = chunked scan (paralel per blok, representasi WY) dan wajib memenuhi ekuivalensi numerik (F10 numerical equivalence, $\Delta_{max} \le 10^{-3}$) terhadap naive. Sifat kunci yang diuji: peak memory runtime $M_{\text{peak}}(s, C) = O(C)$ dan ukuran tensor state konstan terhadap $s$ (G-M8-2, slope $|\Delta \text{PeakVmHWM}/\Delta s| \approx 0$ pada $s \in \{1\text{K}..32\text{K}\}$) — kontras langsung dengan pertumbuhan linier KV-cache F2 ($O(s)$). Dipakai di `milestones/M8-gdn.md`.
 
 ## 3.6 Integritas & Parsing Aman
 
@@ -271,7 +362,7 @@ dengan $\mathrm{size} = \{\mathrm{BF16}{:}2, \mathrm{F16}{:}2, \mathrm{F32}{:}4,
 
 **Validasi MERGE (lintas shard — bukan F15):** F15 berhenti di batas satu file. Gabungan semua header yang dipasok wajib memenuhi: nama unik global (tabrakan → `DUPLICATE_TENSOR_NAME`); lalu compare vs `weight_map` per mode (full: semua file rujukan dipasok; subset: hanya nama yang file harapannya termasuk subset yang dinilai).
 
-dengan $\mathcal{D} = \{\mathrm{BF16}, \mathrm{F32}, \mathrm{F16}, \mathrm{F64}\}$ (himpunan eksak proyek — bukan "dll") dan batas keras **`header_len` ≤ 100 MB**, jumlah tensor ≤ 100.000, header JSON diawali `{`, tanpa rekursi parser. Himpunan R7 sendiri non-exhaustive dan kini mencakup BOOL, int/uint, F4/F6/F8*, C64 (docs.rs `safetensors::tensor::Dtype`); proyek menolak semuanya — int/bool tanpa semantik engine, sub-byte bermasalah alignment [R7], kompleks tak dipakai — dan menolak varian masa depan yang tak dikenal. Checkpoint trial terbukti 100% BF16 (metadata HF `safetensors.parameters`), jadi F32/F16/F64 hanya untuk fixture/forward-compat. Batas 100 MB mengikuti implementasi `safetensors` saat ini; offset tensor divalidasi terhadap ukuran file **setelah dikonversi ke koordinat file**. [R7][R8] Dipakai di `milestones/M0-reader.md`.
+dengan $\mathcal{D} = \{\mathrm{BF16}, \mathrm{F32}, \mathrm{F16}, \mathrm{F64}\}$ (himpunan eksak proyek — bukan "dll") dan batas keras **`header_len` ≤ 100 MB**, jumlah tensor ≤ 100.000, header JSON diawali `{`, tanpa rekursi parser. Himpunan R7 sendiri non-exhaustive dan kini mencakup BOOL, int/uint, F4/F6/F8\*, C64 (docs.rs `safetensors::tensor::Dtype`); proyek menolak semuanya — int/bool tanpa semantik engine, sub-byte bermasalah alignment [R7], kompleks tak dipakai — dan menolak varian masa depan yang tak dikenal. Checkpoint trial terbukti 100% BF16 (metadata HF `safetensors.parameters`), jadi F32/F16/F64 hanya untuk fixture/forward-compat. Batas 100 MB mengikuti implementasi `safetensors` saat ini; offset tensor divalidasi terhadap ukuran file **setelah dikonversi ke koordinat file**. [R7][R8] Dipakai di `milestones/M0-reader.md`.
 
 **Batas lapisan (normatif):** F15 murni struktural — berhenti di "file ini safetensors yang well-formed". Integritas artefak ($\mathrm{SHA\text{-}256}(\text{file}) = d_{pinned}$, revision pin) adalah **SEC-1/K1, bukan F15**: file valid-struktural dengan hash salah = FAIL SEC-1 (tolak start), bukan FAIL F15 (malformed). Mencampur keduanya mengaburkan debugging (parser vs provenance).
 

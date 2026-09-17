@@ -8,15 +8,15 @@ Ground truth proyek ini adalah **PyTorch fp32** (`tools/oracle/oracle_head.py`, 
 
 ## 4.2 Matriks Pengujian
 
-| Level | Scope | Tooling | Frekuensi | Kriteria lolos |
-|---|---|---|---|---|
-| U — Unit | F10 metrics, tokenizer roundtrip, merge index 3 shard, config loader | **cargo test + pytest (oracle only)** | tiap commit | 100% pass; coverage util ≥ 85% |
-| P — Property | softmax stabil (max shift), RoPE isometri (F7), quant roundtrip (F11), predikat F15 pada shape acak, config-vs-index (jebakan `01-architecture.md` §2.3) | hypothesis | nightly | semua invariant lolos |
-| O — Oracle equivalence | 5 langkah README §4 (head, attn, moe, full) | **PyTorch oracle + Rust compare + Mojo binary** | tiap build | verdict MATCH (§4.3) |
-| I — Integration | forward end-to-end 5 prompt, exit code CLI, schema report JSON | **Rust CLI + Mojo + fixture** | tiap build | 100% sesuai kontrak C1/C7 |
-| B — Benchmark | waktu prefill, VmHWM, bytes dibaca, (M5+) tok/s & BW | harness §4.4 | per milestone + on-demand | laporan + kalibrasi ≤ gate |
-| F — Fuzz/negative | 20+ mutasi file korup (header liar, offset negatif, BEGIN>END, lubang/overlap, dtype asing, layout mismatch, truncation, duplikat kunci/nama, JSON rusak) | corpus mutasi | tiap perubahan parser | 0 crash / 0 hang / 0 OOM; semua clean error (SEC-2) |
-| R — Regression | golden bins + SHA-256, fixture synthetic | **cargo test + pytest oracle generation (sesuai kebutuhan)** | tiap commit | hash stabil; perubahan tanpa alasan = blocking |
+| Level                  | Scope                                                                                                                                                     | Tooling                                                      | Frekuensi                 | Kriteria lolos                                      |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ------------------------- | --------------------------------------------------- |
+| U — Unit               | F10 metrics, tokenizer roundtrip, merge index 3 shard, config loader                                                                                      | **cargo test + pytest (oracle only)**                        | tiap commit               | 100% pass; coverage util ≥ 85%                      |
+| P — Property           | softmax stabil (max shift), RoPE isometri (F7), quant roundtrip (F11), predikat F15 pada shape acak, config-vs-index (jebakan `01-architecture.md` §2.3)  | hypothesis                                                   | nightly                   | semua invariant lolos                               |
+| O — Oracle equivalence | 5 langkah README §4 (head, attn, moe, full)                                                                                                               | **PyTorch oracle + Rust compare + Mojo binary**              | tiap build                | verdict MATCH (§4.3)                                |
+| I — Integration        | forward end-to-end 5 prompt, exit code CLI, schema report JSON                                                                                            | **Rust CLI + Mojo + fixture**                                | tiap build                | 100% sesuai kontrak C1/C7                           |
+| B — Benchmark          | waktu prefill, VmHWM, bytes dibaca, (M5+) tok/s & BW                                                                                                      | harness §4.4                                                 | per milestone + on-demand | laporan + kalibrasi ≤ gate                          |
+| F — Fuzz/negative      | 20+ mutasi file korup (header liar, offset negatif, BEGIN>END, lubang/overlap, dtype asing, layout mismatch, truncation, duplikat kunci/nama, JSON rusak) | corpus mutasi                                                | tiap perubahan parser     | 0 crash / 0 hang / 0 OOM; semua clean error (SEC-2) |
+| R — Regression         | golden bins + SHA-256, fixture synthetic                                                                                                                  | **cargo test + pytest oracle generation (sesuai kebutuhan)** | tiap commit               | hash stabil; perubahan tanpa alasan = blocking      |
 
 Pemakaian per milestone:
 
@@ -25,22 +25,22 @@ Pemakaian per milestone:
 - M5 → O (KV vs recompute), B (decode 30 run)
 - M6 → P (quant roundtrip), O (ΔPPL), B
 - M7 → B (cold/warm), F (O_DIRECT error path)
-- M8 → O (strict vs naive), B (chunked ≥2× naive)
+- M8 → O (numerical equivalence vs naive), B (chunked ≥2× naive)
 - M9 → O, I, B full
 
 ## 4.3 Metrik Ekivalensi & Aturan Verdict
 
 Semua metrik dari F10 (`02-math-models.md` §3.3). `compare.py` wajib melapor kelima metrik + kategori FAIL; verdict mengikuti tabel:
 
-| Konteks | Verdict **MATCH** jika | Catatan |
-|---|---|---|
-| M1 head path (logits) | $\Delta_{max} \le 10^{-3} \wedge \varepsilon_{rel} \le 10^{-4} \wedge \mathbb{A} = 100\%$ | strict |
-| M2 attn layer (per part) | $\Delta_{max} \le 10^{-3} \wedge \varepsilon_{rel} \le 10^{-4}$ | layer 0, 12, 23; L=16 |
-| M3 moe layer | $\Delta_{max} \le 10^{-3} \wedge \varepsilon_{rel} \le 10^{-4} \wedge$ SET top-4 identik 100% | seleksi bukan opsi |
-| M4 full forward | $\Delta_{max} \le 10^{-2} \wedge \varepsilon_{rel} \le 10^{-4} \wedge \mathbb{A} \ge 99{,}9\% \wedge \Delta_{CE} \le 0{,}02$ | loose (akumulasi urutan penjumlahan) |
-| M5 KV decode | sama dengan M4, dibandingkan recompute | |
-| M8 GDN | $\Delta_{max} \le 10^{-3}$ | strict vs naive loop |
-| M9 port 35B | sama dengan M4 (angka final TBM) | |
+| Konteks                  | Verdict **MATCH** jika                                                                                                       | Catatan                                                       |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| M1 head path (logits)    | $\Delta_{max} \le 10^{-3} \wedge \varepsilon_{rel} \le 10^{-4} \wedge \mathbb{A} = 100\%$                                    | strict                                                        |
+| M2 attn layer (per part) | $\Delta_{max} \le 10^{-3} \wedge \varepsilon_{rel} \le 10^{-4}$                                                              | layer 0, 12, 23; L=16                                         |
+| M3 moe layer             | $\Delta_{max} \le 10^{-3} \wedge \varepsilon_{rel} \le 10^{-4} \wedge$ SET top-4 identik 100%                                | seleksi bukan opsi                                            |
+| M4 full forward          | $\Delta_{max} \le 10^{-2} \wedge \varepsilon_{rel} \le 10^{-4} \wedge \mathbb{A} \ge 99{,}9\% \wedge \Delta_{CE} \le 0{,}02$ | loose (akumulasi urutan penjumlahan)                          |
+| M5 KV decode             | sama dengan M4, dibandingkan recompute                                                                                       |                                                               |
+| M8 GDN                   | $\Delta_{max} \le 10^{-3}$                                                                                                   | numerical equivalence vs naive loop (kontrak FP32, threads=1) |
+| M9 port 35B              | sama dengan M4 (angka final TBM)                                                                                             |                                                               |
 
 Kategori FAIL (playbook debugging, README §4): `router-selection` (SET beda), `rope-style` (pola ~1e-1 stabil), `bias-placement` (pola ~1e-1..1 acak), `numeric-order` (semua beda sedikit, pola sama → wajar fp32), `dtype-layout` (transpos/stride salah). Aturan keras: kategori `router-selection` tidak pernah diselesaikan dengan menaikkan threshold — wajib root-cause.
 
