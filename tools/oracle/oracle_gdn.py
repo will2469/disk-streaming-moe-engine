@@ -2,7 +2,7 @@
 # Copyright 2026 will2469
 # Licensed under the Apache License, Version 2.0 (the "License");
 # See LICENSE for details.
-"""Oracle Naive Loop Reference untuk Gated DeltaNet (F14) — M8-W1.
+r"""Oracle Naive Loop Reference untuk Gated DeltaNet (F14) — M8-W1.
 
 Mengimplementasikan loop rekuren serial token-by-token murni dalam FP32:
     S_t = \gamma_t S_{t-1}(I - \beta_t k_t k_t^\top) + \beta_t v_t k_t^\top

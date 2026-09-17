@@ -1,4 +1,4 @@
-.PHONY: all build validate-m8 test-m8-w1 test-m8-w2 test-m8-w3
+.PHONY: all build validate-m8 test-m8-w1 test-m8-w2 test-m8-w3 test-m8-w4
 
 all: build
 
@@ -16,3 +16,6 @@ test-m8-w2:
 
 test-m8-w3:
 	pixi run test-m8-w3
+
+test-m8-w4:
+	pixi run test-m8-w4

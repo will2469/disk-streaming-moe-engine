@@ -557,7 +557,8 @@ def test_chunk_size_sweep_consistency() raises:
 
 
 def test_gdns_v1_roundtrip_and_checksum() raises:
-    """Menguji serialisasi GDNS v1 roundtrip, atomic write, dan verifikasi checksum SHA-256."""
+    """Menguji serialisasi GDNS v1 roundtrip, atomic write, dan verifikasi checksum SHA-256.
+    """
     var path = "/tmp/test_m8_gdns_roundtrip.bin"
     var state_orig = GDNState(2, 4, 8)
     var test_vals = pseudo_random_vector(2 * 4 * 8, 1515)

@@ -40,7 +40,8 @@ def fail_m8(
     message: String,
     temp_file_to_clean: String = "",
 ) raises:
-    """Menangani kegagalan fatal M8 dengan mencetak error JSON ke stderr dan exit code spesifik."""
+    """Menangani kegagalan fatal M8 dengan mencetak error JSON ke stderr dan exit code spesifik.
+    """
     if temp_file_to_clean != "":
         _ = c_unlink(temp_file_to_clean)
     eprint_json(m8_error_json(error_code, error_type, message))

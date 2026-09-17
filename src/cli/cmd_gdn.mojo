@@ -16,10 +16,13 @@ from format.types import TensorMeta
 from layers.gdn import (
     GDNConfig,
     GDNState,
+    apply_wy_chunk_update,
     chunked_gdn_scan,
+    compute_wy_coefficients,
     project_tokens_to_kv_beta,
 )
 from std.collections import List
+from std.math import isinf, isnan
 from std.sys.terminate import exit
 from std.time import perf_counter_ns
 
@@ -57,6 +60,8 @@ def parse_tokens(path: String) raises -> List[Int]:
         if sc.peek() == 93:  # ']'
             sc.pos += 1
             break
+        if sc.peek() == 45:  # '-'
+            raise Error("negative token ID")
         var tok_id = sc.parse_uint()
         tokens.append(tok_id)
         sc.skip_ws()
@@ -178,8 +183,28 @@ def cmd_gdn(args: List[String]) raises:
             2,
             "CONFIG_INVALID",
             String(
-                "Invalid config: layers, dk, and dv must be positive (got:"
-                " layers=",
+                (
+                    "Invalid config: layers, dk, and dv must be positive (got:"
+                    " layers="
+                ),
+                layers,
+                ", dk=",
+                dk,
+                ", dv=",
+                dv,
+                ")",
+            ),
+        )
+    if layers > 100 or dk > 4096 or dv > 4096:
+        fail_m8(
+            2,
+            "CONFIG_INVALID",
+            String(
+                (
+                    "Invalid config: parameters exceed allowable range: layers"
+                    " in [1, 100], dk in [1, 4096], dv in [1, 4096] (got:"
+                    " layers="
+                ),
                 layers,
                 ", dk=",
                 dk,
@@ -264,15 +289,15 @@ def cmd_gdn(args: List[String]) raises:
                     ),
                 )
         else:
-            fail_m8(
-                1, "INPUT_INVALID", String("Model not found: ", model_dir)
-            )
+            fail_m8(1, "INPUT_INVALID", String("Model not found: ", model_dir))
     else:
         # Fallback default ke synthetic fixture jika tersedia
         if c_access_r("fixtures/m8_gdn_weights.safetensors"):
             resolved_model_path = "fixtures/m8_gdn_weights.safetensors"
         else:
-            fail_m8(1, "INPUT_INVALID", "missing required argument: --model-dir")
+            fail_m8(
+                1, "INPUT_INVALID", "missing required argument: --model-dir"
+            )
 
     # 7. Membaca Tokens JSON
     var tokens = List[Int]()
@@ -367,21 +392,27 @@ def cmd_gdn(args: List[String]) raises:
     except e:
         fail_m8(4, "IO_ERROR", String("I/O error reading shard: ", e))
 
-    # 10. Susun matriks aktivasi token embedding X: [seq_len, dk]
-    var x_act = List[Float32]()
-    x_act.resize(seq_len * dk, Float32(0.0))
-    var p_x = x_act.unsafe_ptr()
-    var p_embed = embed_table.unsafe_ptr()
-
+    # 10. Validasi jangkauan token vocabulary
+    var vocab_size = len(embed_table) // dk
     for t in range(seq_len):
         var tid = tokens[t]
-        var emb_off = tid * dk
-        var x_off = t * dk
-        for c in range(dk):
-            p_x[unsafe_offset=x_off + c] = p_embed[unsafe_offset=emb_off + c]
+        if tid < 0 or tid >= vocab_size:
+            fail_m8(
+                1,
+                "INPUT_INVALID",
+                String(
+                    "Token ID ",
+                    tid,
+                    " out of vocabulary range [0, ",
+                    vocab_size,
+                    ")",
+                ),
+            )
 
     # 11. Eksekusi Forward GDN Chunked Scan Layer demi Layer
     var t_scan_start = perf_counter_ns()
+    var p_embed = embed_table.unsafe_ptr()
+
     for lyr in range(layers):
         var wk_name1 = String("layers.", String(lyr), ".k_proj.weight")
         var wk_name2 = String("model.layers.", String(lyr), ".k_proj.weight")
@@ -428,33 +459,67 @@ def cmd_gdn(args: List[String]) raises:
                 String("I/O error reading weights for layer ", lyr, ": ", e),
             )
 
-        var proj = project_tokens_to_kv_beta(
-            x_act, w_k, w_v, w_beta, seq_len, dk, dk, dv
-        )
+        var layer_offset = lyr * (dv * dk)
+        var s_layer = List[Float32]()
+        s_layer.resize(dv * dk, Float32(0.0))
+        var p_s_layer = s_layer.unsafe_ptr()
+        var p_state_data = state.data.unsafe_ptr()
 
-        try:
-            chunked_gdn_scan(
-                state,
-                lyr,
-                proj.k_mat,
-                proj.v_mat,
-                proj.beta,
-                seq_len,
-                dk,
-                dv,
-                chunk_size,
+        for idx in range(dv * dk):
+            p_s_layer[unsafe_offset=idx] = p_state_data[
+                unsafe_offset=layer_offset + idx
+            ]
+
+        var offset = 0
+        while offset < seq_len:
+            var m = seq_len - offset
+            if m > chunk_size:
+                m = chunk_size
+
+            # Buat aktivasi hanya untuk chunk aktif: [m, dk]
+            var x_chunk = List[Float32]()
+            x_chunk.resize(m * dk, Float32(0.0))
+            var p_xc = x_chunk.unsafe_ptr()
+            for t_c in range(m):
+                var tid = tokens[offset + t_c]
+                var emb_off = tid * dk
+                var xc_off = t_c * dk
+                for c in range(dk):
+                    p_xc[unsafe_offset=xc_off + c] = p_embed[
+                        unsafe_offset=emb_off + c
+                    ]
+
+            var proj = project_tokens_to_kv_beta(
+                x_chunk, w_k, w_v, w_beta, m, dk, dk, dv
             )
-        except e:
-            fail_m8(
-                5,
-                "GDN_FORWARD_ERROR",
-                String(
-                    "GDN forward error: NaN/INF detected at layer ",
-                    lyr,
-                    ": ",
-                    e,
-                ),
+
+            var w_chunk = compute_wy_coefficients(proj.k_mat, proj.beta, m, dk)
+            apply_wy_chunk_update(
+                s_layer, proj.k_mat, proj.v_mat, w_chunk, m, dk, dv
             )
+
+            # Cek finite / NaN / INF per chunk
+            for idx in range(dv * dk):
+                var val = p_s_layer[unsafe_offset=idx]
+                if isnan(val) or isinf(val):
+                    fail_m8(
+                        5,
+                        "GDN_FORWARD_ERROR",
+                        String(
+                            "GDN forward error: NaN/INF detected at layer ",
+                            lyr,
+                            ", offset ",
+                            offset,
+                        ),
+                    )
+
+            offset += m
+
+        # Salin s_layer kembali ke state.data
+        for idx in range(dv * dk):
+            p_state_data[unsafe_offset=layer_offset + idx] = p_s_layer[
+                unsafe_offset=idx
+            ]
 
     var t_scan_end = perf_counter_ns()
 
@@ -510,12 +575,24 @@ def cmd_gdn(args: List[String]) raises:
     )
     print('  "state_dtype": "float32",')
     print('  "metrics": {')
-    print('    "chunked_scan_sec": ' + String(chunk_scan_str(chunked_scan_sec)) + ",")
-    print('    "naive_scan_sec": ' + String(chunk_scan_str(naive_scan_sec)) + ",")
+    print(
+        '    "chunked_scan_sec": '
+        + String(chunk_scan_str(chunked_scan_sec))
+        + ","
+    )
+    print(
+        '    "naive_scan_sec": ' + String(chunk_scan_str(naive_scan_sec)) + ","
+    )
     print('    "speedup_core": ' + String(chunk_scan_str(speedup_core)) + ",")
     print('    "walltime_sec": ' + String(chunk_scan_str(walltime_sec)) + ",")
-    print('    "tokens_per_sec": ' + String(chunk_scan_str(tokens_per_sec)) + ",")
-    print('    "core_tokens_per_sec": ' + String(chunk_scan_str(core_tokens_per_sec)) + ",")
+    print(
+        '    "tokens_per_sec": ' + String(chunk_scan_str(tokens_per_sec)) + ","
+    )
+    print(
+        '    "core_tokens_per_sec": '
+        + String(chunk_scan_str(core_tokens_per_sec))
+        + ","
+    )
     print('    "vmhwm_bytes": ' + String(vmhwm_bytes) + ",")
     print('    "peak_state_bytes": ' + String(state_bytes))
     print("  }")
