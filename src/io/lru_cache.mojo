@@ -484,6 +484,58 @@ struct LRUCache:
         self.stats.miss_bytes += new_size
         self.stats.disk_bytes += new_size
 
+    def finish_load_size(
+        mut self,
+        layer_id: Int,
+        expert_id: Int,
+        size_bytes: Int,
+        is_pinned: Bool = False,
+    ) raises:
+        """Menyelesaikan loading disk berbasis ukuran byte tanpa menyimpan array fisik payload.
+        """
+        var key = self._make_key(layer_id, expert_id)
+        var new_size = size_bytes
+
+        # 1. Penegakan Pin Budget Invariant 25%: sum(pinned) <= 25% capacity
+        var will_pin = False
+        if is_pinned:
+            var max_pin_budget = self.config.pin_budget_bytes()
+            if self.pinned_bytes + new_size <= max_pin_budget:
+                will_pin = True
+
+        # 2. Eviksi LRU loop sampai ruang mencukupi
+        while self.current_bytes + new_size > self.config.capacity_bytes:
+            self._evict_lru_victim()
+
+        # 3. Simpan state ke entry
+        var idx: Int
+        if key in self.key_to_idx:
+            idx = self.key_to_idx[key]
+        else:
+            idx = len(self.entries)
+            var ent = CacheEntry(layer_id=layer_id, expert_id=expert_id)
+            self.entries.append(ent^)
+            self.key_to_idx[key] = idx
+
+        self.entries[idx].size_bytes = new_size
+        self.entries[idx].state = STATE_RESIDENT
+        self.entries[idx].pinned = will_pin
+        self.logical_clock += 1
+        self.entries[idx].timestamp = self.logical_clock
+        self.entries[idx].access_count = 1
+
+        self.current_bytes += new_size
+        if will_pin:
+            self.pinned_bytes += new_size
+            self.stats.pinned_entries += 1
+            self.stats.pinned_bytes = self.pinned_bytes
+
+        self.stats.current_bytes = self.current_bytes
+        self.stats.misses += 1
+        self.stats.total_accesses += 1
+        self.stats.miss_bytes += new_size
+        self.stats.disk_bytes += new_size
+
     def pin_expert(mut self, layer_id: Int, expert_id: Int) raises -> Bool:
         """Mem-pin expert yang sudah berada di cache jika masih dalam batas pin budget 25%.
         """

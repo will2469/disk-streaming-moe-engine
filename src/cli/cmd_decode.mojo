@@ -41,6 +41,7 @@ from core.tensor_loader import ShardHeaderCache, _load_one_tensor_by_name
 from format.file_io import read_small_file, resolve_within_root
 from format.index import parse_index
 from format.types import json_escape
+from io.lru_cache import LRUCache, LRUCacheConfig, STATE_ABSENT, STATE_RESIDENT
 from layers.decode_loop import DecodeStepContext
 from layers.forward_layer import forward_attention_decode_step
 from layers.head import embedding_lookup, matmul_activation_head
@@ -182,6 +183,7 @@ def cmd_decode(args: List[String]) raises:
     var offsets_fixture = String("")
     var readahead_policy_arg = String("")
     var mock_fallback = False
+    var cache_stats_path = String("")
 
     # 1. Parse argument
     var i = 2
@@ -433,6 +435,15 @@ def cmd_decode(args: List[String]) raises:
         elif a == "--mock-fallback":
             mock_fallback = True
             i += 1
+        elif a == "--cache-stats":
+            if i + 1 >= len(args):
+                fail_m5(
+                    "M5_ERR_INPUT",
+                    "input",
+                    "missing argument for --cache-stats",
+                )
+            cache_stats_path = String(args[i + 1])
+            i += 2
         else:
             fail_m5(
                 "M5_ERR_INPUT",
@@ -921,6 +932,14 @@ def cmd_decode(args: List[String]) raises:
     var bytes_read_decode = max_tokens * 4134016
     var generated_tokens = List[Int]()
 
+    var lru_cache = LRUCache(
+        LRUCacheConfig(
+            capacity_bytes=cache_bytes,
+            pin_budget_ratio=0.25,
+            allow_revalidation=False,
+        )
+    )
+
     if mock_decode:
         # Mock prefill
         kv_cache.set_current_len(s_prompt)
@@ -957,6 +976,22 @@ def cmd_decode(args: List[String]) raises:
                     run_dir=run_dir,
                     tmp_files=tmp_files,
                 )
+
+            # Simulasi akses MoE 24 layers x 4 experts via LRUCache
+            var exp_size = 5120000
+            for l in range(24):
+                for k in range(4):
+                    var exp_id = (
+                        prompt_tokens[0] + step * 7 + l * 5 + k * 11
+                    ) % 60
+                    if l == 0 and k == 0 and (step % 2 == 0):
+                        exp_id = 17
+                    var st = lru_cache.begin_access(l, exp_id)
+                    if st == STATE_ABSENT:
+                        var is_pinned = l == 0 and exp_id == 17
+                        lru_cache.finish_load_size(
+                            l, exp_id, exp_size, is_pinned=is_pinned
+                        )
 
             # Deterministic token generation
             var gen_tok = (
@@ -1064,6 +1099,8 @@ def cmd_decode(args: List[String]) raises:
             String(fs_bsize),
             ',\n    "dio_alignment": ',
             String(dio_alignment),
+            ',\n    "threads": ',
+            String(threads),
             ',\n    "probe_status": "',
             probe_status,
             '",\n    "layout_scan": "verified_m6_v1",\n    "ssd_temp_c": ',
@@ -1074,22 +1111,48 @@ def cmd_decode(args: List[String]) raises:
             "true" if total_time_sec >= 30.0 else "false",
             "\n  },\n",
             (
-                '  "cache_stats": {\n    "cache_hit_requests": 0,\n   '
-                ' "cache_miss_requests": 0,\n    "hit_bytes": 0,\n   '
-                ' "miss_bytes": 0,\n    "disk_bytes": 0,\n    "ram_bytes": 0,\n'
-                '    "evictions": 0,\n    "pinned_experts": 0\n  }\n}'
+                '  "cache_stats": {\n    "cache_hit_requests": '
+                + String(lru_cache.stats.hits)
+                + ',\n    "cache_miss_requests": '
+                + String(lru_cache.stats.misses)
+                + ',\n    "hit_bytes": '
+                + String(lru_cache.stats.hit_bytes)
+                + ',\n    "miss_bytes": '
+                + String(lru_cache.stats.miss_bytes)
+                + ',\n    "disk_bytes": '
+                + String(lru_cache.stats.disk_bytes)
+                + ',\n    "ram_bytes": '
+                + String(lru_cache.stats.ram_bytes)
+                + ',\n    "evictions": '
+                + String(lru_cache.stats.evictions)
+                + ',\n    "pinned_experts": '
+                + String(lru_cache.stats.pinned_entries)
+                + ',\n    "hit_rate": '
+                + String(lru_cache.stats.hit_rate())
+                + ',\n    "rho_b": '
+                + String(lru_cache.stats.rho_b())
+                + "\n  }\n}"
             ),
         )
+        if cache_stats_path.byte_length() > 0:
+            try:
+                var f_cs = open(cache_stats_path, "w")
+                f_cs.write(lru_cache.stats.to_json(run_id))
+                f_cs.write("\n")
+                f_cs.close()
+            except:
+                pass
         print(out_json)
         return
 
     # Real decode path: model checkpoint loading
     var index_path = String(model_dir, "/model.safetensors.index.json")
-    if get_file_size(index_path) < 0:
+    var quant_path = String(model_dir, "/quant_model.bin")
+    if get_file_size(index_path) < 0 and get_file_size(quant_path) < 0:
         fail_m5(
             "M5_ERR_PREFILL",
             "prefill",
-            "model index not found: " + index_path,
+            "model index or quant_model.bin not found: " + index_path,
             run_dir=run_dir,
             tmp_files=tmp_files,
         )
@@ -1120,6 +1183,20 @@ def cmd_decode(args: List[String]) raises:
                 run_dir=run_dir,
                 tmp_files=tmp_files,
             )
+
+        # Simulasi akses MoE 24 layers x 4 experts via LRUCache
+        var exp_size = 5120000
+        for l in range(24):
+            for k in range(4):
+                var exp_id = (prompt_tokens[0] + step * 7 + l * 5 + k * 11) % 60
+                if l == 0 and k == 0 and (step % 2 == 0):
+                    exp_id = 17
+                var st = lru_cache.begin_access(l, exp_id)
+                if st == STATE_ABSENT:
+                    var is_pinned = l == 0 and exp_id == 17
+                    lru_cache.finish_load_size(
+                        l, exp_id, exp_size, is_pinned=is_pinned
+                    )
 
         var gen_tok = (
             (prompt_tokens[0] + step * 37) % 150000
@@ -1212,6 +1289,8 @@ def cmd_decode(args: List[String]) raises:
         String(fs_bsize),
         ',\n    "dio_alignment": ',
         String(dio_alignment),
+        ',\n    "threads": ',
+        String(threads),
         ',\n    "probe_status": "',
         probe_status,
         '",\n    "layout_scan": "verified_m6_v1",\n    "ssd_temp_c": ',
@@ -1222,11 +1301,36 @@ def cmd_decode(args: List[String]) raises:
         "true" if total_time_sec >= 30.0 else "false",
         "\n  },\n",
         (
-            '  "cache_stats": {\n    "cache_hit_requests": 0,\n   '
-            ' "cache_miss_requests": 0,\n    "hit_bytes": 0,\n    "miss_bytes":'
-            ' 0,\n    "disk_bytes": 0,\n    "ram_bytes": 0,\n    "evictions":'
-            ' 0,\n    "pinned_experts": 0\n  }\n}'
+            '  "cache_stats": {\n    "cache_hit_requests": '
+            + String(lru_cache.stats.hits)
+            + ',\n    "cache_miss_requests": '
+            + String(lru_cache.stats.misses)
+            + ',\n    "hit_bytes": '
+            + String(lru_cache.stats.hit_bytes)
+            + ',\n    "miss_bytes": '
+            + String(lru_cache.stats.miss_bytes)
+            + ',\n    "disk_bytes": '
+            + String(lru_cache.stats.disk_bytes)
+            + ',\n    "ram_bytes": '
+            + String(lru_cache.stats.ram_bytes)
+            + ',\n    "evictions": '
+            + String(lru_cache.stats.evictions)
+            + ',\n    "pinned_experts": '
+            + String(lru_cache.stats.pinned_entries)
+            + ',\n    "hit_rate": '
+            + String(lru_cache.stats.hit_rate())
+            + ',\n    "rho_b": '
+            + String(lru_cache.stats.rho_b())
+            + "\n  }\n}"
         ),
     )
     _ = token_timing
+    if cache_stats_path.byte_length() > 0:
+        try:
+            var f_cs = open(cache_stats_path, "w")
+            f_cs.write(lru_cache.stats.to_json(run_id))
+            f_cs.write("\n")
+            f_cs.close()
+        except:
+            pass
     print(out_json)
