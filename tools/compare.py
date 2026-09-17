@@ -46,8 +46,42 @@ def find_kimo_tools() -> str | None:
     return None
 
 
+def read_floats_py(path: str):
+    """Membaca float32 dari format raw atau GDNS v1 framed binary."""
+    import hashlib
+
+    import numpy as np
+
+    with open(path, "rb") as f:
+        data = f.read()
+
+    if data.startswith(b"GDNS"):
+        if len(data) < 160:
+            return None, "GDNS state file shorter than 160 bytes"
+        state_bytes = int.from_bytes(data[32:40], "little")
+        payload_end = 128 + state_bytes
+        if len(data) != payload_end + 32:
+            return None, (
+                f"GDNS file size mismatch: actual {len(data)}, "
+                f"expected {payload_end + 32}"
+            )
+        hasher = hashlib.sha256()
+        hasher.update(data[:payload_end])
+        if hasher.digest() != data[payload_end:]:
+            return None, "CORRUPT_STATE_CHECKSUM"
+        return np.frombuffer(data[128:payload_end], dtype=np.float32), None
+
+    if len(data) % 4 != 0:
+        return None, f"file size {len(data)} is not a multiple of 4 bytes"
+    return np.frombuffer(data, dtype=np.float32), None
+
+
 def compute_f10_fallback(
-    ref_path: str, cand_path: str, vocab_size: int, gate: str
+    ref_path: str,
+    cand_path: str,
+    vocab_size: int,
+    gate: str,
+    tolerance: float | None = None,
 ) -> tuple[int, str]:
     """Fallback pure-Python perhitungan F10 jika kimo-tools belum ada."""
     import numpy as np
@@ -68,8 +102,27 @@ def compute_f10_fallback(
         }
         return 2, json.dumps(err)
 
-    ref_data = np.fromfile(ref_path, dtype=np.float32)
-    cand_data = np.fromfile(cand_path, dtype=np.float32)
+    ref_data, err_ref = read_floats_py(ref_path)
+    if err_ref:
+        err_type = (
+            "CORRUPT_STATE_CHECKSUM"
+            if err_ref == "CORRUPT_STATE_CHECKSUM"
+            else "LAYOUT_MISMATCH"
+        )
+        return 2, json.dumps(
+            {"error_type": err_type, "detail": err_ref, "stage": "compare"}
+        )
+
+    cand_data, err_cand = read_floats_py(cand_path)
+    if err_cand:
+        err_type = (
+            "CORRUPT_STATE_CHECKSUM"
+            if err_cand == "CORRUPT_STATE_CHECKSUM"
+            else "LAYOUT_MISMATCH"
+        )
+        return 2, json.dumps(
+            {"error_type": err_type, "detail": err_cand, "stage": "compare"}
+        )
 
     if len(ref_data) != len(cand_data):
         err = {
@@ -89,6 +142,10 @@ def compute_f10_fallback(
             "stage": "compare",
         }
         return 2, json.dumps(err)
+
+    if gate == "G-M8-1" or tolerance is not None:
+        if len(ref_data) % vocab_size != 0:
+            vocab_size = len(ref_data)
 
     if len(ref_data) % vocab_size != 0:
         err = {
@@ -142,7 +199,16 @@ def compute_f10_fallback(
     }
 
     # Evaluate gate
-    if gate in ("G-M4-1", "G-M5-1"):
+    if tolerance is not None or gate == "G-M8-1":
+        tol = tolerance if tolerance is not None else 1e-3
+        is_pass = delta_max <= tol and epsilon_rel <= 1e-4
+        thresh_str = (
+            "delta_max <= 1e-3 && epsilon_rel <= 1e-4"
+            if abs(tol - 1e-3) < 1e-9
+            else f"delta_max <= {tol:e} && epsilon_rel <= 1e-4"
+        )
+        run_id = "M8-F10-001"
+    elif gate in ("G-M4-1", "G-M5-1"):
         is_pass = (
             delta_max <= 1e-2
             and epsilon_rel <= 1e-4
@@ -153,13 +219,14 @@ def compute_f10_fallback(
             "delta_max <= 1e-2 && epsilon_rel <= 1e-4 && "
             "agreement >= 99.9 && delta_ce <= 0.02"
         )
+        run_id = "M5-F10-001" if gate == "G-M5-1" else "M4-F10-001"
     else:
         is_pass = (
             delta_max <= 1e-3 and epsilon_rel <= 1e-4 and abs(agreement - 100.0) < 1e-5
         )
         thresh_str = "delta_max <= 1e-3 && epsilon_rel <= 1e-4 && agreement == 100.0"
+        run_id = "M1-F10-001"
 
-    run_id = "M5-F10-001" if gate == "G-M5-1" else "M4-F10-001"
     report = {
         "status": "MATCH" if is_pass else "MISMATCH",
         "run_id": run_id,
@@ -173,12 +240,65 @@ def compute_f10_fallback(
     return (0 if is_pass else 1), json.dumps(report, indent=2)
 
 
+def build_kimo_tools_cmd(
+    kimo_tools: str,
+    ref_path: str,
+    cand_path: str,
+    gate: str,
+    args: argparse.Namespace,
+) -> list[str]:
+    """Menyusun argumen command untuk memanggil binary kimo-tools."""
+    cmd = [
+        kimo_tools,
+        "compare",
+        "--ref",
+        ref_path,
+        "--cand",
+        cand_path,
+        "--gate",
+        gate,
+    ]
+    if args.vocab_size is not None:
+        cmd.extend(["--dim", str(args.vocab_size)])
+    elif gate not in ("G-M8-1", "G-M2-1", "G-M3-1") and args.tolerance is None:
+        cmd.extend(["--dim", "151936"])
+    if args.tolerance is not None:
+        cmd.extend(["--tolerance", str(args.tolerance)])
+    if args.output:
+        cmd.extend(["--output", args.output])
+    if args.run_id:
+        cmd.extend(["--run-id", args.run_id])
+    if args.oracle_routing and args.cand_routing:
+        cmd.extend(
+            [
+                "--oracle-routing",
+                args.oracle_routing,
+                "--cand-routing",
+                args.cand_routing,
+            ]
+        )
+    return cmd
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="F10 Numerical Equivalence Comparison Wrapper"
     )
     parser.add_argument("--ref", default="", help="Path ke logits referensi")
+    parser.add_argument("--reference", default="", help="Alias untuk --ref")
     parser.add_argument("--cand", default="", help="Path ke logits kandidat")
+    parser.add_argument("--candidate", default="", help="Alias untuk --cand")
+    parser.add_argument(
+        "--tolerance",
+        type=float,
+        default=None,
+        help="Toleransi delta_max (default: None)",
+    )
+    parser.add_argument(
+        "--output",
+        default="",
+        help="Path untuk menyimpan laporan compare JSON",
+    )
     parser.add_argument("--oracle", default="", help="Alias untuk logits referensi")
     parser.add_argument("--mojo", default="", help="Alias untuk logits kandidat/mojo")
     parser.add_argument("--gate", default="G-M5-1", help="Gate F10 (default: G-M5-1)")
@@ -187,8 +307,8 @@ def main():
         "--vocab-size",
         dest="vocab_size",
         type=int,
-        default=151936,
-        help="Ukuran vocab (default: 151936)",
+        default=None,
+        help="Ukuran vocab (opsional, auto-detect bila tidak diisi)",
     )
     parser.add_argument("--run-id", default="", help="Custom run ID (opsional)")
     parser.add_argument("--oracle-routing", default="", help="Path routing oracle JSON")
@@ -197,8 +317,8 @@ def main():
 
     args = parser.parse_args()
 
-    ref_path = args.ref or args.oracle
-    cand_path = args.cand or args.mojo
+    ref_path = args.ref or args.reference or args.oracle
+    cand_path = args.cand or args.candidate or args.mojo
 
     if not ref_path and args.positional:
         ref_path = args.positional[0]
@@ -208,36 +328,17 @@ def main():
     if not ref_path or not cand_path:
         sys.stderr.write(
             "Usage: python tools/compare.py --ref <ref.bin> --cand <cand.bin>"
-            " [--gate G-M5-1]\n"
+            " [--gate G-M5-1] [--tolerance <tol>] [--output <path>]\n"
         )
         sys.exit(2)
 
+    gate = args.gate
+    if args.tolerance is not None and gate == "G-M5-1":
+        gate = "G-M8-1"
+
     kimo_tools = find_kimo_tools()
     if kimo_tools:
-        cmd = [
-            kimo_tools,
-            "compare",
-            "--ref",
-            ref_path,
-            "--cand",
-            cand_path,
-            "--gate",
-            args.gate,
-            "--dim",
-            str(args.vocab_size),
-        ]
-        if args.run_id:
-            cmd.extend(["--run-id", args.run_id])
-        if args.oracle_routing and args.cand_routing:
-            cmd.extend(
-                [
-                    "--oracle-routing",
-                    args.oracle_routing,
-                    "--cand-routing",
-                    args.cand_routing,
-                ]
-            )
-
+        cmd = build_kimo_tools_cmd(kimo_tools, ref_path, cand_path, gate, args)
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.stdout:
             sys.stdout.write(res.stdout)
@@ -246,7 +347,12 @@ def main():
         sys.exit(res.returncode)
     else:
         # Fallback pure-Python jika binary kimo-tools belum terkompilasi
-        rc, out = compute_f10_fallback(ref_path, cand_path, args.vocab_size, args.gate)
+        rc, out = compute_f10_fallback(
+            ref_path, cand_path, args.vocab_size, gate, args.tolerance
+        )
+        if args.output and rc != 2:
+            with open(args.output, "w", encoding="utf-8") as f:
+                f.write(out + "\n")
         if rc == 2:
             sys.stderr.write(out + "\n")
         else:

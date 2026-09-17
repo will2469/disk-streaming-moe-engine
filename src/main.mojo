@@ -4,6 +4,7 @@
 """Kimo CLI entry point."""
 
 from cli.cmd_check_index import cmd_check_index
+from cli.cmd_compare import cmd_compare
 from cli.cmd_decode import cmd_decode
 from cli.cmd_forward import cmd_forward
 from cli.cmd_head import cmd_head
@@ -23,7 +24,10 @@ def main() raises:
     if len(args) < 2:
         fail(
             "USAGE",
-            "pakai: kimo (check-index|head|layer|forward|decode|quantize) ...",
+            (
+                "pakai: kimo"
+                " (check-index|head|layer|forward|decode|quantize|compare) ..."
+            ),
             "",
             "",
         )
@@ -134,5 +138,10 @@ def main() raises:
                     )
                 )
             exit(2)
+    elif cmd == "compare":
+        var pass_args = List[String]()
+        for i in range(len(args)):
+            pass_args.append(String(args[i]))
+        cmd_compare(pass_args^)
     else:
         fail("USAGE", String("subcommand tak dikenal: ", cmd), "", "")

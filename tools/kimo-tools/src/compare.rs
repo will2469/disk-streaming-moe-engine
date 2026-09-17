@@ -785,6 +785,8 @@ pub fn run(args: &[String]) -> i32 {
     let mut gate = "G-M1-1".to_string();
     let mut vocab_size: usize = 512;
     let mut explicit_dim = false;
+    let mut custom_tolerance: Option<f64> = None;
+    let mut output_path = String::new();
     let mut run_id = String::new();
     let mut oracle_routing = String::new();
     let mut cand_routing = String::new();
@@ -794,16 +796,30 @@ pub fn run(args: &[String]) -> i32 {
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "--ref" => {
+            "--ref" | "--reference" => {
                 i += 1;
                 if i < args.len() {
                     ref_path = args[i].clone();
                 }
             }
-            "--cand" => {
+            "--cand" | "--candidate" => {
                 i += 1;
                 if i < args.len() {
                     cand_path = args[i].clone();
+                }
+            }
+            "--tolerance" => {
+                i += 1;
+                if i < args.len() {
+                    if let Ok(tol) = args[i].parse::<f64>() {
+                        custom_tolerance = Some(tol);
+                    }
+                }
+            }
+            "--output" => {
+                i += 1;
+                if i < args.len() {
+                    output_path = args[i].clone();
                 }
             }
             "--gate" => {
@@ -896,6 +912,10 @@ pub fn run(args: &[String]) -> i32 {
         }
     }
 
+    if custom_tolerance.is_some() && gate == "G-M1-1" {
+        gate = "G-M8-1".to_string();
+    }
+
     if run_id.is_empty() {
         run_id = match gate.as_str() {
             "G-M8-1" => "M8-F10-001".to_string(),
@@ -917,13 +937,19 @@ pub fn run(args: &[String]) -> i32 {
         Err((code, detail)) => return emit_error(&code, &detail),
     };
 
-    if !explicit_dim && (gate == "G-M2-1" || gate == "G-M3-1") {
-        if ref_floats.len() % 2048 == 0 {
-            vocab_size = 2048;
-        } else if ref_floats.len() % 64 == 0 {
-            vocab_size = 64;
-        } else {
-            vocab_size = ref_floats.len();
+    if !explicit_dim {
+        if gate == "G-M8-1" {
+            if !ref_floats.len().is_multiple_of(vocab_size) {
+                vocab_size = ref_floats.len();
+            }
+        } else if gate == "G-M2-1" || gate == "G-M3-1" {
+            if ref_floats.len() % 2048 == 0 {
+                vocab_size = 2048;
+            } else if ref_floats.len() % 64 == 0 {
+                vocab_size = 64;
+            } else {
+                vocab_size = ref_floats.len();
+            }
         }
     }
 
@@ -933,7 +959,25 @@ pub fn run(args: &[String]) -> i32 {
     };
 
     // Evaluate gate
-    let (mut is_pass, threshold_str, mut fail_cat) = evaluate_gate(&gate, &metrics);
+    let (mut is_pass, threshold_str, mut fail_cat) = if let Some(tol) = custom_tolerance {
+        let pass = metrics.delta_max <= tol && metrics.epsilon_rel <= 1e-4;
+        let thresh = if (tol - 1e-3).abs() < 1e-9 {
+            "delta_max <= 1e-3 && epsilon_rel <= 1e-4".to_string()
+        } else {
+            format!("delta_max <= {:e} && epsilon_rel <= 1e-4", tol)
+        };
+        let cat = if pass {
+            None
+        } else if metrics.delta_max > 0.05 || metrics.cos_theta < 0.99 {
+            Some("dtype-layout".to_string())
+        } else {
+            Some("numeric-order".to_string())
+        };
+        (pass, thresh, cat)
+    } else {
+        let (p, t, c) = evaluate_gate(&gate, &metrics);
+        (p, t.to_string(), c)
+    };
 
     if has_routing && !routing_ok {
         is_pass = false;
@@ -955,11 +999,21 @@ pub fn run(args: &[String]) -> i32 {
         } else {
             "FAIL".to_string()
         },
-        threshold: threshold_str.to_string(),
+        threshold: threshold_str,
         fail_category: fail_cat,
     };
 
-    println!("{}", serde_json::to_string_pretty(&report).unwrap());
+    let report_json = serde_json::to_string_pretty(&report).unwrap();
+    println!("{}", report_json);
+
+    if !output_path.is_empty() {
+        if let Err(e) = fs::write(&output_path, &report_json) {
+            return emit_error(
+                "OUTPUT_ERROR",
+                &format!("failed writing compare report: {}", e),
+            );
+        }
+    }
 
     if is_pass {
         0
