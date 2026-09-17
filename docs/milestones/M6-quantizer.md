@@ -9,7 +9,7 @@
 | Komponen    | C5 quantizer, C2 dequant di kernel, C7                        |
 | Prasyarat   | M5 hijau                                                      |
 | Next        | `M7-odirect-lru.md`                                           |
-| Gate        | G-M6-1..G-M6-3, G-M6-K                                         |
+| Gate        | G-M6-1..G-M6-3, G-M6-K                                        |
 | Rumus       | F11, F12                                                      |
 
 ## Tujuan
@@ -244,13 +244,13 @@ Aturan strict-JSON (normatif): semua output JSON harus valid RFC 8259 — `NaN`/
 
 ### Error Types
 
-| Error Code          | Stage        | Description                            | Exit Code |
-| ------------------- | ------------ | -------------------------------------- | --------- |
-| `M6_ERR_INPUT`      | input        | Input-dir tidak ada, index tidak valid, tail group ($N \% G \neq 0$) | 1 |
-| `M6_ERR_QUANT`      | quantization | Quantization fail (NaN/INF/overflow)   | 2         |
-| `M6_ERR_DEQUANT`    | dequant      | Dequantization fail (invalid data)     | 2         |
-| `M6_ERR_OUTPUT`     | output       | Gagal atomic write                     | 3         |
-| `M6_ERR_VALIDATION` | validation   | Output tidak lolos F11b validation     | 4         |
+| Error Code          | Stage        | Description                                                          | Exit Code |
+| ------------------- | ------------ | -------------------------------------------------------------------- | --------- |
+| `M6_ERR_INPUT`      | input        | Input-dir tidak ada, index tidak valid, tail group ($N \% G \neq 0$) | 1         |
+| `M6_ERR_QUANT`      | quantization | Quantization fail (NaN/INF/overflow)                                 | 2         |
+| `M6_ERR_DEQUANT`    | dequant      | Dequantization fail (invalid data)                                   | 2         |
+| `M6_ERR_OUTPUT`     | output       | Gagal atomic write                                                   | 3         |
+| `M6_ERR_VALIDATION` | validation   | Output tidak lolos F11b validation                                   | 4         |
 
 ### Stage Failure Behavior
 
@@ -497,12 +497,12 @@ Dampak ke F5: $B_{tok}^{4bit}≈2{,}0668\text{B}×4{,}125/8≈\mathbf{1{,}066}$ 
 
 ## Gate
 
-| Gate   | Kriteria                    | Threshold                                                  | Metode         |
-| ------ | --------------------------- | ---------------------------------------------------------- | -------------- |
-| G-M6-1 | error per tensor (grup 128; variansi-nol via jalur absolut § Rumus) | $\varepsilon_{rel} \le 10^{-2}$                            | semua tensor   |
-| G-M6-2 | ukuran file                 | \|pred-meas\|/meas ≤ 10%                                   | `stat` st_size logis vs F11b (`du`/blok alokasi dilarang) |
-| G-M6-3 | kualitas end-to-end         | $\Delta\mathrm{PPL} \le +0{,}5 \wedge \mathbb{A} \ge 95\%$ | corpus 100×256 |
-| G-M6-K | konformansi dequant kernel vs oracle | bit-identical BF16 + tolak `0b1000` identik      | fixture acak seed-42 + file-level, 100% |
+| Gate   | Kriteria                                                            | Threshold                                                  | Metode                                                    |
+| ------ | ------------------------------------------------------------------- | ---------------------------------------------------------- | --------------------------------------------------------- |
+| G-M6-1 | error per tensor (grup 128; variansi-nol via jalur absolut § Rumus) | $\varepsilon_{rel} \le 10^{-2}$                            | semua tensor                                              |
+| G-M6-2 | ukuran file                                                         | \|pred-meas\|/meas ≤ 10%                                   | `stat` st_size logis vs F11b (`du`/blok alokasi dilarang) |
+| G-M6-3 | kualitas end-to-end                                                 | $\Delta\mathrm{PPL} \le +0{,}5 \wedge \mathbb{A} \ge 95\%$ | corpus 100×256                                            |
+| G-M6-K | konformansi dequant kernel vs oracle                                | bit-identical BF16 + tolak `0b1000` identik                | fixture acak seed-42 + file-level, 100%                   |
 
 ## Testing
 
@@ -515,24 +515,24 @@ Dampak ke F5: $B_{tok}^{4bit}≈2{,}0668\text{B}×4{,}125/8≈\mathbf{1{,}066}$ 
 
 ### Test Matrix
 
-| Test ID  | Scenario                                    | Expected                        | Priority |
-| -------- | ------------------------------------------- | ------------------------------- | -------- | --------- | ------ |
-| IT-M6-1  | Happy path: quantize BF16 → 4-bit           | Exit 0, G-M6-1 PASS             | HIGH     |
-| IT-M6-2  | Input-dir tidak ada                         | Exit 1, error M6_ERR_INPUT      | HIGH     |
-| IT-M6-3  | Invalid group-size (∉ {32,64,128,256})      | Exit 1, error M6_ERR_INPUT      | HIGH     |
-| IT-M6-4  | Quantization fail (NaN in scale)            | Exit 2, error M6_ERR_QUANT      | HIGH     |
-| IT-M6-5  | Dequantization fail (invalid data)          | Exit 2, error M6_ERR_DEQUANT    | HIGH     |
-| IT-M6-6  | Output validation fail (file size mismatch) | Exit 4, error M6_ERR_VALIDATION | HIGH     |
-| IT-M6-7  | PPL measurement                             | Exit 0, G-M6-3 PASS             | HIGH     |
-| IT-M6-8  | Deterministic output                        | SHA-256 match di 2 run          | MEDIUM   |
-| IT-M6-9  | Custom group-size (64)                      | Exit 0, file size ±10%          | MEDIUM   |
-| IT-M6-10 | Property test Q-domain (FP32)              | fp32(w) - ŵ^(32)                | ≤ s_g/2  | 100% pass | MEDIUM |
-| IT-M6-11 | Tail group ($N \% G \neq 0$)                  | Exit 1, error M6_ERR_INPUT      | HIGH     |
-| IT-M6-12 | Tie-break rounding golden ($\pm k+0{,}5$ → even) | Byte-identical oracle vs Mojo   | HIGH     |
-| IT-M6-13 | Audit bound Kernel-domain (BF16 out)          | ≤ s_g/2+\|ŵ³²\|/256, 100% pass  | HIGH     |
-| IT-M6-14 | Tensor konstan (var = 0)                      | epsilon_rel null, verdict absolut | MEDIUM   |
-| IT-M6-15 | Konformansi kernel vs oracle (G-M6-K)         | bit-identical 100% + tolak identik | HIGH     |
-| IT-M6-16 | Konformansi file-level (oracle vs SIMD)       | bandingkan setiap elemen file sama | HIGH     |
+| Test ID  | Scenario                                         | Expected                           | Priority |
+| -------- | ------------------------------------------------ | ---------------------------------- | -------- | --------- | ------ |
+| IT-M6-1  | Happy path: quantize BF16 → 4-bit                | Exit 0, G-M6-1 PASS                | HIGH     |
+| IT-M6-2  | Input-dir tidak ada                              | Exit 1, error M6_ERR_INPUT         | HIGH     |
+| IT-M6-3  | Invalid group-size (∉ {32,64,128,256})           | Exit 1, error M6_ERR_INPUT         | HIGH     |
+| IT-M6-4  | Quantization fail (NaN in scale)                 | Exit 2, error M6_ERR_QUANT         | HIGH     |
+| IT-M6-5  | Dequantization fail (invalid data)               | Exit 2, error M6_ERR_DEQUANT       | HIGH     |
+| IT-M6-6  | Output validation fail (file size mismatch)      | Exit 4, error M6_ERR_VALIDATION    | HIGH     |
+| IT-M6-7  | PPL measurement                                  | Exit 0, G-M6-3 PASS                | HIGH     |
+| IT-M6-8  | Deterministic output                             | SHA-256 match di 2 run             | MEDIUM   |
+| IT-M6-9  | Custom group-size (64)                           | Exit 0, file size ±10%             | MEDIUM   |
+| IT-M6-10 | Property test Q-domain (FP32)                    | fp32(w) - ŵ^(32)                   | ≤ s_g/2  | 100% pass | MEDIUM |
+| IT-M6-11 | Tail group ($N \% G \neq 0$)                     | Exit 1, error M6_ERR_INPUT         | HIGH     |
+| IT-M6-12 | Tie-break rounding golden ($\pm k+0{,}5$ → even) | Byte-identical oracle vs Mojo      | HIGH     |
+| IT-M6-13 | Audit bound Kernel-domain (BF16 out)             | ≤ s_g/2+\|ŵ³²\|/256, 100% pass     | HIGH     |
+| IT-M6-14 | Tensor konstan (var = 0)                         | epsilon_rel null, verdict absolut  | MEDIUM   |
+| IT-M6-15 | Konformansi kernel vs oracle (G-M6-K)            | bit-identical 100% + tolak identik | HIGH     |
+| IT-M6-16 | Konformansi file-level (oracle vs SIMD)          | bandingkan setiap elemen file sama | HIGH     |
 
 ### Test Automation
 
@@ -716,14 +716,14 @@ EOF
 
 Setiap baris Test Matrix wajib terpetakan ke harness — tidak boleh ada baris tanpa pelaksana:
 
-| Test ID | Pelaksana |
-| ------- | --------- |
-| IT-M6-1..6, 9, 11 | `test_m6_quantize.sh` (assert RC + JSON di atas) |
-| IT-M6-7 | `test_m6_quantize.sh` + `oracle_ppl.py` (pins + agregasi global) |
-| IT-M6-8 | `test_m6_quantize.sh` (SHA-256 ganda) |
-| IT-M6-10, 14 | `test_m6_quantize.sh` + asersi `oracle_quant.py` report |
-| IT-M6-12, 13 | Mojo unit suite + asersi report oracle (golden tie-break, bound kernel-domain) |
-| IT-M6-15, 16 | harness konformansi G-M6-K (fixture acak + file-level, § Conformance vs Oracle) |
+| Test ID           | Pelaksana                                                                       |
+| ----------------- | ------------------------------------------------------------------------------- |
+| IT-M6-1..6, 9, 11 | `test_m6_quantize.sh` (assert RC + JSON di atas)                                |
+| IT-M6-7           | `test_m6_quantize.sh` + `oracle_ppl.py` (pins + agregasi global)                |
+| IT-M6-8           | `test_m6_quantize.sh` (SHA-256 ganda)                                           |
+| IT-M6-10, 14      | `test_m6_quantize.sh` + asersi `oracle_quant.py` report                         |
+| IT-M6-12, 13      | Mojo unit suite + asersi report oracle (golden tie-break, bound kernel-domain)  |
+| IT-M6-15, 16      | harness konformansi G-M6-K (fixture acak + file-level, § Conformance vs Oracle) |
 
 ### Regression Golden Outputs
 
@@ -1085,7 +1085,7 @@ kimo quantize \
 ### PPL Quality
 
 - [ ] G-M6-3 PPL measurement terimplementasi (corpus 100×256, agregasi global)
-- [ ] ΔPPL ≤ +0.5 (global token-level: PPL_quant − PPL_bf16 atas $N_{pred,total}=25{,}500$)
+- [ ] ΔPPL ≤ +0.5 (global token-level: PPL*quant − PPL_bf16 atas $N*{pred,total}=25{,}500$)
 - [ ] Argmax agreement ≥ 95% (global atas posisi skor yang sama)
 - [ ] PPL baseline BF16 dan quant tercommit
 

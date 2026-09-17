@@ -32,15 +32,15 @@
 
 ### Tabel perubahan config (trial → port)
 
-| Komponen             | Trial                        | Port                                         | Aksi kode                                                                                                    |
-| -------------------- | ---------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Layer count / skedul | 24 homogen (attn+MoE)        | 40 hybrid `10×(3×GDN+1×GatedAttn)+MoE`       | Scheduler block baru (§ Layer Scheduling); kernel attn/MoE reuse                                             |
-| Attention            | MHA 16Q/16KV semua layer     | 10 GatedAttn GQA 16Q/2KV + 30 GDN (M8)       | Codepath GQA (repeat_kv 8→1) + reuse chunked M8; GDN layer no-op KV                                          |
-| Router MoE           | 60 expert, top-4             | 256 expert, top-8                            | Parameterisasi top-k (bukan hardcode 4); verifikasi ulang `norm_topk_prob` + sigmoid shared dari config port |
-| Expert inter         | routed 1408 / shared 5632    | routed 512 / shared 512                      | Dimensi dari config, bukan konstanta                                                                         |
-| Vocab / head         | 151.936                      | 248.320 padded                               | `lm_head` resize; tolak mismatch (exit 3); $W_{res}$ → target ≤1 GiB via quant                               |
+| Komponen             | Trial                        | Port                                                          | Aksi kode                                                                                                    |
+| -------------------- | ---------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Layer count / skedul | 24 homogen (attn+MoE)        | 40 hybrid `10×(3×GDN+1×GatedAttn)+MoE`                        | Scheduler block baru (§ Layer Scheduling); kernel attn/MoE reuse                                             |
+| Attention            | MHA 16Q/16KV semua layer     | 10 GatedAttn GQA 16Q/2KV + 30 GDN (M8)                        | Codepath GQA (repeat_kv 8→1) + reuse chunked M8; GDN layer no-op KV                                          |
+| Router MoE           | 60 expert, top-4             | 256 expert, top-8                                             | Parameterisasi top-k (bukan hardcode 4); verifikasi ulang `norm_topk_prob` + sigmoid shared dari config port |
+| Expert inter         | routed 1408 / shared 5632    | routed 512 / shared 512                                       | Dimensi dari config, bukan konstanta                                                                         |
+| Vocab / head         | 151.936                      | 248.320 padded                                                | `lm_head` resize; tolak mismatch (exit 3); $W_{res}$ → target ≤1 GiB via quant                               |
 | KV cache             | F2 $L_{att}$=24, $H_{kv}$=16 | F2 $L_{att}$=10, $H_{kv}$=2, BF16 (10 KiB/tok = 10.240 B/tok) | Alokasi dari config ($L_{att}$ = cacah layer bertipe attention)                                              |
-| Bobot streaming      | 8 shard BF16 28,63 GB        | 26 shard BF16 71,9 GB **atau** GGUF 13–17 GB | Loader ganda (safetensors + GGUF); index/offset map per format; pin revision masing-masing (R7)              |
+| Bobot streaming      | 8 shard BF16 28,63 GB        | 26 shard BF16 71,9 GB **atau** GGUF 13–17 GB                  | Loader ganda (safetensors + GGUF); index/offset map per format; pin revision masing-masing (R7)              |
 
 ### Weight loading (dua jalur, satu kontrak)
 
@@ -1823,13 +1823,13 @@ plus angka performa TBM. Prosedur pengisian angka nyata:
 1. Ukur di device uji per `../03-testing.md` §4.4 (prefill N=5, decode N=30, p50/p95, run-id).
 2. Isi kolom measured + run-id per baris ini (tambah kolom `Measured` dan `Run-ID` di §2.7):
 
-| Metrik §2.7                    | Sumber ukur              | Gate terkait             |
-| ------------------------------ | ------------------------ | ------------------------ |
-| $W_{res}$ port (target ≤1 GiB) | `du` + VmHWM embed/head  | G-M9-2                   |
-| $M_{KV}$/token (pred 10 KiB = 10.240 B) | log + sampler   | G-M9-4 ($e_{KV}\le5\%$)  |
-| $B_{tok}$ decode + $BW_{eff}$  | `/proc/<pid>/io` + timer | G-M9-3 (≥0,5 tok/s cold) |
-| $T_{tok}$, $e_T$ (target ≤20%) | 30 run (§4.4)            | kalibrasi M9             |
-| Ukuran disk aktual (GGUF/BF16) | `du` vs prediksi         | catatan §2.7             |
+| Metrik §2.7                             | Sumber ukur              | Gate terkait             |
+| --------------------------------------- | ------------------------ | ------------------------ |
+| $W_{res}$ port (target ≤1 GiB)          | `du` + VmHWM embed/head  | G-M9-2                   |
+| $M_{KV}$/token (pred 10 KiB = 10.240 B) | log + sampler            | G-M9-4 ($e_{KV}\le5\%$)  |
+| $B_{tok}$ decode + $BW_{eff}$           | `/proc/<pid>/io` + timer | G-M9-3 (≥0,5 tok/s cold) |
+| $T_{tok}$, $e_T$ (target ≤20%)          | 30 run (§4.4)            | kalibrasi M9             |
+| Ukuran disk aktual (GGUF/BF16)          | `du` vs prediksi         | catatan §2.7             |
 
 3. Bila konstanta menyimpang (ρ, BW, $T_{comp}$): update `../02-math-models.md` + catat revisi di laporan (prediksi boleh meleset, dokumen tidak boleh bohong).
 4. Commit laporan kalibrasi F1/F2/F5 port dengan run-id. Tanpa ini M9 tidak hijau walau gate numerik lolos.
@@ -1977,11 +1977,11 @@ $$M_{KV}(s) = 5,120 \times s \times 2\text{ B} = 10,240 \times s \text{ bytes} \
 
 ### Comparison dengan Trial
 
-| Metric    | Trial (MHA, BF16)   | Port (GQA, BF16)     | Reduction |
-| --------- | ------------------- | -------------------- | --------- |
-| $L_{att}$ | 24                  | 10                   | 58.3%     |
-| $H_{kv}$  | 16                  | 2                    | 87.5%     |
-| Per token | 196,608 B (192 KiB) | 10,240 B (10 KiB)    | 94.8%     |
+| Metric    | Trial (MHA, BF16)   | Port (GQA, BF16)  | Reduction |
+| --------- | ------------------- | ----------------- | --------- |
+| $L_{att}$ | 24                  | 10                | 58.3%     |
+| $H_{kv}$  | 16                  | 2                 | 87.5%     |
+| Per token | 196,608 B (192 KiB) | 10,240 B (10 KiB) | 94.8%     |
 
 ### Context Length Examples
 

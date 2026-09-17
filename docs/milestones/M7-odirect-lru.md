@@ -3,14 +3,14 @@
 > Proyek: `disk-streaming-moe-engine`. Fase: **Trial (rekayasa, puncak performa trial)**. Index: `../README.md`.
 > Implementasi dipecah menjadi waves: `../../scratch/wave/m7/README.md` (W1 o-direct-reader → W6 gates, catatan kerja gitignored).
 
-| Field       | Nilai                                                        |
-| ----------- | ------------------------------------------------------------ |
-| Deliverable | Reader O_DIRECT + LRU cache expert dengan model terkalibrasi |
-| Komponen    | C6 io_direct + LRU, C3 evolusi pread, C7 benchmark           |
-| Prasyarat   | M5, M6 hijau (butuh KV + quant untuk $B_{tok}^{4bit}$)       |
-| Next        | `M8-gdn.md`                                                  |
+| Field       | Nilai                                                                                 |
+| ----------- | ------------------------------------------------------------------------------------- |
+| Deliverable | Reader O_DIRECT + LRU cache expert dengan model terkalibrasi                          |
+| Komponen    | C6 io_direct + LRU, C3 evolusi pread, C7 benchmark                                    |
+| Prasyarat   | M5, M6 hijau (butuh KV + quant untuk $B_{tok}^{4bit}$)                                |
+| Next        | `M8-gdn.md`                                                                           |
 | Gate        | G-M7-1..G-M7-7 (correctness-first: G-M7-6/7 wajib PASS sebelum verdict G-M7-1..5 sah) |
-| Rumus       | F13, F5 (koreksi F9), F3b-quant, F16, F17                    |
+| Rumus       | F13, F5 (koreksi F9), F3b-quant, F16, F17                                             |
 
 ## Tujuan
 
@@ -169,13 +169,13 @@ yang diterbitkan dalam keadaan apa pun.
 
 ### Error Handling
 
-| Error    | Description                     | Handling                         |
-| -------- | ------------------------------- | -------------------------------- |
-| `EINVAL` | Misaligned buffer/offset/length | Pra-probe: fallback; pasca-probe: hard fail (§ Format-vs-Platform Failure Policy) |
-| `EAGAIN` | Non-blocking I/O would block    | Retry                            |
-| `EINTR`  | Interrupted by signal           | Retry                            |
-| `ENOSPC` | No space left on device (write path: workdir/artifacts) | Fail (disk full)                 |
-| `EIO`    | I/O error (disk failure)        | Fail                             |
+| Error    | Description                                             | Handling                                                                          |
+| -------- | ------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `EINVAL` | Misaligned buffer/offset/length                         | Pra-probe: fallback; pasca-probe: hard fail (§ Format-vs-Platform Failure Policy) |
+| `EAGAIN` | Non-blocking I/O would block                            | Retry                                                                             |
+| `EINTR`  | Interrupted by signal                                   | Retry                                                                             |
+| `ENOSPC` | No space left on device (write path: workdir/artifacts) | Fail (disk full)                                                                  |
+| `EIO`    | I/O error (disk failure)                                | Fail                                                                              |
 
 ### Buffer Management
 
@@ -512,16 +512,16 @@ Per pattern:
 
 ### Error Types
 
-| Error Code                  | Stage     | Description                     | Handling                           |
-| --------------------------- | --------- | ------------------------------- | ---------------------------------- |
-| `M7_ERR_ODIRECT_ALIGNMENT`  | io_direct | Buffer/offset/length misaligned | Pra-probe: fallback; pasca-probe: hard fail `M7_ERR_FORMAT_ALIGNMENT` |
-| `M7_ERR_FORMAT_ALIGNMENT`   | io_direct | Span fisik I/O atau struktur kontainer melanggar `dio_alignment` pasca-probe | Hard fail, fallback DILARANG |
-| `M7_ERR_ODIRECT_SHORT_READ` | io_direct | Short read (incomplete read)    | Remainder selaras → lanjut loop; remainder tak selaras → retry span penuh terbatas → fail (tanpa read misaligned) |
-| `M7_ERR_ODIRECT_ENOSPC`     | io_direct | No space left on device (write path: workdir/artifacts) | Fail (disk full)                   |
-| `M7_ERR_ODIRECT_EIO`        | io_direct | I/O error (disk failure)        | Fail                               |
-| `M7_ERR_LRU_NO_VICTIM`       | lru_cache | Eviksi tak menemukan victim (semua pinned = invariant jebol) | Hard fail (evict-normal hanya bila victim ada; tanpa victim tidak ada operasi normal) |
-| `M7_ERR_LRU_ALLOC`          | lru_cache | Failed to allocate cache entry  | Fail (OOM)                         |
-| `M7_ERR_LRU_CORRUPT`        | lru_cache | Cache data corruption           | Fail + clear cache                 |
+| Error Code                  | Stage     | Description                                                                  | Handling                                                                                                          |
+| --------------------------- | --------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `M7_ERR_ODIRECT_ALIGNMENT`  | io_direct | Buffer/offset/length misaligned                                              | Pra-probe: fallback; pasca-probe: hard fail `M7_ERR_FORMAT_ALIGNMENT`                                             |
+| `M7_ERR_FORMAT_ALIGNMENT`   | io_direct | Span fisik I/O atau struktur kontainer melanggar `dio_alignment` pasca-probe | Hard fail, fallback DILARANG                                                                                      |
+| `M7_ERR_ODIRECT_SHORT_READ` | io_direct | Short read (incomplete read)                                                 | Remainder selaras → lanjut loop; remainder tak selaras → retry span penuh terbatas → fail (tanpa read misaligned) |
+| `M7_ERR_ODIRECT_ENOSPC`     | io_direct | No space left on device (write path: workdir/artifacts)                      | Fail (disk full)                                                                                                  |
+| `M7_ERR_ODIRECT_EIO`        | io_direct | I/O error (disk failure)                                                     | Fail                                                                                                              |
+| `M7_ERR_LRU_NO_VICTIM`      | lru_cache | Eviksi tak menemukan victim (semua pinned = invariant jebol)                 | Hard fail (evict-normal hanya bila victim ada; tanpa victim tidak ada operasi normal)                             |
+| `M7_ERR_LRU_ALLOC`          | lru_cache | Failed to allocate cache entry                                               | Fail (OOM)                                                                                                        |
+| `M7_ERR_LRU_CORRUPT`        | lru_cache | Cache data corruption                                                        | Fail + clear cache                                                                                                |
 
 ### O_DIRECT Error Handling
 
@@ -681,15 +681,15 @@ Koreksi via F9: bila $CV$ routing tinggi (expert panas), pin expert panas di LRU
 
 ## Gate
 
-| Gate   | Kriteria                                   | Threshold                                                                                                                                         | Metode                                               |
-| ------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| G-M7-1 | bandwidth cold sequential                  | $BW_{seq}\ge$ 2,5 GB/s (pola trunk F17a)                                                                                                          | storage-cold, 5 run                              |
-| G-M7-2 | model cache F13                            | $e_T \le 30\%$ dengan rho_B byte-level terukur                                                                                                    | cache-cold vs cache-warm, 30 run                 |
-| G-M7-3 | decode 4-bit throughput                    | ≥ 2 tok/s di $c^*$, protokol § Decode Gate Protocol                                                                                          | `../03-testing.md` §4.4                              |
-| G-M7-4 | kurva core + I/O (rasio)                   | $BW_{eff}$ independen $c$ (slope≈0, bukti memory-bound) + HR stabil ±5pp lintas $c$ + $e_T\le30\%$ dgn F5+F16                                     | sweep core cache-warm, 10 run/level + 30 run di $c^*$ |
-| G-M7-5 | pola I/O storage (dua angka, bukan brosur) | $BW_{seq}$ + $BW_{exp}(q)$ + $q^*$ + $R_{io}$ dilaporkan + $D_{sus}\le30\%$ + `dio_alignment` probe-verified + fs/readahead/suhu logged (F17) | §4.4 dua pola storage-cold/cache-warm + sustained $\ge W_{file}$   |
-| G-M7-6 | Direct-I/O correctness | buffer/offset/length selaras + probe sukses + tanpa silent fallback | probe + layout scan + IT-M7-2/3/11 |
-| G-M7-7 | LRU correctness | hit/miss + eviksi + pin invariant + single-flight + stats deterministik | IT-M7-6/7/8/13/14/15 + stats |
+| Gate   | Kriteria                                   | Threshold                                                                                                                                     | Metode                                                           |
+| ------ | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| G-M7-1 | bandwidth cold sequential                  | $BW_{seq}\ge$ 2,5 GB/s (pola trunk F17a)                                                                                                      | storage-cold, 5 run                                              |
+| G-M7-2 | model cache F13                            | $e_T \le 30\%$ dengan rho_B byte-level terukur                                                                                                | cache-cold vs cache-warm, 30 run                                 |
+| G-M7-3 | decode 4-bit throughput                    | ≥ 2 tok/s di $c^*$, protokol § Decode Gate Protocol                                                                                           | `../03-testing.md` §4.4                                          |
+| G-M7-4 | kurva core + I/O (rasio)                   | $BW_{eff}$ independen $c$ (slope≈0, bukti memory-bound) + HR stabil ±5pp lintas $c$ + $e_T\le30\%$ dgn F5+F16                                 | sweep core cache-warm, 10 run/level + 30 run di $c^*$            |
+| G-M7-5 | pola I/O storage (dua angka, bukan brosur) | $BW_{seq}$ + $BW_{exp}(q)$ + $q^*$ + $R_{io}$ dilaporkan + $D_{sus}\le30\%$ + `dio_alignment` probe-verified + fs/readahead/suhu logged (F17) | §4.4 dua pola storage-cold/cache-warm + sustained $\ge W_{file}$ |
+| G-M7-6 | Direct-I/O correctness                     | buffer/offset/length selaras + probe sukses + tanpa silent fallback                                                                           | probe + layout scan + IT-M7-2/3/11                               |
+| G-M7-7 | LRU correctness                            | hit/miss + eviksi + pin invariant + single-flight + stats deterministik                                                                       | IT-M7-6/7/8/13/14/15 + stats                                     |
 
 Cold: tiga kondisi § Cold vs Warm I/O (storage-cold / storage-warm / cache-warm). Warm-up 2× tidak dihitung.
 
@@ -698,7 +698,7 @@ Cold: tiga kondisi § Cold vs Warm I/O (storage-cold / storage-warm / cache-warm
 - B: 5 run storage-cold (BW) + 30 run cache-warm vs cache-cold (rho_B, HR, $e_T$).
 - B-core (F16): ulang sweep $c$ di atas O*DIRECT+LRU; buktikan $T*{IO}$ datar vs $c$ dan $T_{comp}(c)$ ikut F16; bila $BW_{eff}$ naik ikut $c$ berarti masih compute-bound → investigasi, bukan klaim memory-bound.
 - F: error path O_DIRECT (alignment fase-split, short read, EIO) → clean error.
-- Log: rho_B + HR + enam field byte (§ Rumus F13), VmHWM, waktu/fase, $C_{max}, c, r$.
+- Log: rho*B + HR + enam field byte (§ Rumus F13), VmHWM, waktu/fase, $C*{max}, c, r$.
 
 ### Decode Gate Protocol (normatif, G-M7-3)
 
@@ -714,24 +714,24 @@ Tanpa ini 2 tok/s tak reproducible:
 
 ### Test Matrix
 
-| Test ID  | Scenario                                    | Expected                                   | Priority |
-| -------- | ------------------------------------------- | ------------------------------------------ | -------- |
-| IT-M7-1  | Happy path: O_DIRECT + LRU → decode 4-bit   | Exit 0, ≥ 2 tok/s protokol § Decode Gate Protocol | HIGH     |
-| IT-M7-2  | O_DIRECT not supported                      | Fallback to buffered I/O, log warning      | HIGH     |
-| IT-M7-3  | Layout format langgar alignment pasca-probe | Hard fail M7_ERR_FORMAT_ALIGNMENT, tanpa fallback | HIGH     |
-| IT-M7-4  | O_DIRECT short read selaras                 | Loop until complete, continue              | HIGH     |
-| IT-M7-5  | ENOSPC on write path (workdir/artifacts)    | Exit error M7_ERR_ODIRECT_ENOSPC           | HIGH     |
-| IT-M7-6  | LRU cache capacity exceeded                 | Evict LRU entry (normal)                   | HIGH     |
-| IT-M7-7  | LRU cache alloc fail (OOM)                  | Exit error M7_ERR_LRU_ALLOC                | HIGH     |
-| IT-M7-8  | LRU cache corruption (fault injection)      | Revalidasi deteksi → clear + M7_ERR_LRU_CORRUPT | HIGH     |
-| IT-M7-9  | I/O pattern benchmark: trunk sequential     | BW_seq ≥ 2,5 GB/s                          | HIGH     |
-| IT-M7-10 | I/O pattern benchmark: expert-miss          | BW_exp(q) + R_io(q) reported (tanpa threshold) | HIGH     |
-| IT-M7-16 | Fixture determinism                         | seed-42 offsets sama lintas QD + aligned + non-overlap | MEDIUM |
-| IT-M7-11 | EINVAL pasca-probe (fault injection)        | Hard fail, fallback dilarang               | HIGH     |
-| IT-M7-12 | Short remainder tak selaras                 | Retry span terbatas → fail, tanpa read misaligned | HIGH |
-| IT-M7-13 | Selective prefill bound                     | prefill bytes > pin_budget → init fail; set logged | HIGH |
-| IT-M7-14 | Pin budget enforcement                      | over-budget pin ditolak; victim selalu ada | HIGH |
-| IT-M7-15 | Single-flight miss ganda                    | N thread × 1 key miss → tepat 1 disk read | HIGH |
+| Test ID  | Scenario                                    | Expected                                               | Priority |
+| -------- | ------------------------------------------- | ------------------------------------------------------ | -------- |
+| IT-M7-1  | Happy path: O_DIRECT + LRU → decode 4-bit   | Exit 0, ≥ 2 tok/s protokol § Decode Gate Protocol      | HIGH     |
+| IT-M7-2  | O_DIRECT not supported                      | Fallback to buffered I/O, log warning                  | HIGH     |
+| IT-M7-3  | Layout format langgar alignment pasca-probe | Hard fail M7_ERR_FORMAT_ALIGNMENT, tanpa fallback      | HIGH     |
+| IT-M7-4  | O_DIRECT short read selaras                 | Loop until complete, continue                          | HIGH     |
+| IT-M7-5  | ENOSPC on write path (workdir/artifacts)    | Exit error M7_ERR_ODIRECT_ENOSPC                       | HIGH     |
+| IT-M7-6  | LRU cache capacity exceeded                 | Evict LRU entry (normal)                               | HIGH     |
+| IT-M7-7  | LRU cache alloc fail (OOM)                  | Exit error M7_ERR_LRU_ALLOC                            | HIGH     |
+| IT-M7-8  | LRU cache corruption (fault injection)      | Revalidasi deteksi → clear + M7_ERR_LRU_CORRUPT        | HIGH     |
+| IT-M7-9  | I/O pattern benchmark: trunk sequential     | BW_seq ≥ 2,5 GB/s                                      | HIGH     |
+| IT-M7-10 | I/O pattern benchmark: expert-miss          | BW_exp(q) + R_io(q) reported (tanpa threshold)         | HIGH     |
+| IT-M7-16 | Fixture determinism                         | seed-42 offsets sama lintas QD + aligned + non-overlap | MEDIUM   |
+| IT-M7-11 | EINVAL pasca-probe (fault injection)        | Hard fail, fallback dilarang                           | HIGH     |
+| IT-M7-12 | Short remainder tak selaras                 | Retry span terbatas → fail, tanpa read misaligned      | HIGH     |
+| IT-M7-13 | Selective prefill bound                     | prefill bytes > pin_budget → init fail; set logged     | HIGH     |
+| IT-M7-14 | Pin budget enforcement                      | over-budget pin ditolak; victim selalu ada             | HIGH     |
+| IT-M7-15 | Single-flight miss ganda                    | N thread × 1 key miss → tepat 1 disk read              | HIGH     |
 
 ### Test Automation
 
@@ -851,14 +851,14 @@ Per run (per ref-storage skill):
 
 ### Expected Values (NVMe, entry-tier)
 
-| Metric        | Target   | Unit  |
-| ------------- | -------- | ----- |
-| BW_seq (p50)  | ≥ 2,5    | GB/s  |
-| BW_seq (p95)  | ≥ 2,0    | GB/s  |
-| BW_exp(q) p50 | measured | GB/s  |
+| Metric        | Target     | Unit  |
+| ------------- | ---------- | ----- |
+| BW_seq (p50)  | ≥ 2,5      | GB/s  |
+| BW_seq (p95)  | ≥ 2,0      | GB/s  |
+| BW_exp(q) p50 | measured   | GB/s  |
 | R_io(q)       | dilaporkan | ratio |
-| D_sus         | ≤ 30     | %     |
-| Temperature   | < 70     | °C    |
+| D_sus         | ≤ 30       | %     |
+| Temperature   | < 70       | °C    |
 
 ### Failure Criteria
 
