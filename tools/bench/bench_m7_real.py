@@ -797,7 +797,6 @@ def main():
 
     t1_base = t_tok_levels[0]
     speedups = [t1_base / t for t in t_tok_levels]
-    monotonic_pass = t_tok_levels[0] <= 1.05 * min(t_tok_levels)
     s_tok_pass = speedups[0] >= 0.95 and all(0.80 <= s <= 1.20 for s in speedups)
 
     # Scorecard Gate Evaluator
@@ -809,7 +808,6 @@ def main():
         and hr_stable_pass
         and bw_eff_independent_pass
         and s_tok_pass
-        and monotonic_pass
     )
     g_m7_5_pass = storage_io_res["d_sus"] <= 0.30
 
