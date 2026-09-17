@@ -107,6 +107,14 @@ struct QuantizedTensor(Copyable, Movable):
     var group_size: Int
     var num_groups: Int
 
+    def __init__(out self):
+        self.scales = List[Float16]()
+        self.q_weights = List[Int8]()
+        self.packed_bytes = List[UInt8]()
+        self.num_elements = 0
+        self.group_size = 0
+        self.num_groups = 0
+
     def __init__(
         out self,
         scales: List[Float16],

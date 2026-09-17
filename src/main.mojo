@@ -8,9 +8,11 @@ from cli.cmd_decode import cmd_decode
 from cli.cmd_forward import cmd_forward
 from cli.cmd_head import cmd_head
 from cli.cmd_layer import cmd_layer
+from cli.cmd_quantize import cmd_quantize
 from cli.errors import eprint_json, fail, fail_layer
 from cli.m4_errors import m4_error_json
 from cli.m5_errors import m5_error_json
+from cli.m6_errors import m6_error_json
 from std.collections import List
 from std.sys.arg import argv
 from std.sys.terminate import exit
@@ -21,7 +23,7 @@ def main() raises:
     if len(args) < 2:
         fail(
             "USAGE",
-            "pakai: kimo (check-index|head|layer|forward|decode) ...",
+            "pakai: kimo (check-index|head|layer|forward|decode|quantize) ...",
             "",
             "",
         )
@@ -95,5 +97,24 @@ def main() raises:
                     )
                 )
             exit(5)
+    elif cmd == "quantize":
+        var pass_args = List[String]()
+        for i in range(len(args)):
+            pass_args.append(String(args[i]))
+        try:
+            cmd_quantize(pass_args^)
+        except e:
+            var err_s = String(e)
+            if err_s.startswith("{"):
+                print(err_s)
+            else:
+                print(
+                    m6_error_json(
+                        "M6_ERR_QUANT",
+                        "quantization",
+                        err_s,
+                    )
+                )
+            exit(2)
     else:
         fail("USAGE", String("subcommand tak dikenal: ", cmd), "", "")

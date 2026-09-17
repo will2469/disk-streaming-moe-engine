@@ -198,7 +198,15 @@ def test_relative_error_threshold() raises:
     weights.resize(n_elem, Float32(0.0))
 
     var q_pattern: List[Float32] = [
-        -7.0, -5.0, -3.0, -1.0, 0.0, 1.0, 3.0, 5.0, 7.0
+        -7.0,
+        -5.0,
+        -3.0,
+        -1.0,
+        0.0,
+        1.0,
+        3.0,
+        5.0,
+        7.0,
     ]
     var p_len = len(q_pattern)
 
