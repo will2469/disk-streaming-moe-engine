@@ -177,13 +177,13 @@ $$a_g = \max_{j \in G}|w_j|$$
 
 Pilih $s_g$ sebagai nilai FP16 finite terkecil yang memenuhi $s_g \ge a_g/7$. Bila $a_g=0$, tetapkan $s_g=1$ dan seluruh $q_j=0$; bila $a_g/7$ tak dapat diwakili FP16 finite, kuantisasi gagal (`SCALE_OVERFLOW`). Pembulatan scale ke atas mencegah nilai maksimum tersaturasi.
 
-$$m_j = round(w_j/s_g)$$
+$$m_j = \mathrm{rne}(w_j/s_g)$$
 
 $$q_j = clamp(m_j, -7, 7)$$
 
 $$\hat w_j = s_g q_j$$
 
-`round` berarti pembulatan ke integer terdekat; `clamp` membatasi hasil ke interval tertutup $[-7,7]$.
+`rne` berarti round-half-to-even dalam FP32 ($x=\mathrm{fp32}(w_j)/\mathrm{fp32}(s_g)$; pecahan tepat $\pm 0{,}5$ dibulatkan ke integer genap terdekat); `clamp` membatasi hasil ke interval tertutup $[-7,7]$.
 
 Kode 4-bit bernilai $-8$ tetap representable, tetapi tidak dipancarkan oleh skema simetris ini.
 
@@ -193,9 +193,11 @@ $$\mathrm{MSE} = \frac{1}{n}\sum_j (w_j-\hat w_j)^2$$
 
 $$\varepsilon_{rel}=\frac{\sqrt{\mathrm{MSE}}}{\sqrt{\tfrac{1}{n}\sum_j w_j^2}}$$
 
+Bila penyebut nol ($\varepsilon_{rel}$ tak terdefinisi — tensor nol pada definisi RMS di atas, tensor konstan pada varian definisi-variansi di `milestones/M6-quantizer.md`): laporkan null dan putuskan via jalur absolut property Q-domain, tanpa epsilon fudge.
+
 $$B_{payload}=\left\lceil\frac{N}{2}\right\rceil+2\left\lceil\frac{N}{G}\right\rceil$$
 
-dengan $bpw_{eff}=4+16/128=\mathbf{4{,}125}$ bit/bobot secara asimtotik; ukuran file = payload + header/alignment. Untuk $N_{total}=14{,}32$ B, prediksi payload = $14{,}32\times4{,}125/8\approx\mathbf{7{,}384\ GB}$ sebelum metadata. Gate G-M6-2 tetap **±10%** terhadap ukuran terukur. Property test membandingkan nilai yang dipromosikan ke FP32: $|w_j-\hat w_j|\le s_g/2$ untuk semua $j$. Bila output akhirnya dibulatkan lagi ke BF16, ukur error output itu terpisah. Dipakai di `milestones/M6-quantizer.md`.
+dengan $bpw_{eff}=4+16/128=\mathbf{4{,}125}$ bit/bobot secara asimtotik; ukuran file = payload + header/alignment. Untuk $N_{total}=14{,}32$ B, prediksi payload = $14{,}32\times4{,}125/8\approx\mathbf{7{,}384\ GB}$ sebelum metadata. Gate G-M6-2 tetap **±10%** terhadap ukuran terukur. Property test Q-domain (oracle, FP32): $|\mathrm{fp32}(w_j)-\hat w^{(32)}_j|\le s_g/2$ untuk semua $j$ dengan $\hat w^{(32)}_j=\mathrm{fp32}(s_g)q_j$. Kernel produksi mengeluarkan BF16 $\hat w^{(\mathrm{bf16})}_j=\mathrm{bf16}(\hat w^{(32)}_j)$; audit kernel memakai bound Kernel-domain $|\mathrm{fp32}(w_j)-\mathrm{fp32}(\hat w^{(\mathrm{bf16})}_j)|\le s_g/2+|\hat w^{(32)}_j|/256$ (segitiga: error kuantisasi + roundoff BF16 $2^{-8}$, ternormalisasi). Dipakai di `milestones/M6-quantizer.md`.
 
 **F12 — Perplexity & degrade kuantisasi:**
 

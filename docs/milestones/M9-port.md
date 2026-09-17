@@ -1005,7 +1005,7 @@ $$a_g=\max_{j\in G}|w_j|, \qquad s_g\ge a_g/7$$
 
 Scale tersimpan adalah nilai FP16 finite terkecil yang memenuhi ketaksamaan tersebut.
 
-$$q_j=\mathrm{clip}\left(\mathrm{round}\left(\frac{w_j}{s_g}\right),-7,7\right), \qquad \hat w_j=s_gq_j$$
+$$q_j=\mathrm{clip}\left(\mathrm{rne}\left(\frac{w_j}{s_g}\right),-7,7\right), \qquad \hat w_j=s_gq_j$$
 
 **Group size**: $G = 128$ weights per scale.
 
