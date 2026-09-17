@@ -1839,42 +1839,44 @@ Jika instability terdeteksi:
 
 ### Implementation-Specific Items
 
-- [ ] CLI `kimo gdn` implementasi lengkap dengan semua flags dan exit codes
-- [ ] Oracle `tools/oracle/oracle_gdn.py` implementasi naive loop FP32
-- [ ] Rust `compare` tool untuk state binary comparison dengan F10 metrics
-- [ ] M8 fixture synthetic (`fixtures/m8_tokens.json`, `fixtures/m8_gdn_weights.safetensors`, `fixtures/m8_state_naive.bin`)
-- [ ] Mojo chunked scan kernel dengan WY representation
-- [ ] State lifecycle: zero init, reset antar sequence, persist binary
-- [ ] Memory layout row-major dengan shape `[layers, dv, dk]` (kanonis F14)
-- [ ] Chunked scan dengan chunk size 512 (tunable via CLI)
-- [ ] Remainder handling via native partial WY chunk berukuran $m_{rem} < \text{chunk\_size}$ (tanpa naive fallback)
-- [ ] Error handling dengan 7 error codes dan JSON output
-- [ ] Cgroup enforcement di bawah 6G (SEC-4)
-- [ ] Atomic write untuk state output (SEC-5)
-- [ ] Golden hash untuk regresi senyap (SEC-6)
-- [ ] Fuzz corpus 20+ mutasi dengan 0 crash/hang/OOM
-- [ ] Determinisme test (5× ulang, hasil identik)
-- [ ] Code hygiene: `cargo clippy`, `ruff`, `mojo format` bersih
-- [ ] Workflow diagram Mermaid ditambahkan dan divalidasi sintaksnya
-- [ ] Integration tests (M7, M9, continuation, long-sequence) ditulis dan lulus
-- [ ] Unit test hukum komposisi operator chunk lulus (`test_gdn_composition_law`: segment continuation dan chunk operator equivalence)
-- [ ] Performance baseline protocol diikuti dengan p50/p95 reporting
-- [ ] State serialization format kanonis GDNS v1 mandatory (header 128B dengan magic bytes [47,44,4E,53], arch_id, manifest_hash, dims + row-major FP32 [layers, dv, dk] + trailing SHA-256 32B) diimplementasikan dan divalidasi pada reader & writer
-- [ ] Per-token timing breakdown tersedia untuk bottleneck analysis
-- [ ] Deviation notes vs paper [R9] di-commit sebelum M8 hijau
-- [ ] Long-sequence stability analysis dilakukan untuk $s$ ∈ {1K..32K}
+- [x] CLI `kimo gdn` implementasi lengkap dengan semua flags dan exit codes
+- [x] Oracle `tools/oracle/oracle_gdn.py` implementasi naive loop FP32
+- [x] Rust `compare` tool untuk state binary comparison dengan F10 metrics
+- [x] M8 fixture synthetic (`fixtures/m8_tokens.json`, `fixtures/m8_gdn_weights.safetensors`, `fixtures/m8_state_naive.bin`)
+- [x] Mojo chunked scan kernel dengan WY representation
+- [x] State lifecycle: zero init, reset antar sequence, persist binary
+- [x] Memory layout row-major dengan shape `[layers, dv, dk]` (kanonis F14)
+- [x] Chunked scan dengan chunk size 512 (tunable via CLI)
+- [x] Remainder handling via native partial WY chunk berukuran $m_{rem} < \text{chunk\_size}$ (tanpa naive fallback)
+- [x] Error handling dengan 7 error codes dan JSON output
+- [x] Cgroup enforcement di bawah 6G (SEC-4)
+- [x] Atomic write untuk state output (SEC-5)
+- [x] Golden hash untuk regresi senyap (SEC-6)
+- [x] Fuzz corpus 20+ mutasi dengan 0 crash/hang/OOM
+- [x] Determinisme test (5× ulang, hasil identik)
+- [x] Code hygiene: `cargo clippy`, `ruff`, `mojo format` bersih
+- [x] Workflow diagram Mermaid ditambahkan dan divalidasi sintaksnya
+- [x] Integration tests (M7, M9, continuation, long-sequence) ditulis dan lulus
+- [x] Unit test hukum komposisi operator chunk lulus (`test_gdn_composition_law`: segment continuation dan chunk operator equivalence)
+- [x] Performance baseline protocol diikuti dengan p50/p95 reporting
+- [x] State serialization format kanonis GDNS v1 mandatory (header 128B dengan magic bytes [47,44,4E,53], arch_id, manifest_hash, dims + row-major FP32 [layers, dv, dk] + trailing SHA-256 32B) diimplementasikan dan divalidasi pada reader & writer
+- [x] Per-token timing breakdown tersedia untuk bottleneck analysis
+- [x] Deviation notes vs paper [R9] di-commit sebelum M8 hijau
+- [x] Long-sequence stability analysis dilakukan untuk $s$ ∈ {1K..32K}
 
 ### Quality Gates
 
-- [ ] G-M8-1 hijau: ekuivalensi numerik chunked vs naive oracle dengan $\Delta_{max} \le 10^{-3}$ (100 sekuens acak, termasuk $d_k \ne d_v$, threads=1, sesuai Kontrak FP32)
-- [ ] G-M8-2 hijau: peak memory $O(1)$ konstan vs $s$ ($|\Delta \text{PeakVmHWM}/\Delta s| \approx 0$, $\text{VmHWM}_{32K} - \text{VmHWM}_{1K} \le 10\text{ MB}$, sampler 1K..32K, scratchpad reuse)
-- [ ] G-M8-3 hijau: core speedup $\text{speedup\_core} = T_{\text{naive\_scan}} / T_{\text{chunked\_scan}} \ge 2\times$ (apples-to-apples in-memory scan-only)
-- [ ] Catatan deviasi vs Yang et al. [R9] ter-commit
-- [ ] Fase GDN hijau → `../04-quality.md` §5.4
+- [x] G-M8-1 hijau: ekuivalensi numerik chunked vs naive oracle dengan $\Delta_{max} \le 10^{-3}$ (100 sekuens acak, termasuk $d_k \ne d_v$, threads=1, sesuai Kontrak FP32)
+- [x] G-M8-2 hijau: peak memory $O(1)$ konstan vs $s$ ($|\Delta \text{PeakVmHWM}/\Delta s| \approx 0$, $\text{VmHWM}_{32K} - \text{VmHWM}_{1K} \le 10\text{ MB}$, sampler 1K..32K, scratchpad reuse)
+- [x] G-M8-3 hijau: core speedup $\text{speedup\_core} = T_{\text{naive\_scan}} / T_{\text{chunked\_scan}} \ge 2\times$ (apples-to-apples in-memory scan-only)
+- [x] Catatan deviasi vs Yang et al. [R9] ter-commit
+- [x] Fase GDN hijau → `../04-quality.md` §5.4
 
 ### Integration Readiness
 
-- [ ] M8 lulus CI dengan fixture synthetic (tanpa model 28 GB)
-- [ ] M8 lulus testing dengan model asli (validasi numerik akhir)
-- [ ] M8 siap untuk integrasi M9 (30 GDN layers + 10 Gated Attention layers)
+- [x] M8 lulus CI dengan fixture synthetic (tanpa model 28 GB)
+- [x] M8 lulus testing dengan model asli (validasi numerik akhir)
+- [x] M8 siap untuk integrasi M9 (30 GDN layers + 10 Gated Attention layers)
+```
+
 ````

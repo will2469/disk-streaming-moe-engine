@@ -82,5 +82,5 @@ Catatan scope angka absolut: threshold seperti $BW_{seq}\ge2{,}5$ GB/s, $\ge2$ t
 ## 5.4 Definition of Done per Fase
 
 - **Fase Trial** = G-M0..G-M7 hijau semua + laporan kalibrasi (F1, F2, F5, F13, F16, F17) + retro jebakan (diperbarui dari `01-architecture.md` §2.3).
-- **Fase GDN** = G-M8 hijau + catatan deviasi bentuk F14 terhadap paper.
+- **Fase GDN** = G-M8 hijau (G-M8-1, G-M8-2, G-M8-3 tersertifikasi 100% PASS) + catatan deviasi bentuk F14 terhadap paper ter-commit di `docs/milestones/M8-deviations.md`.
 - **Fase Port** = G-M9 hijau + tabel delta `01-architecture.md` §2.7 terisi angka nyata (TBM → measured).
