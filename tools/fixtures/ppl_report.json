@@ -1,0 +1,714 @@
+{
+  "status": "PASS",
+  "run_id": "M6-PPL-BASELINE",
+  "model": "qwen1.5-moe-a2.7b-chat",
+  "corpus_sha256": "69e30f45cece78749439ae3e6ce0896375f0de57d5800cb3203460c8a0ace968",
+  "n_pred_total": 25500,
+  "ppl_bf16": 12.184,
+  "ppl_quant": 12.446,
+  "delta_ppl": 0.262,
+  "argmax_agreement": 0.9682,
+  "gate_passed": true,
+  "diagnostics": [
+    {
+      "id": "doc1",
+      "ppl_bf16": 11.784,
+      "ppl_quant": 11.959,
+      "delta_ppl": 0.175,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc2",
+      "ppl_bf16": 11.834,
+      "ppl_quant": 12.024,
+      "delta_ppl": 0.19,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc3",
+      "ppl_bf16": 11.884,
+      "ppl_quant": 12.089,
+      "delta_ppl": 0.205,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc4",
+      "ppl_bf16": 11.934,
+      "ppl_quant": 12.154,
+      "delta_ppl": 0.22,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc5",
+      "ppl_bf16": 11.984,
+      "ppl_quant": 12.219,
+      "delta_ppl": 0.235,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc6",
+      "ppl_bf16": 12.034,
+      "ppl_quant": 12.284,
+      "delta_ppl": 0.25,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc7",
+      "ppl_bf16": 12.084,
+      "ppl_quant": 12.349,
+      "delta_ppl": 0.265,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc8",
+      "ppl_bf16": 12.134,
+      "ppl_quant": 12.414,
+      "delta_ppl": 0.28,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc9",
+      "ppl_bf16": 12.184,
+      "ppl_quant": 12.479,
+      "delta_ppl": 0.295,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc10",
+      "ppl_bf16": 12.234,
+      "ppl_quant": 12.544,
+      "delta_ppl": 0.31,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc11",
+      "ppl_bf16": 12.284,
+      "ppl_quant": 12.609,
+      "delta_ppl": 0.325,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc12",
+      "ppl_bf16": 12.334,
+      "ppl_quant": 12.509,
+      "delta_ppl": 0.175,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc13",
+      "ppl_bf16": 12.384,
+      "ppl_quant": 12.574,
+      "delta_ppl": 0.19,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc14",
+      "ppl_bf16": 12.434,
+      "ppl_quant": 12.639,
+      "delta_ppl": 0.205,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc15",
+      "ppl_bf16": 12.484,
+      "ppl_quant": 12.704,
+      "delta_ppl": 0.22,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc16",
+      "ppl_bf16": 12.534,
+      "ppl_quant": 12.769,
+      "delta_ppl": 0.235,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc17",
+      "ppl_bf16": 12.584,
+      "ppl_quant": 12.834,
+      "delta_ppl": 0.25,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc18",
+      "ppl_bf16": 11.784,
+      "ppl_quant": 12.049,
+      "delta_ppl": 0.265,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc19",
+      "ppl_bf16": 11.834,
+      "ppl_quant": 12.114,
+      "delta_ppl": 0.28,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc20",
+      "ppl_bf16": 11.884,
+      "ppl_quant": 12.179,
+      "delta_ppl": 0.295,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc21",
+      "ppl_bf16": 11.934,
+      "ppl_quant": 12.244,
+      "delta_ppl": 0.31,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc22",
+      "ppl_bf16": 11.984,
+      "ppl_quant": 12.309,
+      "delta_ppl": 0.325,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc23",
+      "ppl_bf16": 12.034,
+      "ppl_quant": 12.209,
+      "delta_ppl": 0.175,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc24",
+      "ppl_bf16": 12.084,
+      "ppl_quant": 12.274,
+      "delta_ppl": 0.19,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc25",
+      "ppl_bf16": 12.134,
+      "ppl_quant": 12.339,
+      "delta_ppl": 0.205,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc26",
+      "ppl_bf16": 12.184,
+      "ppl_quant": 12.404,
+      "delta_ppl": 0.22,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc27",
+      "ppl_bf16": 12.234,
+      "ppl_quant": 12.469,
+      "delta_ppl": 0.235,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc28",
+      "ppl_bf16": 12.284,
+      "ppl_quant": 12.534,
+      "delta_ppl": 0.25,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc29",
+      "ppl_bf16": 12.334,
+      "ppl_quant": 12.599,
+      "delta_ppl": 0.265,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc30",
+      "ppl_bf16": 12.384,
+      "ppl_quant": 12.664,
+      "delta_ppl": 0.28,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc31",
+      "ppl_bf16": 12.434,
+      "ppl_quant": 12.729,
+      "delta_ppl": 0.295,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc32",
+      "ppl_bf16": 12.484,
+      "ppl_quant": 12.794,
+      "delta_ppl": 0.31,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc33",
+      "ppl_bf16": 12.534,
+      "ppl_quant": 12.859,
+      "delta_ppl": 0.325,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc34",
+      "ppl_bf16": 12.584,
+      "ppl_quant": 12.759,
+      "delta_ppl": 0.175,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc35",
+      "ppl_bf16": 11.784,
+      "ppl_quant": 11.974,
+      "delta_ppl": 0.19,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc36",
+      "ppl_bf16": 11.834,
+      "ppl_quant": 12.039,
+      "delta_ppl": 0.205,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc37",
+      "ppl_bf16": 11.884,
+      "ppl_quant": 12.104,
+      "delta_ppl": 0.22,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc38",
+      "ppl_bf16": 11.934,
+      "ppl_quant": 12.169,
+      "delta_ppl": 0.235,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc39",
+      "ppl_bf16": 11.984,
+      "ppl_quant": 12.234,
+      "delta_ppl": 0.25,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc40",
+      "ppl_bf16": 12.034,
+      "ppl_quant": 12.299,
+      "delta_ppl": 0.265,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc41",
+      "ppl_bf16": 12.084,
+      "ppl_quant": 12.364,
+      "delta_ppl": 0.28,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc42",
+      "ppl_bf16": 12.134,
+      "ppl_quant": 12.429,
+      "delta_ppl": 0.295,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc43",
+      "ppl_bf16": 12.184,
+      "ppl_quant": 12.494,
+      "delta_ppl": 0.31,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc44",
+      "ppl_bf16": 12.234,
+      "ppl_quant": 12.559,
+      "delta_ppl": 0.325,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc45",
+      "ppl_bf16": 12.284,
+      "ppl_quant": 12.459,
+      "delta_ppl": 0.175,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc46",
+      "ppl_bf16": 12.334,
+      "ppl_quant": 12.524,
+      "delta_ppl": 0.19,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc47",
+      "ppl_bf16": 12.384,
+      "ppl_quant": 12.589,
+      "delta_ppl": 0.205,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc48",
+      "ppl_bf16": 12.434,
+      "ppl_quant": 12.654,
+      "delta_ppl": 0.22,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc49",
+      "ppl_bf16": 12.484,
+      "ppl_quant": 12.719,
+      "delta_ppl": 0.235,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc50",
+      "ppl_bf16": 12.534,
+      "ppl_quant": 12.784,
+      "delta_ppl": 0.25,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc51",
+      "ppl_bf16": 12.584,
+      "ppl_quant": 12.849,
+      "delta_ppl": 0.265,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc52",
+      "ppl_bf16": 11.784,
+      "ppl_quant": 12.064,
+      "delta_ppl": 0.28,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc53",
+      "ppl_bf16": 11.834,
+      "ppl_quant": 12.129,
+      "delta_ppl": 0.295,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc54",
+      "ppl_bf16": 11.884,
+      "ppl_quant": 12.194,
+      "delta_ppl": 0.31,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc55",
+      "ppl_bf16": 11.934,
+      "ppl_quant": 12.259,
+      "delta_ppl": 0.325,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc56",
+      "ppl_bf16": 11.984,
+      "ppl_quant": 12.159,
+      "delta_ppl": 0.175,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc57",
+      "ppl_bf16": 12.034,
+      "ppl_quant": 12.224,
+      "delta_ppl": 0.19,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc58",
+      "ppl_bf16": 12.084,
+      "ppl_quant": 12.289,
+      "delta_ppl": 0.205,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc59",
+      "ppl_bf16": 12.134,
+      "ppl_quant": 12.354,
+      "delta_ppl": 0.22,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc60",
+      "ppl_bf16": 12.184,
+      "ppl_quant": 12.419,
+      "delta_ppl": 0.235,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc61",
+      "ppl_bf16": 12.234,
+      "ppl_quant": 12.484,
+      "delta_ppl": 0.25,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc62",
+      "ppl_bf16": 12.284,
+      "ppl_quant": 12.549,
+      "delta_ppl": 0.265,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc63",
+      "ppl_bf16": 12.334,
+      "ppl_quant": 12.614,
+      "delta_ppl": 0.28,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc64",
+      "ppl_bf16": 12.384,
+      "ppl_quant": 12.679,
+      "delta_ppl": 0.295,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc65",
+      "ppl_bf16": 12.434,
+      "ppl_quant": 12.744,
+      "delta_ppl": 0.31,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc66",
+      "ppl_bf16": 12.484,
+      "ppl_quant": 12.809,
+      "delta_ppl": 0.325,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc67",
+      "ppl_bf16": 12.534,
+      "ppl_quant": 12.709,
+      "delta_ppl": 0.175,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc68",
+      "ppl_bf16": 12.584,
+      "ppl_quant": 12.774,
+      "delta_ppl": 0.19,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc69",
+      "ppl_bf16": 11.784,
+      "ppl_quant": 11.989,
+      "delta_ppl": 0.205,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc70",
+      "ppl_bf16": 11.834,
+      "ppl_quant": 12.054,
+      "delta_ppl": 0.22,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc71",
+      "ppl_bf16": 11.884,
+      "ppl_quant": 12.119,
+      "delta_ppl": 0.235,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc72",
+      "ppl_bf16": 11.934,
+      "ppl_quant": 12.184,
+      "delta_ppl": 0.25,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc73",
+      "ppl_bf16": 11.984,
+      "ppl_quant": 12.249,
+      "delta_ppl": 0.265,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc74",
+      "ppl_bf16": 12.034,
+      "ppl_quant": 12.314,
+      "delta_ppl": 0.28,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc75",
+      "ppl_bf16": 12.084,
+      "ppl_quant": 12.379,
+      "delta_ppl": 0.295,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc76",
+      "ppl_bf16": 12.134,
+      "ppl_quant": 12.444,
+      "delta_ppl": 0.31,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc77",
+      "ppl_bf16": 12.184,
+      "ppl_quant": 12.509,
+      "delta_ppl": 0.325,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc78",
+      "ppl_bf16": 12.234,
+      "ppl_quant": 12.409,
+      "delta_ppl": 0.175,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc79",
+      "ppl_bf16": 12.284,
+      "ppl_quant": 12.474,
+      "delta_ppl": 0.19,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc80",
+      "ppl_bf16": 12.334,
+      "ppl_quant": 12.539,
+      "delta_ppl": 0.205,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc81",
+      "ppl_bf16": 12.384,
+      "ppl_quant": 12.604,
+      "delta_ppl": 0.22,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc82",
+      "ppl_bf16": 12.434,
+      "ppl_quant": 12.669,
+      "delta_ppl": 0.235,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc83",
+      "ppl_bf16": 12.484,
+      "ppl_quant": 12.734,
+      "delta_ppl": 0.25,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc84",
+      "ppl_bf16": 12.534,
+      "ppl_quant": 12.799,
+      "delta_ppl": 0.265,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc85",
+      "ppl_bf16": 12.584,
+      "ppl_quant": 12.864,
+      "delta_ppl": 0.28,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc86",
+      "ppl_bf16": 11.784,
+      "ppl_quant": 12.079,
+      "delta_ppl": 0.295,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc87",
+      "ppl_bf16": 11.834,
+      "ppl_quant": 12.144,
+      "delta_ppl": 0.31,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc88",
+      "ppl_bf16": 11.884,
+      "ppl_quant": 12.209,
+      "delta_ppl": 0.325,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc89",
+      "ppl_bf16": 11.934,
+      "ppl_quant": 12.109,
+      "delta_ppl": 0.175,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc90",
+      "ppl_bf16": 11.984,
+      "ppl_quant": 12.174,
+      "delta_ppl": 0.19,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc91",
+      "ppl_bf16": 12.034,
+      "ppl_quant": 12.239,
+      "delta_ppl": 0.205,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc92",
+      "ppl_bf16": 12.084,
+      "ppl_quant": 12.304,
+      "delta_ppl": 0.22,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc93",
+      "ppl_bf16": 12.134,
+      "ppl_quant": 12.369,
+      "delta_ppl": 0.235,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc94",
+      "ppl_bf16": 12.184,
+      "ppl_quant": 12.434,
+      "delta_ppl": 0.25,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc95",
+      "ppl_bf16": 12.234,
+      "ppl_quant": 12.499,
+      "delta_ppl": 0.265,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc96",
+      "ppl_bf16": 12.284,
+      "ppl_quant": 12.564,
+      "delta_ppl": 0.28,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc97",
+      "ppl_bf16": 12.334,
+      "ppl_quant": 12.629,
+      "delta_ppl": 0.295,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc98",
+      "ppl_bf16": 12.384,
+      "ppl_quant": 12.694,
+      "delta_ppl": 0.31,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc99",
+      "ppl_bf16": 12.434,
+      "ppl_quant": 12.759,
+      "delta_ppl": 0.325,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc100",
+      "ppl_bf16": 12.484,
+      "ppl_quant": 12.659,
+      "delta_ppl": 0.175,
+      "agreement": 0.959
+    }
+  ]
+}

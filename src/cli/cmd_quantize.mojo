@@ -31,6 +31,7 @@ from quant.quant_algo import (
     compute_quant_metrics,
     dequantize_tensor_q32,
     quantize_tensor_f11a,
+    verify_qdomain_property,
 )
 from std.collections import Dict, List
 from std.math import isinf, isnan, max
@@ -501,8 +502,11 @@ def cmd_quantize(args: List[String]) raises:
     var total_input_bytes = 0
     var total_records_bytes = 0
     var max_epsilon_rel = Float32(0.0)
+    var min_epsilon_rel = Float32(1e9)
     var sum_epsilon_rel = Float32(0.0)
     var count_with_var = 0
+    var num_high_error = 0
+    var tensor_reports = List[String]()
     var telemetry = LoadMemoryTelemetry()
 
     # ------------------------------------------------------------------
@@ -608,8 +612,45 @@ def cmd_quantize(args: List[String]) raises:
         if not m.zero_variance:
             if m.epsilon_rel > max_epsilon_rel:
                 max_epsilon_rel = m.epsilon_rel
+            if m.epsilon_rel < min_epsilon_rel:
+                min_epsilon_rel = m.epsilon_rel
             sum_epsilon_rel += m.epsilon_rel
             count_with_var += 1
+            if m.epsilon_rel > Float32(0.01):
+                num_high_error += 1
+
+        if error_report_path.byte_length() > 0:
+            var prop_ok: Bool
+            var max_abs_err: Float32
+            try:
+                var prop_res = verify_qdomain_property(
+                    weights, dequant_32, q_res.scales, group_size
+                )
+                prop_ok = prop_res[0]
+                max_abs_err = prop_res[1]
+            except:
+                prop_ok = False
+                max_abs_err = Float32(0.0)
+
+            var rec_json = (
+                String('{"name":"') + json_escape(dt.name) + '","shape":['
+            )
+            for s_i in range(len(dt.shape)):
+                if s_i > 0:
+                    rec_json += ","
+                rec_json += String(dt.shape[s_i])
+            rec_json += '],"epsilon_rel":'
+            if m.zero_variance:
+                rec_json += 'null,"zero_variance":true'
+            else:
+                rec_json += String(m.epsilon_rel) + ',"zero_variance":false'
+            rec_json += ',"mse":' + String(m.mse)
+            rec_json += ',"property_ok":' + (
+                String("true") if prop_ok else String("false")
+            )
+            rec_json += ',"max_abs_error":' + String(max_abs_err)
+            rec_json += ',"num_groups":' + String(len(q_res.scales)) + "}"
+            tensor_reports.append(rec_json)
 
     # ------------------------------------------------------------------
     # Tulis Header Final 256 Byte
@@ -695,16 +736,38 @@ def cmd_quantize(args: List[String]) raises:
         > 0 else 0.0
     )
 
+    if min_epsilon_rel == Float32(1e9):
+        min_epsilon_rel = Float32(0.0)
+
     if error_report_path.byte_length() > 0:
         try:
             var frep = open(error_report_path, "w")
+            frep.write("{\n")
+            frep.write('  "run_id": "M6-QUANT-CLI",\n')
+            frep.write('  "model": "' + json_escape(model_name) + '",\n')
+            frep.write('  "group_size": ' + String(group_size) + ",\n")
+            frep.write('  "summary": {\n')
+            frep.write('    "num_tensors": ' + String(len(discovered)) + ",\n")
             frep.write(
-                '{"status":"success","avg_epsilon_rel":'
-                + String(avg_epsilon_rel)
-                + ',"max_epsilon_rel":'
-                + String(max_epsilon_rel)
-                + "}\n"
+                '    "max_epsilon_rel": ' + String(max_epsilon_rel) + ",\n"
             )
+            frep.write(
+                '    "avg_epsilon_rel": ' + String(avg_epsilon_rel) + ",\n"
+            )
+            frep.write(
+                '    "min_epsilon_rel": ' + String(min_epsilon_rel) + ",\n"
+            )
+            frep.write('    "num_high_error": ' + String(num_high_error) + "\n")
+            frep.write("  },\n")
+            frep.write('  "tensors": [\n')
+            for r_i in range(len(tensor_reports)):
+                frep.write("    " + tensor_reports[r_i])
+                if r_i + 1 < len(tensor_reports):
+                    frep.write(",\n")
+                else:
+                    frep.write("\n")
+            frep.write("  ]\n")
+            frep.write("}\n")
             frep.close()
         except:
             pass

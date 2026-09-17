@@ -1,0 +1,75 @@
+{
+  "version": "1.0",
+  "name": "M6 PPL Golden Reproducibility Pins",
+  "model": {
+    "name": "Qwen/Qwen1.5-MoE-A2.7B-Chat",
+    "revision": "ec052fda178e241c7c443468d2fa1db6618996be",
+    "shards": [
+      {
+        "filename": "model-00001-of-00008.safetensors",
+        "sha256": "a51a84c031e0f6c8808bc284106c488ab3db6069a3f6f5a231be1e963206d020",
+        "size": 3999614664
+      },
+      {
+        "filename": "model-00002-of-00008.safetensors",
+        "sha256": "02a9f530c526ac09e5d26cdece113d62b030ebc6f137ea69cd2754bea1287121",
+        "size": 3999385424
+      },
+      {
+        "filename": "model-00003-of-00008.safetensors",
+        "sha256": "200116fdf90ea17c2dae53594a87b9efbbe199e4c4e487fb25aba9c65e674112",
+        "size": 3988628968
+      },
+      {
+        "filename": "model-00004-of-00008.safetensors",
+        "sha256": "41296f5c77188a4182c87f9bc5958222897ed5fe1bde6912755df050f1222b8d",
+        "size": 3999386088
+      },
+      {
+        "filename": "model-00005-of-00008.safetensors",
+        "sha256": "a613a2c68f18630beb1eb681627d34110cec36a615a35c4d7f35f72e0df5b2e4",
+        "size": 3988629648
+      },
+      {
+        "filename": "model-00006-of-00008.safetensors",
+        "sha256": "44de056d0f2c4375685ec7545a987c20d59cd8ee75c1802e04a11e7dcd7a84f1",
+        "size": 3999386104
+      },
+      {
+        "filename": "model-00007-of-00008.safetensors",
+        "sha256": "fbc95c8fc0842c425168c21e933629cde22fc156ef9b4af927ad2787fe4d33a1",
+        "size": 3988629648
+      },
+      {
+        "filename": "model-00008-of-00008.safetensors",
+        "sha256": "9a5e51c0a101292c249032382f20d912677e1c0c4b5b0c78e951450fedb820ee",
+        "size": 668484400
+      }
+    ]
+  },
+  "tokenizer": {
+    "name": "qwen1.5-moe",
+    "version": "1.0",
+    "sha256": "f7c9b2dba4a296b1aa76c16a34b8225c0c118978400d4bb66bff0902d702f5b8",
+    "merges_sha256": "599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3",
+    "vocab_sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+  },
+  "corpus": {
+    "filename": "m6_ppl_corpus.json",
+    "sha256": "69e30f45cece78749439ae3e6ce0896375f0de57d5800cb3203460c8a0ace968",
+    "num_documents": 100,
+    "tokens_per_doc": 256,
+    "n_pred_per_doc": 255,
+    "n_pred_total": 25500
+  },
+  "policy": {
+    "add_special_tokens": false,
+    "prepend_bos": false,
+    "append_eos": false,
+    "normalization": "raw_utf8",
+    "scoring_positions": "1..255",
+    "domain": "logprob_fp32",
+    "gate_delta_ppl_max": 0.5,
+    "gate_argmax_agreement_min": 0.95
+  }
+}

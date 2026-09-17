@@ -1,0 +1,507 @@
+{
+  "global_delta_ppl": 0.262,
+  "global_argmax_agreement": 0.9682,
+  "n_pred_total": 25500,
+  "documents": [
+    {
+      "id": "doc1",
+      "delta_ppl": 0.175,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc2",
+      "delta_ppl": 0.19,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc3",
+      "delta_ppl": 0.205,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc4",
+      "delta_ppl": 0.22,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc5",
+      "delta_ppl": 0.235,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc6",
+      "delta_ppl": 0.25,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc7",
+      "delta_ppl": 0.265,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc8",
+      "delta_ppl": 0.28,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc9",
+      "delta_ppl": 0.295,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc10",
+      "delta_ppl": 0.31,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc11",
+      "delta_ppl": 0.325,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc12",
+      "delta_ppl": 0.175,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc13",
+      "delta_ppl": 0.19,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc14",
+      "delta_ppl": 0.205,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc15",
+      "delta_ppl": 0.22,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc16",
+      "delta_ppl": 0.235,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc17",
+      "delta_ppl": 0.25,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc18",
+      "delta_ppl": 0.265,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc19",
+      "delta_ppl": 0.28,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc20",
+      "delta_ppl": 0.295,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc21",
+      "delta_ppl": 0.31,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc22",
+      "delta_ppl": 0.325,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc23",
+      "delta_ppl": 0.175,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc24",
+      "delta_ppl": 0.19,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc25",
+      "delta_ppl": 0.205,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc26",
+      "delta_ppl": 0.22,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc27",
+      "delta_ppl": 0.235,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc28",
+      "delta_ppl": 0.25,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc29",
+      "delta_ppl": 0.265,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc30",
+      "delta_ppl": 0.28,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc31",
+      "delta_ppl": 0.295,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc32",
+      "delta_ppl": 0.31,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc33",
+      "delta_ppl": 0.325,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc34",
+      "delta_ppl": 0.175,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc35",
+      "delta_ppl": 0.19,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc36",
+      "delta_ppl": 0.205,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc37",
+      "delta_ppl": 0.22,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc38",
+      "delta_ppl": 0.235,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc39",
+      "delta_ppl": 0.25,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc40",
+      "delta_ppl": 0.265,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc41",
+      "delta_ppl": 0.28,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc42",
+      "delta_ppl": 0.295,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc43",
+      "delta_ppl": 0.31,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc44",
+      "delta_ppl": 0.325,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc45",
+      "delta_ppl": 0.175,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc46",
+      "delta_ppl": 0.19,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc47",
+      "delta_ppl": 0.205,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc48",
+      "delta_ppl": 0.22,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc49",
+      "delta_ppl": 0.235,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc50",
+      "delta_ppl": 0.25,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc51",
+      "delta_ppl": 0.265,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc52",
+      "delta_ppl": 0.28,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc53",
+      "delta_ppl": 0.295,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc54",
+      "delta_ppl": 0.31,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc55",
+      "delta_ppl": 0.325,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc56",
+      "delta_ppl": 0.175,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc57",
+      "delta_ppl": 0.19,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc58",
+      "delta_ppl": 0.205,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc59",
+      "delta_ppl": 0.22,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc60",
+      "delta_ppl": 0.235,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc61",
+      "delta_ppl": 0.25,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc62",
+      "delta_ppl": 0.265,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc63",
+      "delta_ppl": 0.28,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc64",
+      "delta_ppl": 0.295,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc65",
+      "delta_ppl": 0.31,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc66",
+      "delta_ppl": 0.325,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc67",
+      "delta_ppl": 0.175,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc68",
+      "delta_ppl": 0.19,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc69",
+      "delta_ppl": 0.205,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc70",
+      "delta_ppl": 0.22,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc71",
+      "delta_ppl": 0.235,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc72",
+      "delta_ppl": 0.25,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc73",
+      "delta_ppl": 0.265,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc74",
+      "delta_ppl": 0.28,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc75",
+      "delta_ppl": 0.295,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc76",
+      "delta_ppl": 0.31,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc77",
+      "delta_ppl": 0.325,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc78",
+      "delta_ppl": 0.175,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc79",
+      "delta_ppl": 0.19,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc80",
+      "delta_ppl": 0.205,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc81",
+      "delta_ppl": 0.22,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc82",
+      "delta_ppl": 0.235,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc83",
+      "delta_ppl": 0.25,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc84",
+      "delta_ppl": 0.265,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc85",
+      "delta_ppl": 0.28,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc86",
+      "delta_ppl": 0.295,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc87",
+      "delta_ppl": 0.31,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc88",
+      "delta_ppl": 0.325,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc89",
+      "delta_ppl": 0.175,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc90",
+      "delta_ppl": 0.19,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc91",
+      "delta_ppl": 0.205,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc92",
+      "delta_ppl": 0.22,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc93",
+      "delta_ppl": 0.235,
+      "agreement": 0.959
+    },
+    {
+      "id": "doc94",
+      "delta_ppl": 0.25,
+      "agreement": 0.962
+    },
+    {
+      "id": "doc95",
+      "delta_ppl": 0.265,
+      "agreement": 0.965
+    },
+    {
+      "id": "doc96",
+      "delta_ppl": 0.28,
+      "agreement": 0.968
+    },
+    {
+      "id": "doc97",
+      "delta_ppl": 0.295,
+      "agreement": 0.971
+    },
+    {
+      "id": "doc98",
+      "delta_ppl": 0.31,
+      "agreement": 0.974
+    },
+    {
+      "id": "doc99",
+      "delta_ppl": 0.325,
+      "agreement": 0.956
+    },
+    {
+      "id": "doc100",
+      "delta_ppl": 0.175,
+      "agreement": 0.959
+    }
+  ]
+}
