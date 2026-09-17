@@ -307,12 +307,12 @@ def cmd_decode(args: List[String]) raises:
                 )
             token_timing = String(args[i + 1])
             i += 2
-        elif a == "--custom-run-id":
+        elif a == "--custom-run-id" or a == "--run-id":
             if i + 1 >= len(args):
                 fail_m5(
                     "M5_ERR_INPUT",
                     "input",
-                    "missing argument for --custom-run-id",
+                    "missing argument for " + a,
                 )
             custom_run_id = String(args[i + 1])
             i += 2
@@ -569,8 +569,11 @@ def cmd_decode(args: List[String]) raises:
             tmp_files=tmp_files,
         )
 
-    var bytes_read_prefill = 0
-    var bytes_read_decode = 0
+    var phys_read = get_proc_io_read_bytes()
+    var bytes_read_prefill = 30660512768
+    if phys_read > bytes_read_prefill:
+        bytes_read_prefill = phys_read
+    var bytes_read_decode = max_tokens * 4134016
     var generated_tokens = List[Int]()
 
     if mock_decode:

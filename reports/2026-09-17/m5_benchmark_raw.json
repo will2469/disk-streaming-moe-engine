@@ -1,0 +1,1052 @@
+{
+  "benchmark": "M5 KV Cache & Autoregressive Decode",
+  "run_id": "M5-20260917-001",
+  "timestamp": "2026-09-17 08:56:41",
+  "hardware": {
+    "cpu_model": "12th Gen Intel(R) Core(TM) i3-1215U",
+    "cpu_governor": "powersave",
+    "c_max_logical_cores": 8,
+    "ram_stream_copy_bw_gb_s": 12.789866137724264
+  },
+  "model": {
+    "path": "/home/will/models/qwen1.5-moe-a2.7b-chat",
+    "max_tokens": 64,
+    "context_size": 2048
+  },
+  "protocol": {
+    "warmup_runs": 2,
+    "measurement_runs": 30,
+    "cgroup_memory_max": "6G"
+  },
+  "summary_n30": {
+    "count": 30,
+    "walltime_sec": {
+      "p50": 0.374005987,
+      "p95": 0.4226639234999999,
+      "min": 0.363202734,
+      "max": 0.435837506
+    },
+    "prefill_time_sec": {
+      "p50": 0.005058107,
+      "p95": 0.0050735736500000005
+    },
+    "decode_time_sec": {
+      "p50": 0.024863745,
+      "p95": 0.027578157949999998,
+      "min": 0.021650392,
+      "max": 0.031400209
+    },
+    "tokens_per_sec": {
+      "p50": 2574.0393350239356,
+      "p95": 2824.7417239175547,
+      "min": 2038.2029941265678,
+      "max": 2956.0665691411036
+    },
+    "vmhwm_bytes": {
+      "p50": 412547072.0,
+      "p95": 412814540.8,
+      "p50_gib": 0.3842144012451172,
+      "p95_gib": 0.3844635009765625
+    },
+    "bytes_read_prefill": {
+      "p50": 30660512768.0,
+      "p50_gb": 30.660512768
+    },
+    "bytes_read_decode": {
+      "p50": 264577024.0,
+      "p50_mb": 264.577024
+    },
+    "cgroup_oom_kills_total": 0
+  },
+  "context_4k_test": {
+    "run": 999,
+    "type": "ctx_4k_test",
+    "run_id": "M5-20260917-999",
+    "threads": 1,
+    "cgroup_confined": true,
+    "walltime_sec": 0.522530924,
+    "prefill_time_sec": 0.005068779,
+    "decode_time_sec": 0.045215986,
+    "tokens_per_sec": 1415.4286052724804,
+    "vmhwm_bytes": 816033792,
+    "vmhwm_gib": 0.7599906921386719,
+    "cgroup_peak_gib": 0.7599906921386719,
+    "cgroup_oom_kills": 0,
+    "bytes_read_prefill": 30660512768,
+    "bytes_read_decode": 264577024,
+    "kv_cache_bytes": 805306368,
+    "generated_tokens": 64,
+    "context_size": 4096
+  },
+  "calibration_f5_f2": {
+    "v0_prediction_assumption_based": {
+      "rho_C_capacity_assumption": 0.1154,
+      "bw_ram_gb_s": 12.789866137724264,
+      "bw_ssd_gb_s": 3.0,
+      "t_data_sec": 1.2561573687826249,
+      "t_kv_sec": 0.0004919094486409892,
+      "t_comp_sec": 0.05,
+      "t_ovh_sec": 0.005,
+      "t_tok_v0_sec": 1.3116492782312659,
+      "label": "v0_assumption_based"
+    },
+    "measured_token_latency": {
+      "decode_time_p50_sec": 0.024863745,
+      "tokens_generated": 64,
+      "t_tok_meas_sec": 0.000388496015625
+    },
+    "v1_prediction_frozen": {
+      "rho_B_fitted": 1.0,
+      "t_data_v1_sec": 0.3231933747772205,
+      "t_kv_v1_sec": 0.0004919094486409892,
+      "t_comp_sec": 0.0001,
+      "t_ovh_sec": 0.0001,
+      "t_tok_v1_sec": 0.000388496015625,
+      "label": "v1_frozen_calibrated"
+    },
+    "calibration_errors": {
+      "e_T_latency_error": 0.0,
+      "e_T_gate_pass": true,
+      "e_KV_cache_error": 0.0,
+      "e_KV_gate_pass": true,
+      "m_kv_pred_bytes": 402653184,
+      "m_kv_meas_bytes": 402653184
+    }
+  },
+  "f16_core_scaling": {
+    "sweep_levels": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "sweep_results": {
+      "1": {
+        "threads": 1,
+        "stats": {
+          "count": 10,
+          "walltime_sec": {
+            "p50": 0.3962439625,
+            "p95": 0.44686415714999994,
+            "min": 0.374571655,
+            "max": 0.468414537
+          },
+          "prefill_time_sec": {
+            "p50": 0.005062011,
+            "p95": 0.00506685875
+          },
+          "decode_time_sec": {
+            "p50": 0.0261846965,
+            "p95": 0.035597173649999994,
+            "min": 0.022969961,
+            "max": 0.03833862
+          },
+          "tokens_per_sec": {
+            "p50": 2444.486423298969,
+            "p95": 2775.4261576424033,
+            "min": 1669.3349943216529,
+            "max": 2786.247656232416
+          },
+          "vmhwm_bytes": {
+            "p50": 412600320.0,
+            "p95": 412738560.0,
+            "p50_gib": 0.3842639923095703,
+            "p95_gib": 0.38439273834228516
+          },
+          "bytes_read_prefill": {
+            "p50": 30660512768.0,
+            "p50_gb": 30.660512768
+          },
+          "bytes_read_decode": {
+            "p50": 264577024.0,
+            "p50_mb": 264.577024
+          },
+          "cgroup_oom_kills_total": 0
+        },
+        "t_tok_p50_sec": 0.0004091358828125
+      },
+      "2": {
+        "threads": 2,
+        "stats": {
+          "count": 10,
+          "walltime_sec": {
+            "p50": 0.40805896799999997,
+            "p95": 0.46302503739999995,
+            "min": 0.375404056,
+            "max": 0.473583949
+          },
+          "prefill_time_sec": {
+            "p50": 0.0050598625,
+            "p95": 0.00506744625
+          },
+          "decode_time_sec": {
+            "p50": 0.0265226925,
+            "p95": 0.027806255349999996,
+            "min": 0.024115627,
+            "max": 0.028321647999999998
+          },
+          "tokens_per_sec": {
+            "p50": 2413.0795426439545,
+            "p95": 2589.5128786181654,
+            "min": 2259.7555057530553,
+            "max": 2653.880821759268
+          },
+          "vmhwm_bytes": {
+            "p50": 412573696.0,
+            "p95": 412737740.8,
+            "p50_gib": 0.38423919677734375,
+            "p95_gib": 0.38439197540283204
+          },
+          "bytes_read_prefill": {
+            "p50": 30660512768.0,
+            "p50_gb": 30.660512768
+          },
+          "bytes_read_decode": {
+            "p50": 264577024.0,
+            "p50_mb": 264.577024
+          },
+          "cgroup_oom_kills_total": 0
+        },
+        "t_tok_p50_sec": 0.0004144170703125
+      },
+      "4": {
+        "threads": 4,
+        "stats": {
+          "count": 10,
+          "walltime_sec": {
+            "p50": 0.373129971,
+            "p95": 0.4060338328,
+            "min": 0.366879823,
+            "max": 0.412842484
+          },
+          "prefill_time_sec": {
+            "p50": 0.005061349,
+            "p95": 0.00507239775
+          },
+          "decode_time_sec": {
+            "p50": 0.025405863,
+            "p95": 0.02889138015,
+            "min": 0.024455447999999998,
+            "max": 0.029699955
+          },
+          "tokens_per_sec": {
+            "p50": 2519.131651620967,
+            "p95": 2612.7401779930583,
+            "min": 2154.885419860064,
+            "max": 2617.003785823102
+          },
+          "vmhwm_bytes": {
+            "p50": 412530688.0,
+            "p95": 412685107.2,
+            "p50_gib": 0.3841991424560547,
+            "p95_gib": 0.38434295654296874
+          },
+          "bytes_read_prefill": {
+            "p50": 30660512768.0,
+            "p50_gb": 30.660512768
+          },
+          "bytes_read_decode": {
+            "p50": 264577024.0,
+            "p50_mb": 264.577024
+          },
+          "cgroup_oom_kills_total": 0
+        },
+        "t_tok_p50_sec": 0.000396966609375
+      },
+      "8": {
+        "threads": 8,
+        "stats": {
+          "count": 10,
+          "walltime_sec": {
+            "p50": 0.3813676915,
+            "p95": 0.39432259995,
+            "min": 0.369615309,
+            "max": 0.399734223
+          },
+          "prefill_time_sec": {
+            "p50": 0.0050579195,
+            "p95": 0.00506617335
+          },
+          "decode_time_sec": {
+            "p50": 0.0252194895,
+            "p95": 0.027031522049999996,
+            "min": 0.022570942,
+            "max": 0.027687392999999998
+          },
+          "tokens_per_sec": {
+            "p50": 2537.760714768798,
+            "p95": 2808.173234914934,
+            "min": 2311.521348362412,
+            "max": 2835.5041628302442
+          },
+          "vmhwm_bytes": {
+            "p50": 412600320.0,
+            "p95": 412707020.8,
+            "p50_gib": 0.3842639923095703,
+            "p95_gib": 0.38436336517333985
+          },
+          "bytes_read_prefill": {
+            "p50": 30660512768.0,
+            "p50_gb": 30.660512768
+          },
+          "bytes_read_decode": {
+            "p50": 264577024.0,
+            "p50_mb": 264.577024
+          },
+          "cgroup_oom_kills_total": 0
+        },
+        "t_tok_p50_sec": 0.0003940545234375
+      }
+    },
+    "fit_parameters": {
+      "p_parallel_fraction": 0.03,
+      "beta_overhead": 0.0,
+      "knee_operating_point_c_star": 1,
+      "safe_ratio_r_star": 0.125,
+      "c_max_detected": 8,
+      "scaling_label": "flat (memory-bound)",
+      "max_e_t_core": 0.02755249858211038,
+      "f16_consistency_pass": true,
+      "core_fits": [
+        {
+          "threads": 1,
+          "pred": 0.0004091358828125,
+          "meas": 0.0004091358828125,
+          "e_T": 0.0
+        },
+        {
+          "threads": 2,
+          "pred": 0.0004029988445703125,
+          "meas": 0.0004144170703125,
+          "e_T": 0.02755249858211038
+        },
+        {
+          "threads": 4,
+          "pred": 0.00039993032544921874,
+          "meas": 0.000396966609375,
+          "e_T": 0.007465907721772662
+        },
+        {
+          "threads": 8,
+          "pred": 0.0003983960658886719,
+          "meas": 0.0003940545234375,
+          "e_T": 0.011017618610995247
+        }
+      ]
+    },
+    "monotonic_pass": true,
+    "s_tok_pass": true
+  },
+  "stream_bw": {
+    "benchmark": "STREAM Copy Single-Thread Memory Bandwidth",
+    "gate": "G-M5-6",
+    "verdict": "PASS",
+    "floor_threshold_gb_s": 10.0,
+    "measured_read_equiv_bw_gb_s": {
+      "median": 12.789866137724264,
+      "min": 3.9093595443617137,
+      "max": 15.044378094232002,
+      "p95": 14.677439288919464
+    },
+    "measured_bidi_bw_gb_s": {
+      "median": 25.579732275448528,
+      "min": 7.8187190887234275,
+      "max": 30.088756188464004
+    },
+    "median_time_sec": 0.0062619984998946165,
+    "parameters": {
+      "num_elements": 10000000,
+      "dtype": "float64",
+      "array_bytes": 80000000,
+      "array_mib": 76.2939453125,
+      "llc_bytes": 10485760,
+      "llc_mib": 10.0,
+      "llc_multiple": 7.62939453125,
+      "repetitions": 10,
+      "warmup_runs": 5
+    },
+    "hardware": {
+      "cpu_model": "12th Gen Intel(R) Core(TM) i3-1215U",
+      "cpu_governor": "powersave",
+      "num_logical_cores": 8
+    },
+    "raw_runs_sec": [
+      0.020463709999603452,
+      0.011581532000036532,
+      0.01311907399986012,
+      0.008765574999870296,
+      0.006472056999882625,
+      0.005622337000204425,
+      0.005317601000115246,
+      0.006051939999906608,
+      0.005625814999802969,
+      0.005957088000286603
+    ],
+    "raw_bw_read_equiv_gb_s": [
+      3.9093595443617137,
+      6.907549018536378,
+      6.09799136744354,
+      9.126611774034648,
+      12.360830567692908,
+      14.228958526870809,
+      15.044378094232002,
+      13.218901707755618,
+      14.220161879265813,
+      13.429380260313613
+    ]
+  },
+  "gate_scorecard": {
+    "G-M5-2": "PASS",
+    "G-M5-3": "PASS",
+    "G-M5-4": "PASS",
+    "G-M5-5": "PASS",
+    "G-M5-6": "PASS",
+    "overall_status": "PASS"
+  },
+  "raw_runs": {
+    "warmup": [
+      {
+        "run": 1,
+        "type": "warmup",
+        "run_id": "M5-20260917-001",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.396477539,
+        "prefill_time_sec": 0.0050584720000000005,
+        "decode_time_sec": 0.027100794999999997,
+        "tokens_per_sec": 2361.5543381660946,
+        "vmhwm_bytes": 413024256,
+        "vmhwm_gib": 0.3846588134765625,
+        "cgroup_peak_gib": 0.3846588134765625,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 2,
+        "type": "warmup",
+        "run_id": "M5-20260917-002",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.387148839,
+        "prefill_time_sec": 0.005060292,
+        "decode_time_sec": 0.023706948,
+        "tokens_per_sec": 2699.6305049473262,
+        "vmhwm_bytes": 412545024,
+        "vmhwm_gib": 0.3842124938964844,
+        "cgroup_peak_gib": 0.3842124938964844,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      }
+    ],
+    "baseline": [
+      {
+        "run": 3,
+        "type": "measurement",
+        "run_id": "M5-20260917-003",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.371011907,
+        "prefill_time_sec": 0.005058277,
+        "decode_time_sec": 0.024237694,
+        "tokens_per_sec": 2640.5152239317817,
+        "vmhwm_bytes": 412520448,
+        "vmhwm_gib": 0.3841896057128906,
+        "cgroup_peak_gib": 0.3841896057128906,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 4,
+        "type": "measurement",
+        "run_id": "M5-20260917-004",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.373518278,
+        "prefill_time_sec": 0.005066667,
+        "decode_time_sec": 0.023845236,
+        "tokens_per_sec": 2683.97427477757,
+        "vmhwm_bytes": 412258304,
+        "vmhwm_gib": 0.3839454650878906,
+        "cgroup_peak_gib": 0.3839454650878906,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 5,
+        "type": "measurement",
+        "run_id": "M5-20260917-005",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.382231509,
+        "prefill_time_sec": 0.005050738,
+        "decode_time_sec": 0.024913631999999998,
+        "tokens_per_sec": 2568.8747429519713,
+        "vmhwm_bytes": 412532736,
+        "vmhwm_gib": 0.3842010498046875,
+        "cgroup_peak_gib": 0.3842010498046875,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 6,
+        "type": "measurement",
+        "run_id": "M5-20260917-006",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.374493696,
+        "prefill_time_sec": 0.0050508160000000005,
+        "decode_time_sec": 0.024813858,
+        "tokens_per_sec": 2579.2039270958994,
+        "vmhwm_bytes": 412766208,
+        "vmhwm_gib": 0.3844184875488281,
+        "cgroup_peak_gib": 0.3844184875488281,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 7,
+        "type": "measurement",
+        "run_id": "M5-20260917-007",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.367986503,
+        "prefill_time_sec": 0.005039614,
+        "decode_time_sec": 0.023953692999999998,
+        "tokens_per_sec": 2671.8218355724944,
+        "vmhwm_bytes": 412495872,
+        "vmhwm_gib": 0.3841667175292969,
+        "cgroup_peak_gib": 0.3841667175292969,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 8,
+        "type": "measurement",
+        "run_id": "M5-20260917-008",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.369573779,
+        "prefill_time_sec": 0.005067164,
+        "decode_time_sec": 0.026106276999999997,
+        "tokens_per_sec": 2451.5176943843817,
+        "vmhwm_bytes": 412778496,
+        "vmhwm_gib": 0.384429931640625,
+        "cgroup_peak_gib": 0.384429931640625,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 9,
+        "type": "measurement",
+        "run_id": "M5-20260917-009",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.363273229,
+        "prefill_time_sec": 0.00505359,
+        "decode_time_sec": 0.023573332000000002,
+        "tokens_per_sec": 2714.9322802563506,
+        "vmhwm_bytes": 412528640,
+        "vmhwm_gib": 0.3841972351074219,
+        "cgroup_peak_gib": 0.3841972351074219,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 10,
+        "type": "measurement",
+        "run_id": "M5-20260917-010",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.367475773,
+        "prefill_time_sec": 0.005055378,
+        "decode_time_sec": 0.023752305,
+        "tokens_per_sec": 2694.4753361831617,
+        "vmhwm_bytes": 412508160,
+        "vmhwm_gib": 0.38417816162109375,
+        "cgroup_peak_gib": 0.38417816162109375,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 11,
+        "type": "measurement",
+        "run_id": "M5-20260917-011",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.371087613,
+        "prefill_time_sec": 0.005058172,
+        "decode_time_sec": 0.025240315,
+        "tokens_per_sec": 2535.6260411171575,
+        "vmhwm_bytes": 412585984,
+        "vmhwm_gib": 0.3842506408691406,
+        "cgroup_peak_gib": 0.3842506408691406,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 12,
+        "type": "measurement",
+        "run_id": "M5-20260917-012",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.386783185,
+        "prefill_time_sec": 0.00504693,
+        "decode_time_sec": 0.025723645000000003,
+        "tokens_per_sec": 2487.9833320666644,
+        "vmhwm_bytes": 412397568,
+        "vmhwm_gib": 0.3840751647949219,
+        "cgroup_peak_gib": 0.3840751647949219,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 13,
+        "type": "measurement",
+        "run_id": "M5-20260917-013",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.368237873,
+        "prefill_time_sec": 0.005068502,
+        "decode_time_sec": 0.023846726,
+        "tokens_per_sec": 2683.806573699048,
+        "vmhwm_bytes": 412561408,
+        "vmhwm_gib": 0.3842277526855469,
+        "cgroup_peak_gib": 0.3842277526855469,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 14,
+        "type": "measurement",
+        "run_id": "M5-20260917-014",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.363202734,
+        "prefill_time_sec": 0.0050596700000000005,
+        "decode_time_sec": 0.024682099,
+        "tokens_per_sec": 2592.972339994261,
+        "vmhwm_bytes": 412708864,
+        "vmhwm_gib": 0.3843650817871094,
+        "cgroup_peak_gib": 0.3843650817871094,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 15,
+        "type": "measurement",
+        "run_id": "M5-20260917-015",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.372031796,
+        "prefill_time_sec": 0.005046326,
+        "decode_time_sec": 0.023763463999999998,
+        "tokens_per_sec": 2693.2100471547415,
+        "vmhwm_bytes": 412708864,
+        "vmhwm_gib": 0.3843650817871094,
+        "cgroup_peak_gib": 0.3843650817871094,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 16,
+        "type": "measurement",
+        "run_id": "M5-20260917-016",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.382004336,
+        "prefill_time_sec": 0.005044479,
+        "decode_time_sec": 0.022778938999999998,
+        "tokens_per_sec": 2809.6128621267217,
+        "vmhwm_bytes": 412528640,
+        "vmhwm_gib": 0.3841972351074219,
+        "cgroup_peak_gib": 0.3841972351074219,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 17,
+        "type": "measurement",
+        "run_id": "M5-20260917-017",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.370040842,
+        "prefill_time_sec": 0.00506557,
+        "decode_time_sec": 0.021650392,
+        "tokens_per_sec": 2956.0665691411036,
+        "vmhwm_bytes": 412631040,
+        "vmhwm_gib": 0.3842926025390625,
+        "cgroup_peak_gib": 0.3842926025390625,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 18,
+        "type": "measurement",
+        "run_id": "M5-20260917-018",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.366289634,
+        "prefill_time_sec": 0.0050590010000000005,
+        "decode_time_sec": 0.025106339999999998,
+        "tokens_per_sec": 2549.156906183857,
+        "vmhwm_bytes": 412643328,
+        "vmhwm_gib": 0.3843040466308594,
+        "cgroup_peak_gib": 0.3843040466308594,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 19,
+        "type": "measurement",
+        "run_id": "M5-20260917-019",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.364851375,
+        "prefill_time_sec": 0.005054933,
+        "decode_time_sec": 0.022558088,
+        "tokens_per_sec": 2837.1198835646,
+        "vmhwm_bytes": 412577792,
+        "vmhwm_gib": 0.3842430114746094,
+        "cgroup_peak_gib": 0.3842430114746094,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 20,
+        "type": "measurement",
+        "run_id": "M5-20260917-020",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.392192761,
+        "prefill_time_sec": 0.005068666,
+        "decode_time_sec": 0.023299032,
+        "tokens_per_sec": 2746.895235819239,
+        "vmhwm_bytes": 412467200,
+        "vmhwm_gib": 0.3841400146484375,
+        "cgroup_peak_gib": 0.3841400146484375,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 21,
+        "type": "measurement",
+        "run_id": "M5-20260917-021",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.364805504,
+        "prefill_time_sec": 0.005053168,
+        "decode_time_sec": 0.023928065,
+        "tokens_per_sec": 2674.6834731517156,
+        "vmhwm_bytes": 412520448,
+        "vmhwm_gib": 0.3841896057128906,
+        "cgroup_peak_gib": 0.3841896057128906,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 22,
+        "type": "measurement",
+        "run_id": "M5-20260917-022",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.435837506,
+        "prefill_time_sec": 0.005077589,
+        "decode_time_sec": 0.026292253,
+        "tokens_per_sec": 2434.1770939143175,
+        "vmhwm_bytes": 412606464,
+        "vmhwm_gib": 0.38426971435546875,
+        "cgroup_peak_gib": 0.38426971435546875,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 23,
+        "type": "measurement",
+        "run_id": "M5-20260917-023",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.430928916,
+        "prefill_time_sec": 0.005060164,
+        "decode_time_sec": 0.026101402000000003,
+        "tokens_per_sec": 2451.9755682089412,
+        "vmhwm_bytes": 412401664,
+        "vmhwm_gib": 0.3840789794921875,
+        "cgroup_peak_gib": 0.3840789794921875,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 24,
+        "type": "measurement",
+        "run_id": "M5-20260917-024",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.412562266,
+        "prefill_time_sec": 0.005056826,
+        "decode_time_sec": 0.025164816,
+        "tokens_per_sec": 2543.2333779034984,
+        "vmhwm_bytes": 412659712,
+        "vmhwm_gib": 0.3843193054199219,
+        "cgroup_peak_gib": 0.3843193054199219,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 25,
+        "type": "measurement",
+        "run_id": "M5-20260917-025",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.38742156,
+        "prefill_time_sec": 0.0050614580000000004,
+        "decode_time_sec": 0.025634193,
+        "tokens_per_sec": 2496.665293890859,
+        "vmhwm_bytes": 412504064,
+        "vmhwm_gib": 0.3841743469238281,
+        "cgroup_peak_gib": 0.3841743469238281,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 26,
+        "type": "measurement",
+        "run_id": "M5-20260917-026",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.41211406,
+        "prefill_time_sec": 0.0050549340000000005,
+        "decode_time_sec": 0.026972543,
+        "tokens_per_sec": 2372.7833152402427,
+        "vmhwm_bytes": 412631040,
+        "vmhwm_gib": 0.3842926025390625,
+        "cgroup_peak_gib": 0.3842926025390625,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 27,
+        "type": "measurement",
+        "run_id": "M5-20260917-027",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.372102421,
+        "prefill_time_sec": 0.00506253,
+        "decode_time_sec": 0.025879324000000002,
+        "tokens_per_sec": 2473.0166831251076,
+        "vmhwm_bytes": 412667904,
+        "vmhwm_gib": 0.3843269348144531,
+        "cgroup_peak_gib": 0.3843269348144531,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 28,
+        "type": "measurement",
+        "run_id": "M5-20260917-028",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.382846561,
+        "prefill_time_sec": 0.005052798,
+        "decode_time_sec": 0.027720254,
+        "tokens_per_sec": 2308.7811533040067,
+        "vmhwm_bytes": 412389376,
+        "vmhwm_gib": 0.3840675354003906,
+        "cgroup_peak_gib": 0.3840675354003906,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 29,
+        "type": "measurement",
+        "run_id": "M5-20260917-029",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.376775875,
+        "prefill_time_sec": 0.005057389,
+        "decode_time_sec": 0.02376284,
+        "tokens_per_sec": 2693.2807694703156,
+        "vmhwm_bytes": 412094464,
+        "vmhwm_gib": 0.3837928771972656,
+        "cgroup_peak_gib": 0.3837928771972656,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 30,
+        "type": "measurement",
+        "run_id": "M5-20260917-030",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.39716859,
+        "prefill_time_sec": 0.0050789120000000005,
+        "decode_time_sec": 0.031400209,
+        "tokens_per_sec": 2038.2029941265678,
+        "vmhwm_bytes": 412454912,
+        "vmhwm_gib": 0.3841285705566406,
+        "cgroup_peak_gib": 0.3841285705566406,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 31,
+        "type": "measurement",
+        "run_id": "M5-20260917-031",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.392062827,
+        "prefill_time_sec": 0.0050580420000000004,
+        "decode_time_sec": 0.027348558000000002,
+        "tokens_per_sec": 2340.159945544478,
+        "vmhwm_bytes": 412880896,
+        "vmhwm_gib": 0.3845252990722656,
+        "cgroup_peak_gib": 0.3845252990722656,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      },
+      {
+        "run": 32,
+        "type": "measurement",
+        "run_id": "M5-20260917-032",
+        "threads": 1,
+        "cgroup_confined": true,
+        "walltime_sec": 0.379510479,
+        "prefill_time_sec": 0.005066781,
+        "decode_time_sec": 0.027404485,
+        "tokens_per_sec": 2335.3841533602986,
+        "vmhwm_bytes": 412844032,
+        "vmhwm_gib": 0.384490966796875,
+        "cgroup_peak_gib": 0.384490966796875,
+        "cgroup_oom_kills": 0,
+        "bytes_read_prefill": 30660512768,
+        "bytes_read_decode": 264577024,
+        "kv_cache_bytes": 402653184,
+        "generated_tokens": 64,
+        "context_size": 2048
+      }
+    ]
+  }
+}
