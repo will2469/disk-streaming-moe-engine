@@ -28,14 +28,14 @@ kimo quantize \
   --output-dir <DIR> \
   [--group-size <N>] \
   [--workdir <DIR>] \
-  [--check <QUANT_DIR>]
+  [--check <QUANT_FILE>]
 ```
 
 - `--input-dir`: Direktori checkpoint BF16 (8 shard safetensors + index.json).
 - `--output-dir`: Direktori output untuk file quant 4-bit.
 - `--group-size`: Ukuran grup quant; himpunan izin $G \in \{32, 64, 128, 256\}$, default 128; di luar itu → `M6_ERR_INPUT`.
 - `--workdir`: Direktori kerja untuk temporary files (default: `./work`).
-- `--check`: Mode validasi read-only atas direktori quant yang sudah ada (tanpa menulis output): baca-penuh + verifikasi framing/bounds/q-domain; exit 0 bila valid, `M6_ERR_DEQUANT` (exit 2) bila data invalid, `M6_ERR_VALIDATION` (exit 4) bila struktural mismatch. Tanpa flag ini CLI menulis lalu memvalidasi outputnya sendiri sebelum exit 0.
+- `--check`: Mode validasi read-only atas file bobot terkuantisasi yang sudah ada (misal `quant_model.bin`, `quant_corrupt.bin`, `quant_trunc.bin`), tanpa menulis output baru: verifikasi integritas framing, metadata bounds, dan keabsahan domain kuantisasi $q \in [-7, 7]$; exit 0 bila valid, `M6_ERR_DEQUANT` (exit 2) bila data invalid (misal reserved nibble `0x8`), `M6_ERR_VALIDATION` (exit 4) bila struktural mismatch (misal file terpotong). Tanpa flag ini CLI menulis file output lalu memvalidasi outputnya sendiri sebelum exit 0.
 
 ### Output JSON
 

@@ -89,19 +89,27 @@ Aturan relasi (fail-fast `M7_ERR_ODIRECT_ALIGNMENT` saat init bila dilanggar):
 
 ### Format-vs-Platform Failure Policy (normatif)
 
-Fallback diam-diam memalsukan gate hijau. Maka penyebab `EINVAL` wajib dibedakan
-berdasarkan fase — probe-lah yang memisahkan kemampuan platform dari bug format:
+Fallback diam-diam memalsukan gate hijau. Maka penyebab `EINVAL` wajib dibedakan berdasarkan fase — probe-lah yang memisahkan kemampuan platform dari bug format:
 
 1. **Fase probe** (`EINVAL` saat discovery): platform/path tidak mendukung O_DIRECT → buffered fallback **diizinkan** (satu-satunya kasus fallback yang sah) + warning.
-2. **Scan layout pasca-probe** (startup, sebelum benchmark apa pun): setiap payload M6 (`offset`, `length`) diperiksa terhadap `dio_alignment`; pelanggaran = format inkompatibel → hard fail `M7_ERR_FORMAT_ALIGNMENT`. Tidak ada benchmark yang berjalan.
-3. **Runtime pasca-probe** (`EINVAL` pada read payload): berarti lolos dari scan (bug scan atau TOCTOU) → hard fail `M7_ERR_FORMAT_ALIGNMENT` yang sama. **Fallback dilarang.**
+2. **Kontrak Aligned Physical Span + Staging Buffer (Format M6 v1)**:
+   Format M6 v1 secara eksplisit mendefinisikan layout unaligned (`256B header` + `4B meta_len` + `JSON variable length` + `payload`). Maka offset payload di dalam file (`payload_offset`) tidak diasumsikan kelipatan `dio_alignment`. Reader M7 **DILARANG KERAS** menolak berkas M6 v1 yang unaligned. Sebaliknya, reader M7 mengimplementasikan **translasi physical span selaras + logical slice**:
+   - Hitung batas fisik yang selaras dengan $A = \text{dio\_alignment}$:
+     $$\text{phys\_start} = \lfloor \text{offset} / A \rfloor \times A$$
+     $$\text{phys\_end} = \lceil (\text{offset} + \text{length}) / A \rceil \times A$$
+     $$\text{phys\_len} = \text{phys\_end} - \text{phys\_start}$$
+   - Alokasi buffer staging selaras dengan ukuran $\text{phys\_len}$ (otomatis kelipatan $A$).
+   - Baca fisik via `pread_o_direct_span(fd, staging_buf, phys_start, phys_len, A)`.
+   - Ekstrak slice logis: `staging_buf[offset - phys_start : offset - phys_start + length]`.
+   - Pelanggaran `M7_ERR_FORMAT_ALIGNMENT` hanya terjadi jika kalkulasi span fisik melanggar batas berkas tanpa penanganan EOF yang sah, atau jika format baru (misal M6 v2 aligned container) yang mengklaim direct zero-copy alignment gagal memenuhi kelipatan `dio_alignment`.
+3. **Runtime pasca-probe** (`EINVAL` pada read physical span): berarti ada kegagalan internal kernel I/O atau hardware alignment fault → hard fail `M7_ERR_FORMAT_ALIGNMENT`. **Fallback dilarang.**
 4. Intinya: fallback hanya untuk kapabilitas platform, **tidak pernah** untuk bug format internal kita sendiri.
 
 ### Block Size
 
 - `--block-size`: granularitas I/O yang diminta (512/4096/8192, default 4096).
 - 4 KB adalah default yang baik untuk NVMe modern, bukan requirement universal.
-- Engine mengalokasi buffer `aligned_alloc(dio_alignment, size)` dan membaca kelipatan `dio_alignment`.
+- Engine mengalokasi buffer dengan `alloc_size = round_up(size, dio_alignment)` dan membaca kelipatan `dio_alignment`.
 
 ### Short Read Handling
 
@@ -112,30 +120,47 @@ TIDAK BOLEH diterbitkan (akan `EINVAL`, dan itu bukan bug format). Maka loop
 naif dilarang; yang normatif adalah baca berbasis span selaras:
 
 ```python
-# Pseudocode: span-based short read loop (O_DIRECT-safe)
+# Pseudocode: span-based read loop & logical slice (O_DIRECT-safe)
 # A = dio_alignment hasil discovery (konteks reader, bukan parameter I/O)
-def pread_o_direct(fd, buffer, offset, length, A, max_span_retries=3):
-    # Prakondisi (sudah divalidasi layout scan): offset % A == 0, length % A == 0
+
+def pread_o_direct_span(fd, buffer, phys_start, phys_len, A, max_span_retries=3):
+    """Membaca span fisik yang DIJAMIN selaras (phys_start % A == 0, phys_len % A == 0)."""
     total_read = 0
     span_retries = 0
-    while total_read < length:
-        n = pread(fd, buffer[total_read:], offset + total_read, length - total_read)
+    while total_read < phys_len:
+        n = pread(fd, buffer[total_read:], phys_start + total_read, phys_len - total_read)
         if n == 0:
             break  # EOF
         if n < 0:
-            return error  # EAGAIN/EINTR → retry; EIO → fail (ENOSPC mustahil di read path; bila muncul → fail kelas-EIO dengan raw errno)
+            return error  # EAGAIN/EINTR -> retry; EIO -> fail (ENOSPC mustahil di read path)
         if n % A != 0:
             # UNEXPECTED short read: sisa tak representable via O_DIRECT.
             # Dilarang menerbitkan read lanjutan misaligned; ulangi SPAN penuh
-            # terbatas, lalu fail eksplisit (bukan fallback diam-diam, dan
-            # bukan M7_ERR_FORMAT_ALIGNMENT — ini artefak short-read, bukan bug format).
+            # terbatas, lalu fail eksplisit (bukan fallback diam-diam).
             if span_retries_exhausted(max_span_retries):
                 return fail(M7_ERR_ODIRECT_SHORT_READ)
             total_read = 0  # ulangi span penuh yang selaras
             span_retries += 1
             continue
-        total_read += n  # sisa tetap selaras → aman lanjut
+        total_read += n  # sisa tetap selaras -> aman lanjut
     return total_read
+
+def read_logical_payload_m6(fd, logical_offset, logical_length, A):
+    """Membaca payload M6 v1 (unaligned) via aligned staging buffer."""
+    phys_start = (logical_offset // A) * A
+    phys_end = ((logical_offset + logical_length + A - 1) // A) * A
+    phys_len = phys_end - phys_start
+
+    # Alokasi staging buffer yang selaras: alloc_size wajib kelipatan A
+    alloc_size = ((phys_len + A - 1) // A) * A
+    staging_buf = aligned_alloc(A, alloc_size)
+
+    bytes_read = pread_o_direct_span(fd, staging_buf, phys_start, phys_len, A)
+    if bytes_read < (logical_offset - phys_start + logical_length):
+        return fail(M7_ERR_UNEXPECTED_EOF)
+
+    slice_offset = logical_offset - phys_start
+    return staging_buf[slice_offset : slice_offset + logical_length]
 ```
 
 Aturan: hanya remainder yang tetap selaras boleh dilanjutkan; remainder tak
@@ -154,9 +179,14 @@ yang diterbitkan dalam keadaan apa pun.
 
 ### Buffer Management
 
-- Buffer allocation: aligned_alloc(dio_alignment, size).
-- Buffer lifetime: allocate before read → free after read.
-- No double allocation untuk satu read operation.
+- **Buffer allocation**:
+  ```c
+  size_t alloc_size = ((logical_size + dio_alignment - 1) / dio_alignment) * dio_alignment;
+  void* buf = aligned_alloc(dio_alignment, alloc_size);
+  ```
+  `alloc_size` **wajib** di-round-up ke kelipatan `dio_alignment` sebelum memanggil `aligned_alloc`, guna mencegah `EINVAL` pada implementasi `aligned_alloc` standar C11/POSIX yang memandatkan parameter `size` harus kelipatan `alignment`.
+- **Buffer lifetime**: allocate before read → free after read (atau reuse pool).
+- **No double allocation** untuk satu read operation.
 
 ### Reader Concurrency Contract (normatif, opsi B)
 
@@ -428,6 +458,7 @@ set -e
   --block-count 100 \
   --queue-depth 1 \
   --file /models/qwen-moe-4bit/quant_model.bin \
+  --offsets-fixture fixtures/m7_io_patterns.json \
   --output /work/trunk_seq_benchmark.json
 
 # Expert-miss (F17b) - sweep QD
@@ -438,6 +469,7 @@ for q in 1 2 4 8 16; do
     --block-count 100 \
     --queue-depth $q \
     --file /models/qwen-moe-4bit/quant_model.bin \
+    --offsets-fixture fixtures/m7_io_patterns.json \
     --output "/work/expert_miss_qd${q}_benchmark.json"
 done
 ```
@@ -483,7 +515,7 @@ Per pattern:
 | Error Code                  | Stage     | Description                     | Handling                           |
 | --------------------------- | --------- | ------------------------------- | ---------------------------------- |
 | `M7_ERR_ODIRECT_ALIGNMENT`  | io_direct | Buffer/offset/length misaligned | Pra-probe: fallback; pasca-probe: hard fail `M7_ERR_FORMAT_ALIGNMENT` |
-| `M7_ERR_FORMAT_ALIGNMENT`   | io_direct | Layout payload M6 langgar `dio_alignment` pasca-probe sukses | Hard fail, fallback DILARANG |
+| `M7_ERR_FORMAT_ALIGNMENT`   | io_direct | Span fisik I/O atau struktur kontainer melanggar `dio_alignment` pasca-probe | Hard fail, fallback DILARANG |
 | `M7_ERR_ODIRECT_SHORT_READ` | io_direct | Short read (incomplete read)    | Remainder selaras → lanjut loop; remainder tak selaras → retry span penuh terbatas → fail (tanpa read misaligned) |
 | `M7_ERR_ODIRECT_ENOSPC`     | io_direct | No space left on device (write path: workdir/artifacts) | Fail (disk full)                   |
 | `M7_ERR_ODIRECT_EIO`        | io_direct | I/O error (disk failure)        | Fail                               |
@@ -532,7 +564,8 @@ kimo decode \
   --o-direct \
   --block-size 4096 \
   --queue-depth 16 \
-  --cache-capacity 512
+  --cache-capacity 512 \
+  --offsets-fixture fixtures/m7_io_patterns.json
 ```
 
 ### Parameters
@@ -541,6 +574,7 @@ kimo decode \
 - `--block-size`: Granularitas I/O yang diminta (default: 4096 bytes = 4 KB); wajib memenuhi relasi terhadap `dio_alignment` (§ DIO Alignment Discovery).
 - `--queue-depth`: Queue depth untuk async I/O (default: 16, sweep {1,2,4,8,16} for G-M7-5). Wajib didukung backend concurrency nyata (§ Reader Concurrency Contract); backend sinkron dilarang mengklaim QD > 1.
 - `--cache-capacity`: LRU cache capacity in MB (default: 512 MB, from config).
+- `--offsets-fixture`: Path ke fixture JSON pola I/O precomputed (`fixtures/m7_io_patterns.json`). Wajib dimuat untuk benchmark guna menjamin determinisme request set antar-run dan lintas sweep queue depth (memvalidasi `offsets_sha256` sebelum eksekusi).
 
 ### Block Size Options
 
@@ -1011,7 +1045,7 @@ kimo decode \
 
 - [ ] O_DIRECT reader terimplementasi dengan triple alignment terhadap `dio_alignment` hasil discovery (buffer, offset, length)
 - [ ] DIO discovery + aligned read probe terimplementasi (open saja tidak cukup); relasi block-size vs alignment divalidasi
-- [ ] Layout scan pasca-probe: payload M6 vs `dio_alignment`, pelanggaran = hard fail `M7_ERR_FORMAT_ALIGNMENT` (tanpa fallback)
+- [ ] Staging buffer & physical span reader: translasi payload unaligned M6 v1 ke aligned physical pread span + logical slice (pelanggaran fisik = hard fail `M7_ERR_FORMAT_ALIGNMENT`)
 - [ ] Short read loop terimplementasi (remainder selaras lanjut; remainder tak selaras → retry span → fail; short read selaras bukan error)
 - [ ] Error handling: EINVAL pra-probe → fallback, EINVAL pasca-probe → hard fail, EAGAIN/EINTR → retry, EIO → fail, ENOSPC write-path → fail
 - [ ] Buffer management: aligned_alloc → submit/completion → free per layer

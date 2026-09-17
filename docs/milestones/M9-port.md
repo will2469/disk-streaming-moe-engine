@@ -39,7 +39,7 @@
 | Router MoE           | 60 expert, top-4             | 256 expert, top-8                            | Parameterisasi top-k (bukan hardcode 4); verifikasi ulang `norm_topk_prob` + sigmoid shared dari config port |
 | Expert inter         | routed 1408 / shared 5632    | routed 512 / shared 512                      | Dimensi dari config, bukan konstanta                                                                         |
 | Vocab / head         | 151.936                      | 248.320 padded                               | `lm_head` resize; tolak mismatch (exit 3); $W_{res}$ → target ≤1 GiB via quant                               |
-| KV cache             | F2 $L_{att}$=24, $H_{kv}$=16 | F2 $L_{att}$=10, $H_{kv}$=2 (5 KiB/tok)      | Alokasi dari config ($L_{att}$ = cacah layer bertipe attention)                                              |
+| KV cache             | F2 $L_{att}$=24, $H_{kv}$=16 | F2 $L_{att}$=10, $H_{kv}$=2, BF16 (10 KiB/tok = 10.240 B/tok) | Alokasi dari config ($L_{att}$ = cacah layer bertipe attention)                                              |
 | Bobot streaming      | 8 shard BF16 28,63 GB        | 26 shard BF16 71,9 GB **atau** GGUF 13–17 GB | Loader ganda (safetensors + GGUF); index/offset map per format; pin revision masing-masing (R7)              |
 
 ### Weight loading (dua jalur, satu kontrak)
@@ -1230,7 +1230,7 @@ systemd-run --scope -p MemoryMax=7.5G \
 
 ```bash
 kimo forward-port \
-  --model-dir /models/qwen3.6-35b-gguf \
+  --model-dir fixtures/m9_synthetic_port \
   --architecture qwen3.6 \
   --tokens fixtures/m9_port_tokens.json \
   --output /work/m9_block_logits.bin \
@@ -1241,7 +1241,10 @@ kimo forward-port \
 
 - GDN state di-update dengan benar setelah 3 GDN layers.
 - KV cache di-update dengan benar setelah 1 GatedAttn layer.
-- Output logits MATCH oracle dengan F10 threshold.
+- Output logits MATCH oracle dengan F10 threshold:
+  ```bash
+  kimo compare fixtures/m9_port_logits_naive.bin /work/m9_block_logits.bin --gate G-M9-1
+  ```
 
 ### Integration GQA + KV Cache
 
@@ -1267,7 +1270,7 @@ kimo forward-port \
 **Verification**:
 
 - G-M9-4 lulus: $e_{KV} \le 5\%$ (measured vs prediksi F2).
-- KV memory ≈ 20 MiB untuk ctx 4K (prediksi 20 MiB).
+- KV memory ≈ 40 MiB untuk ctx 4K (prediksi 40 MiB dengan BF16 $b_{KV}=2\text{ B}$, $2 \times 10 \times 2 \times 128 \times 4.096 \times 2\text{ B} = 41.943.040\text{ B}$).
 - GQA aggregation 16Q → 2KV menghasilkan logits yang benar.
 
 ### Full Pipeline Test
@@ -1413,7 +1416,7 @@ Kontrak rekayasa sistem **DILARANG KERAS** mencampuradukkan encoding biner atau 
 | **Tipe Tensor GGML**             | N/A (Internal engine custom format)                                                                            | `GGML_TYPE_Q3_K` / `GGML_TYPE_IQ3_S`                                                                                            |
 | **Ukuran Blok ($G$)**            | Sub-grup $G = 128$ bobot per skala FP16                                                                        | Super-blok 256 bobot (`QK_K = 256`)                                                                                             |
 | **Encoding Bobot**               | 4-bit signed simetris $[-7, 7]$ (nibble `0b1000` reserved)                                                     | 3-bit packed quants + 6-bit sub-block scales + FP16 super-scale                                                                 |
-| **Bitrate Asimtutik**            | $bpw_{eff} = 4 + 16/128 = \mathbf{4{,}125}$ bpw                                                                | $bpw_{eff} \approx \mathbf{3{,}4375}$ bpw (`Q3_K`) / $\mathbf{3{,}00\text{--}3{,}44}$ bpw (`IQ3`)                               |
+| **Bitrate Asimtutik**            | $bpw_{eff} = 4 + 16/128 = \mathbf{4{,}125}$ bpw                                                                | $bpw_{eff} = \mathbf{3{,}5625}$ bpw (`Q3_K`) / $\mathbf{3{,}4375}$ bpw (`IQ3_S`) / $\mathbf{3{,}0625}$ bpw (`IQ3_XXS`)          |
 | **Formula Rekonstruksi**         | $\hat{w}_j = s_g \cdot q_j$ (F11a)                                                                             | $\hat{w}_j = d \cdot \text{scale}_s \cdot (q_j - 4)$ (GGUF block decoder)                                                       |
 | **Decoder Implementasi**         | M6 custom SIMD unpacker nibble                                                                                 | GGUF block decoder (`dequantize_row_q3_k`, `dequantize_row_iq3`)                                                                |
 | **Model Target & Ukuran Berkas** | Model Trial 14.3B: $14{,}32\text{B} \times 4{,}125 / 8 \approx \mathbf{7{,}385\text{ GB}}$ (`quant_model.bin`) | Model Port 35B: Analitik per-blok tensor GGML via F11b-GGUF ($\approx 13{,}5\text{--}16{,}8\text{ GB}$ sesuai mix `Q3_K_S/M/L`) |
@@ -1440,7 +1443,7 @@ Format Q3_K adalah skema 3-bit k-quants standar GGUF:
   - `d`: FP16 super-block scale (2 bytes).
 - **Effective Bits per Weight**:
   $$bpw_{eff} = \frac{114 \times 8}{256} = 3{,}5625\text{ bits per weight}$$
-  (Dengan representasi sub-scale terpadat pada GGML rata-rata $bpw \approx 3{,}4375$).
+  Formula ukuran blok fisik GGML $114\text{ byte} / 256\text{ bobot}$ adalah **SSOT bitrate** untuk `Q3_K` ($3{,}5625\text{ bpw}$). Nilai $3{,}4375\text{ bpw}$ adalah milik skema `IQ3_S` ($110\text{ byte} / 256\text{ bobot}$), bukan `Q3_K`.
 
 ### Prediksi Ukuran Berkas GGUF Analitik (Formula F11b-GGUF)
 
@@ -1823,7 +1826,7 @@ plus angka performa TBM. Prosedur pengisian angka nyata:
 | Metrik §2.7                    | Sumber ukur              | Gate terkait             |
 | ------------------------------ | ------------------------ | ------------------------ |
 | $W_{res}$ port (target ≤1 GiB) | `du` + VmHWM embed/head  | G-M9-2                   |
-| $M_{KV}$/token (pred 5 KiB)    | log + sampler            | G-M9-4 ($e_{KV}\le5\%$)  |
+| $M_{KV}$/token (pred 10 KiB = 10.240 B) | log + sampler   | G-M9-4 ($e_{KV}\le5\%$)  |
 | $B_{tok}$ decode + $BW_{eff}$  | `/proc/<pid>/io` + timer | G-M9-3 (≥0,5 tok/s cold) |
 | $T_{tok}$, $e_T$ (target ≤20%) | 30 run (§4.4)            | kalibrasi M9             |
 | Ukuran disk aktual (GGUF/BF16) | `du` vs prediksi         | catatan §2.7             |
@@ -1875,16 +1878,16 @@ Contoh: `M9-20250115-001`
 
 ### Performance Metrics
 
-| Metric             | Description             | Target                     |
-| ------------------ | ----------------------- | -------------------------- |
-| `walltime_sec`     | Total wall clock time   | TBM (diukur)               |
-| `vmhwm_bytes`      | Peak memory (VmHWM)     | ≤ 7.5 GiB (G-M9-2)         |
-| `kv_cache_bytes`   | KV cache size           | ≈ 5 KiB/token × seq_len    |
-| `gdn_state_bytes`  | GDN state size          | 30 × dv × dk × 4           |
-| `tokens_per_sec`   | Throughput              | ≥ 0.5 tok/s cold (G-M9-3)  |
-| `kv_tokens_before` | Token KV sebelum decode | = seq_len prefill (G-M9-3) |
-| `kv_tokens_after`  | Token KV sesudah decode | = kv_before + generated    |
-| `recompute_tokens` | Recomputed tokens       | == 0 (wajib keras G-M9-3)  |
+| Metric             | Description             | Target                                          |
+| ------------------ | ----------------------- | ----------------------------------------------- |
+| `walltime_sec`     | Total wall clock time   | TBM (diukur)                                    |
+| `vmhwm_bytes`      | Peak memory (VmHWM)     | ≤ 7.5 GiB (G-M9-2)                              |
+| `kv_cache_bytes`   | KV cache size           | = 10.240 B/token × seq_len (10 KiB/token, BF16) |
+| `gdn_state_bytes`  | GDN state size          | 30 × dv × dk × 4                                |
+| `tokens_per_sec`   | Throughput              | ≥ 0.5 tok/s cold (G-M9-3)                       |
+| `kv_tokens_before` | Token KV sebelum decode | = seq_len prefill (G-M9-3)                      |
+| `kv_tokens_after`  | Token KV sesudah decode | = kv_before + generated                         |
+| `recompute_tokens` | Recomputed tokens       | == 0 (wajib keras G-M9-3)                       |
 
 ### Expected Performance (Port, Entry-Tier NVMe)
 
@@ -1962,34 +1965,34 @@ $$M_{KV}(s) = 2 \cdot L_{att} \cdot H_{kv} \cdot d_h(\text{config}) \cdot s \cdo
 - $H_{kv} = 2$ (GQA: 2 KV heads).
 - $d_h(\text{config}) = \frac{\text{hidden\_size}}{\text{num\_attention\_heads}} = \frac{2048}{16} = 128$ (dihitung dinamis dari config port, terverifikasi dari checkpoint model card [R4] dan Qwen2MoeConfig [R2]).
 - $s$ = sequence length (variabel token aktif).
-- $b_{KV} = 1\text{ B}$ (asumsi representasi byte per elemen terindeks, atau $2\text{ B}$ pada BF16 standar).
+- $b_{KV} = 2\text{ B}$ (BF16, SSOT runtime; sesuai dengan format sesi `KMSS v1` `kv_dtype = 2`).
 
 ### Numerical Calculation
 
 Jumlah elemen:
 $$N_{elem}(s) = 2 \times 10 \times 2 \times 128 \times s = 5,120 \times s \text{ elemen}$$
 
-Untuk konfigurasi referensi $(L_{att}=10, H_{kv}=2, d_h=128, b_{KV}=1\text{ B})$:
-$$M_{KV}(s) = 5,120 \times s \text{ bytes} \implies M_{KV}(1) = \mathbf{5 \text{ KiB/token}}$$
-(Jika disimpan dalam format BF16 dengan $b_{KV}=2\text{ B}$, maka $M_{KV}(1) = 10.240\text{ bytes} = 10\text{ KiB/token}$).
+Untuk konfigurasi referensi $(L_{att}=10, H_{kv}=2, d_h=128, b_{KV}=2\text{ B})$:
+$$M_{KV}(s) = 5,120 \times s \times 2\text{ B} = 10,240 \times s \text{ bytes} \implies M_{KV}(1) = \mathbf{10,240 \text{ bytes}} = \mathbf{10 \text{ KiB/token}}$$
 
 ### Comparison dengan Trial
 
-| Metric    | Trial (MHA)         | Port (GQA)      | Reduction |
-| --------- | ------------------- | --------------- | --------- |
-| $L_{att}$ | 24                  | 10              | 58.3%     |
-| $H_{kv}$  | 16                  | 2               | 87.5%     |
-| Per token | 196,608 B (192 KiB) | 5,120 B (5 KiB) | 97.4%     |
+| Metric    | Trial (MHA, BF16)   | Port (GQA, BF16)     | Reduction |
+| --------- | ------------------- | -------------------- | --------- |
+| $L_{att}$ | 24                  | 10                   | 58.3%     |
+| $H_{kv}$  | 16                  | 2                    | 87.5%     |
+| Per token | 196,608 B (192 KiB) | 10,240 B (10 KiB)    | 94.8%     |
 
 ### Context Length Examples
 
-| Context Length | Trial KV           | Port KV |
-| -------------- | ------------------ | ------- |
-| 1K             | 192 MiB            | 5 MiB   |
-| 4K             | 768 MiB (0.75 GiB) | 20 MiB  |
-| 8K             | 1.5 GiB            | 40 MiB  |
-| 16K            | 3 GiB              | 80 MiB  |
-| 32K            | 6 GiB              | 160 MiB |
+| Context Length | Trial KV (BF16)    | Port KV (BF16) |
+| -------------- | ------------------ | -------------- |
+| 1K             | 192 MiB            | 10 MiB         |
+| 4K             | 768 MiB (0.75 GiB) | 40 MiB         |
+| 8K             | 1.5 GiB            | 80 MiB         |
+| 16K            | 3 GiB              | 160 MiB        |
+| 32K            | 6 GiB              | 320 MiB        |
+| 64K            | 12 GiB             | 640 MiB        |
 
 ### G-M9-4 Verification
 
@@ -2003,33 +2006,33 @@ Mengambil ukuran KV cache dari agregasi memori proses (VmHWM / RSS) adalah metod
 
 ```json
 "kv_cache": {
-  "kv_payload_bytes": 20971520,
-  "kv_allocated_bytes": 25165824,
+  "kv_payload_bytes": 41943040,
+  "kv_allocated_bytes": 44040192,
   "kv_capacity_tokens": 4096,
   "num_attention_layers": 10,
   "num_kv_heads": 2,
   "head_dim": 128,
-  "bytes_per_elem": 1
+  "bytes_per_elem": 2
 }
 ```
 
 1. Run forward port dengan sequence length $s$.
 2. Baca `metrics.kv_cache.kv_payload_bytes` langsung dari JSON output engine ($M_{KV}^{payload}$).
-3. Hitung prediksi teoritis $M_{KV}^{pred} = 2 \cdot L_{att} \cdot H_{kv} \cdot d_h(\text{config}) \cdot s \cdot b_{KV}$.
+3. Hitung prediksi teoritis $M_{KV}^{pred} = 2 \cdot L_{att} \cdot H_{kv} \cdot d_h(\text{config}) \cdot s \cdot b_{KV}$ dengan $b_{KV} = 2$.
 4. Evaluasi deviasi persentase $e_{KV}$.
 5. Telemetri overhead allocator $R_{\text{alloc}} = \text{kv\_allocated\_bytes} / \text{kv\_payload\_bytes}$ dicatat untuk observability fragmentasi memori, tetapi **tidak mendiskualifikasi** formula matematis F2.
 
-**Example for $s=4K$ ($b_{KV}=1\text{ B}$)**:
+**Example for $s=4K$ ($b_{KV}=2\text{ B}$)**:
 
-- Prediksi F2: $2 \times 10 \times 2 \times 128 \times 4.096 \times 1 = 20,971,520$ bytes (~20 MiB).
-- Measured Payload: $20,971,520$ bytes.
-- Error: $|20,971,520 - 20,971,520| / 20,971,520 = 0.00\% \le 5\%$.
+- Prediksi F2: $2 \times 10 \times 2 \times 128 \times 4.096 \times 2 = 41,943,040$ bytes (~40 MiB).
+- Measured Payload: $41,943,040$ bytes.
+- Error: $|41,943,040 - 41,943,040| / 41,943,040 = 0.00\% \le 5\%$.
 - Verdict: **PASS**.
 
 ### Implications
 
-- Port KV cache sangat kecil (5 KiB/token vs 192 KiB/token trial).
-- Memungkinkan context length lebih panjang di RAM 8 GB (32K → 160 MiB KV vs trial 6 GiB @ 32K).
+- Port KV cache sangat hemat (10 KiB/token vs 192 KiB/token trial, reduksi 94.8%).
+- Memungkinkan context length lebih panjang di RAM 8 GB (32K → 320 MiB KV vs trial 6 GiB @ 32K).
 - Bottleneck utama untuk port bukan KV cache, tetapi embedding (vocab 248K) dan weights (35B parameters).
 
 ## DoD (Fase Port)

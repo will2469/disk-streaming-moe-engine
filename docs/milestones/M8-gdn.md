@@ -982,7 +982,7 @@ kimo gdn \
   --layers 30 --dk 128 --dv 128
 ```
 
-Catatan: CLI awal mungkin belum support `--state-input`. Tambahkan di M8 jika continuation diperlukan untuk M9.
+Catatan: `--state-input` dan `--state-output` adalah parameter normatif M8 menggunakan format framed GDNS v1, memastikan kontinuitas state rekuren lintas chunk dan handoff deterministik ke M9.
 
 ### State Serialization Format: Framed GDNS v1 (normatif)
 
