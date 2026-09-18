@@ -35,12 +35,18 @@ Kontrak: setiap klaim "benar / lolos" = (1) rumus + (2) threshold + (3) metode u
 - `milestones/M8-gdn.md` — Gated DeltaNet → G-M8-\*
 - `milestones/M9-port.md` — port Qwen3.6-35B-A3B → G-M9-\*
 
+**Konsolidasi & Produksi:**
+
+- `milestones/M10-dismoen.md` — konsolidasi DISMOEN, unifikasi Qwen 3.6, pembersihan Qwen 1.5 → G-M10-\*
+- `milestones/M11-core-scaling.md` — optimasi tri-pilar (multicore CPU F16, disk I/O streaming F17/F18, skalabilitas RAM F1-F3) → G-M11-\*
+- `milestones/M12-chat-cli.md` — terminal chat CLI interaktif & native server OpenAI-compatible (`dismoen chat` & `dismoen serve`) → G-M12-\*
+
 ### Lampiran
 
 - `appendices/A-calculations.md` — contoh hitung trial
 - `appendices/B-playbook.md` — playbook mismatch
 - `appendices/B1-tooling-contract.md` — kontrak `tools/` Rust/Python
-- `appendices/C-references.md` — R1–R27
+- `appendices/C-references.md` — R1–R30
 - `appendices/D-core-scaling.md` — bukti safe core F16 (Amdahl → Roofline → Tail)
 
 ## Urutan Baca per Peran

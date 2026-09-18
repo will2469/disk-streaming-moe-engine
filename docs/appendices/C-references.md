@@ -14,6 +14,7 @@
 | D. Model performa & tail (R17, R19, R21) | roofline, tail-at-scale, STREAM | F4/F5, §4.4, G-M5-6 |
 | E. Storage / SSD I/O (R22–R27) | O_DIRECT, pread, NVMe queues, readahead, thermal, burst-vs-sustained | F17, M7 |
 | F. Pola engineering & baseline (R6, R11–R13) | pola kimi-k3-in-c, quant/GGUF, MTP, tooling boundary | Arsitektur, M6–M7, B1 |
+| G. Disk streaming & latency hiding (R28–R30) | LLM in a flash, Fiddler, double-buffering latency overlap | F18, M11 |
 
 ## A. Ground truth model
 
@@ -131,3 +132,17 @@
 - **[R13] `kimi-k3-in-c` — Python tooling / reference boundary**
   https://github.com/FareedKhan-dev/kimi-k3-in-c/blob/main/pyproject.toml
   Repository mendeskripsikan paket Python sebagai tooling untuk fixture generation, reference-vs-C conformance, dan cache replay; tokenizer juga dipisahkan dari engine native. [R6]
+
+## G. Disk streaming & latency hiding
+
+- **[R28] Alizadeh et al. (Apple, 2023 / ICLR 2024) — *LLM in a flash: Efficient Large Language Model Inference with Limited Memory***
+  https://arxiv.org/abs/2312.11514
+  Dasar arsitektur inferensi streaming bobot langsung dari flash memory (SSD) ke DRAM terbatas; teknik windowing dan row-column bundling untuk memaksimalkan throughput transfer sequential read, serta overlap komputasi CPU dan transfer flash memory (F18).
+
+- **[R29] Alper et al. (University of Washington, MLSys 2024) — *Fiddler: Efficient Inference of Large Language Models on CPU-GPU Systems with Limited Memory***
+  https://arxiv.org/abs/2402.07033
+  Pola orkestrasi inferensi Mixture-of-Experts (MoE) pada keterbatasan memori; pemisahan eksekusi expert komputasi dan minimasi overhead perpindahan bobot antar-tingkat hierarki penyimpanan.
+
+- **[R30] Hennessy, J.L. & Patterson, D.A. — *Computer Architecture: A Quantitative Approach* (6th Edition)**
+  Morgan Kaufmann, 2017. ISBN: 978-0128119051.
+  Dasar teori hierarki memori, latency hiding, teknik asynchronous ping-pong double-buffering, dan batas analitis efisiensi tumpang tindih I/O dan komputasi (F18).

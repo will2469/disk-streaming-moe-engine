@@ -22,6 +22,7 @@
 | F15 | Predikat validitas struktural safetensors (F15a/b/c; SHA = SEC-1, bukan F15) | `05-security.md` (SEC-1..3)                |
 | F16 | Kurva skala core (rasio, device-agnostic)                                    | M5, M7, benchmark                          |
 | F17 | Pola I/O storage (seq vs expert-size, QD, sustained)                         | M7, benchmark                              |
+| F18 | Asynchronous double-buffering latency overlap & tail stability               | M11, benchmark                             |
 
 ## 3.1 Memori & Streaming
 
@@ -431,3 +432,33 @@ Aturan keras:
 - **Readahead:** hanya berlaku di jalur buffered — advice SEQUENTIAL menggandakan window, RANDOM mematikannya [R25]; di jalur O_DIRECT readahead N/A (bypass page cache) — catat jalur mana yang diukur.
 - **Sustained + suhu:** burst (cache SLC) vs sustained bisa jatuh abrupt [R27]; panas berlebih memicu throttle yang mendegradasi performa belasan persen [R26] — suhu dicatat, run pendek dilarang jadi bukti.
 - $BW_{eff}$ di F5/F13 wajib memakai angka pola yang sesuai (trunk → $BW_{seq}$, expert-miss → $BW_{exp}$), bukan satu angka brosur. Dipakai di `milestones/M7-odirect-lru.md` (G-M7-5).
+
+## 3.9 Asynchronous Double-Buffering & Latency Overlap (F18)
+
+> Fondasi latency hiding pada inferensi disk-streaming memory-bound [R28][R29][R30].
+> Memungkinkan komputasi CPU pada layer $\ell$ tumpang tindih (_overlapped_) dengan pembacaan disk O_DIRECT pada layer $\ell+1$.
+
+**F18a — Model waktu langkah tumpang tindih (Overlapped Step Time):**
+
+Pada eksekusi sekuensial naif (single buffer):
+$$T_{step}^{serial} = T_{IO} + T_{comp}(c)$$
+
+Dengan arsitektur asynchronous double-buffering ping-pong (buffer ganda bergiliran):
+$$T_{step}^{overlap}(c) = \max\left(T_{IO}, \; T_{comp}(c)\right) + \epsilon_{sync}$$
+
+dengan $T_{IO} = B_{tok}/BW_{eff}$ (F5), $T_{comp}(c) = T_1 / S(c)$ (F16a), dan $\epsilon_{sync} \ge 0$ adalah overhead sinkronisasi thread antrean I/O dan semafor worker pool.
+
+Pada rezim decode disk-streaming memory-bound ($I_{decode} \ll I_{ridge}$, F4 [R17][R18]), $T_{IO} > T_{comp}(c)$ terpenuhi pada titik operasi $c^*$, sehingga waktu komputasi CPU tersembunyi (_hidden_) di balik transfer storage:
+$$T_{step}^{overlap}(c^*) \approx T_{IO} + \epsilon_{sync}$$
+
+**F18b — Efisiensi Latency Hiding (Overlap Efficiency):**
+
+$$\mathcal{E}_{overlap}(c) = \frac{(T_{IO} + T_{comp}(c)) - T_{step}^{overlap}(c)}{\min\left(T_{IO}, \; T_{comp}(c)\right)} \times 100\%$$
+
+Target kelayakan gate pada $c^*$: $\mathcal{E}_{overlap}(c^*) \ge 80\%$.
+
+**F18c — Rasio Stabilitas Tail Latency (Tail Ratio):**
+
+$$R_{tail} = \frac{p95}{p50}$$
+
+Sesuai prinsip _The Tail at Scale_ [R19], utilisasi thread tidak boleh memicu saturasi yang merusak distribusi latensi ekor. Target kelayakan stabilitas pada $c^*$: $R_{tail} \le 1{,}35$ dengan toleransi kebisingan $\varepsilon = 5\%$. Dipakai di `milestones/M11-core-scaling.md` (G-M11-2, G-M11-3).
