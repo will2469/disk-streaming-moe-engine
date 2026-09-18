@@ -504,7 +504,7 @@ def validate_runtime_feasibility(
     current_online_cpus: List[Int],
     c_system: Int,
 ) raises:
-    """Menegakkan Invarian Kelayakan Alokasi saat runtime (§2.2):
+    """Menegakkan Invarian Kelayakan Alokasi saat runtime (§2.2).
 
     C_total = c*_system + C_io <= |K_alloc| <= C_online.
     Bila terjadi runtime shrink (mis. CPU hot-unplug), sistem wajib FAIL-FAST
