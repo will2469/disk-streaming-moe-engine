@@ -548,7 +548,7 @@ def parse_model_config(path: String) raises -> Tuple[ModelConfig, Float32]:
         fields, "full_attention_interval", 4
     )
 
-    var attention_bias = False
+    var attention_bias = False if is_qwen36 else True
     if "attention_bias" in fields:
         var ab = fields["attention_bias"]
         if ab == "true":
