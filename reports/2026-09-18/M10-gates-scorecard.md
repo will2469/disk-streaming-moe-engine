@@ -1,8 +1,8 @@
 # Laporan Penutupan Konsolidasi: Milestone M10 & Quality Gates G-M10-1..G-M10-4
 
 > **Milestone**: M10 — Konsolidasi Engine DISMOEN, Single SSOT Lockfile, & Pembersihan Storage
-> **Tanggal Sertifikasi**: 2026-09-18 (2026-09-18T14:42:11Z)
-> **Git Commit**: `1c1c16f`
+> **Tanggal Sertifikasi**: 2026-09-18 (2026-09-18T15:06:25Z)
+> **Git Commit**: `964decb`
 > **Target Arsitektur**: `Qwen3.6-35B-A3B` (40 Blocks: 30 GDN + 10 GatedAttn + MoE 256/8+1)
 > **Model Repository**: `~/models/qwen3.6-35b-a3b` (68.12 GiB BF16, 26 Shards)
 > **Status Sertifikasi**: **[PASS] (Seluruh Gate G-M10-1 s.d. G-M10-4 HIJAU 100%)**

@@ -1,6 +1,6 @@
 # Benchmark Report: Rezim 2 Steady-State Async Overlap (Gate G-M11-2)
 
-- **Date**: 2026-09-18 21:39:34
+- **Date**: 2026-09-18 22:03:51
 - **Host CPU**: `12th Gen Intel(R) Core(TM) i3-1215U`
 - **CPU Governor**: `powersave`
 - **Engine Property $N_{in\_flight}$**: `2` chunks
@@ -12,8 +12,8 @@
 
 | Gate ID | Deskripsi Gate | Target Normatif | Nilai Terukur | Status |
 |---|---|---|---|---|
-| **G-M11-2 (a)** | Bandwidth Invariant $E_{BW}$ (§1.3) | $\le 5.0\%$ | **3.48%** | **PASS** |
-| **G-M11-2 (b)** | Overlap Efficiency $\mathcal{E}_{overlap}$ | $\ge 80.0\%$ | **98.07%** | **PASS** |
+| **G-M11-2 (a)** | Bandwidth Invariant $E_{BW}$ (§1.3) | $\le 5.0\%$ | **1.59%** | **PASS** |
+| **G-M11-2 (b)** | Overlap Efficiency $\mathcal{E}_{overlap}$ | $\ge 80.0\%$ | **80.55%** | **PASS** |
 | **G-M11-2 (c)** | Dedicated I/O Worker & $N_{in\_flight}$ | $N_{in\_flight} \in [2, 4]$ | **2** | **PASS** |
 
 > **Verdict**: **ALL GATES PASS (Gate G-M11-2 HIJAU)**
@@ -24,9 +24,9 @@
 
 | $c$ | $T_{IO}$ (ms) | $T_{comp}(c)$ (ms) | $T_{seq}(c)$ (ms) | $T_{overlap}(c)$ (ms) | $BW_{eff}(c)$ (MB/s) | $\Delta BW$ | $\mathcal{E}_{overlap}(c)$ (%) |
 |---|---|---|---|---|---|---|---|
-| **1** | 9.54 | 17.11 | 26.65 | 14.47 | 2930.9 | 0.00% | **100.00%** |
-| **2** | 9.59 | 7.52 | 17.11 | 9.62 | 2913.9 | 0.58% | **99.58%** |
-| **4** | 9.88 | 5.14 | 15.02 | 9.98 | 2828.9 | 3.48% | **98.07%** |
+| **1** | 10.67 | 12.02 | 22.69 | 14.82 | 2618.6 | 0.00% | **73.72%** |
+| **2** | 10.51 | 6.18 | 16.69 | 10.93 | 2660.1 | 1.59% | **93.09%** |
+| **4** | 10.55 | 4.24 | 14.79 | 11.37 | 2650.5 | 1.22% | **80.55%** |
 
 ---
 
@@ -39,8 +39,8 @@ Efisiensi latency hiding dihitung via Formula F18:
 $$\mathcal{E}_{overlap}(c) = \frac{(T_{IO} + T_{comp}(c)) - T_{step}^{overlap}(c)}{\min(T_{IO}, T_{comp}(c))} \times 100\%$$
 
 Pada titik deploy $c^* = 4$:
-- Komponen I/O: $T_{IO} = 9.88\text{ ms}$
-- Komponen komputasi: $T_{comp}(4) = 5.14\text{ ms}$
-- Waktu langkah terukur: $T_{step}^{overlap} = 9.98\text{ ms}$
-- Efisiensi overlap terukur: **98.07%** (melampaui threshold normatif $80.0\%$).
-- Kestabilan bandwidth membuktikan zero memory bus contention ($E_{BW} = 3.48\% \le 5.00\%$).
+- Komponen I/O: $T_{IO} = 10.55\text{ ms}$
+- Komponen komputasi: $T_{comp}(4) = 4.24\text{ ms}$
+- Waktu langkah terukur: $T_{step}^{overlap} = 11.37\text{ ms}$
+- Efisiensi overlap terukur: **80.55%** (melampaui threshold normatif $80.0\%$).
+- Kestabilan bandwidth membuktikan zero memory bus contention ($E_{BW} = 1.59\% \le 5.00\%$).

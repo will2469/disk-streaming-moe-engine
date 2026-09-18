@@ -104,22 +104,22 @@ def main():
             "   Kurva kalibrasi F16 cocok terhadap data empiris Rezim 1 "
             "($e_{T,core} \\le 20\\%$, $S_{tok} \\ge 1.0$, monotonik "
             "$\\varepsilon = 5\\%$). "
-        ),
-        "Knee komputasi $c^*_{compute}$ terkalibrasi secara empiris, "(
+            "Knee komputasi $c^*_{compute}$ terkalibrasi secara empiris, "
             "dan profil optimal sistem $(c^*_{system}, r^*_{system})$ "
             "disintesis per kondisi "
+            "hardware $(M_{budget}, BW_{eff}, h)$ di `dismoen.hardware.lock` memuat "
+            "10 field spesifikasi resmi."
         ),
-        "hardware $(M_{budget}, BW_{eff}, h)$ di `dismoen.hardware.lock` memuat "
-        "10 field spesifikasi resmi.",
         "2. **Gate G-M11-2 (Async Double-Buffering Overlap Efficiency)**:",
-        "   Pipeline asynchronous double-buffering I/O berbasis POSIX pthread "
-        "independen membuktikan komputasi CPU MoE tersembunyi secara penuh "
-        "di balik I/O streaming storage dengan efisiensi "(
+        (
+            "   Pipeline asynchronous double-buffering I/O berbasis POSIX pthread "
+            "independen membuktikan komputasi CPU MoE tersembunyi secara penuh "
+            "di balik I/O streaming storage dengan efisiensi "
             f"$\\mathcal{{E}}_{{overlap}} = {overlap_pct}\\% \\ge 80\\%$ "
             "pada titik deploy, "
+            f"stabilitas bandwidth $E_{{BW}} = {e_bw_pct}\\% \\le 5\\%$, "
+            "dan properti engine $N_{in\\_flight} \\in [2, 4]$."
         ),
-        f"stabilitas bandwidth $E_{{BW}} = {e_bw_pct}\\% \\le 5\\%$, "
-        "dan properti engine $N_{in\\_flight} \\in [2, 4]$.",
         (
             "3. **Gate G-M11-3 (Tail Latency Project SLO & Dynamic RAM "
             "Budget Adherence)**:"
@@ -133,13 +133,14 @@ def main():
         "\\le 0{{,}}95$ di seluruh tier budget (8, 16, 32, 64 GiB dan host aktif) "
         "secara stabil bebas leak.",
         "4. **Gate G-M11-4 (Determinism & Zero Regression)**:",
-        "   Output logits dan hidden states pada eksekusi multi-core "
-        "$c = c^*_{system}$ dan $c = 4$ terbukti 100% bit-exact terhadap baseline "(
+        (
+            "   Output logits dan hidden states pada eksekusi multi-core "
+            "$c = c^*_{system}$ dan $c = 4$ terbukti 100% bit-exact terhadap baseline "
             "sekuensial $c = 1$ ($\\Delta_{\\max} \\equiv 0{{,}}0$, "
             "tanpa fallback toleransi) "
+            "di bawah kontrak determinisme reduksi tunggal §3.2. Seluruh suite regresi "
+            "historis M8, M9, dan M10 lulus 100% tanpa regresi."
         ),
-        "di bawah kontrak determinisme reduksi tunggal §3.2. Seluruh suite regresi "
-        "historis M8, M9, dan M10 lulus 100% tanpa regresi.",
         "",
         "---",
         "",

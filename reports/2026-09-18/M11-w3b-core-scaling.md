@@ -10,17 +10,17 @@
 
 | $c$ (Threads) | $T_{comp}$ p50 (ms) | $T_{comp}$ p95 (ms) | Speedup $S_{tok}$ | VmHWM (KiB) |
 |:---:|:---:|:---:|:---:|:---:|
-| **1** | 11.24 | 11.42 | 1.00x | 146512 |
-| **2** | 6.75 | 8.32 | 1.66x | 146144 |
-| **4** | 4.17 | 4.80 | 2.70x | 146576 |
-| **7** | 2.75 | 4.59 | 4.09x | 146496 |
+| **1** | 11.44 | 11.76 | 1.00x | 146248 |
+| **2** | 6.10 | 6.56 | 1.87x | 146856 |
+| **4** | 4.35 | 4.59 | 2.63x | 146344 |
+| **7** | 2.57 | 3.48 | 4.45x | 146308 |
 
 ## 2. Fitting F16 Amdahl & Knee $c^*_{compute}$
 
-- $T_1 = 11.7324\text{ ms}$
-- $p = 0.8818$ ($88.18\%$ fraksi paralel)
+- $T_1 = 11.9141\text{ ms}$
+- $p = 0.8912$ ($89.12\%$ fraksi paralel)
 - $\beta = 0.0000\text{ ms/thread}$ (overhead konkurensi)
-- $e_{T,core} = 4.66\%$ (Ambang batas $\le 20\%$)
+- $e_{T,core} = 9.40\%$ (Ambang batas $\le 20\%$)
 - **Knee Komputasi $c^*_{compute} = 7$ threads**
 
 ## 3. Sintesis Profil Sistem G-M11-1(b) (Tri-Pillar)

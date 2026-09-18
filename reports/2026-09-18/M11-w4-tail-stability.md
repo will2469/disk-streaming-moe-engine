@@ -10,37 +10,37 @@
 
 | Metrik | Nilai Empiris (ms) | 95% Bootstrap CI | Keterangan |
 |:---|:---:|:---:|:---|
-| $p50$ (Median) | **11.31** | [11.18, 11.45] | Interpolasi Linear Type 7 |
-| $p90$ | 12.75 | - | Distribusi Ekor |
-| $p95$ | **13.14** | [12.75, 15.57] | Evaluasi Project SLO |
-| $p99$ | 15.62 | - | Ekor Ekstrem |
-| Min / Max | 10.91 / 16.13 | - | Rentang Penuh |
-| Mean (Std) | 11.69 (±0.98) | - | Statistik Agregat |
-| **$R_{tail} = p95/p50$** | **1.1615** | [1.1241, 1.3759] | **Project SLO $\le 1{,}35$** |
+| $p50$ (Median) | **11.21** | [11.18, 11.26] | Interpolasi Linear Type 7 |
+| $p90$ | 11.64 | - | Distribusi Ekor |
+| $p95$ | **12.62** | [11.63, 14.43] | Evaluasi Project SLO |
+| $p99$ | 15.41 | - | Ekor Ekstrem |
+| Min / Max | 10.97 / 15.70 | - | Rentang Penuh |
+| Mean (Std) | 11.43 (±0.78) | - | Statistik Agregat |
+| **$R_{tail} = p95/p50$** | **1.1259** | [1.0380, 1.2843] | **Project SLO $\le 1{,}35$** |
 
 ## 2. Kepatuhan Dynamic RAM Budget ($\mathcal{R}_{RAM} \le 0{,}95$)
 
-- **Puncak Pemakaian Fisik (VmHWM)**: **145460 KiB** (142.05 MiB)
-- **Uji Stabilitas Leak**: Run 1 = 145460 KiB, Run 2 = 146976 KiB (Delta 1.04% $\le 5\%$, ✅ LEAK-FREE)
+- **Puncak Pemakaian Fisik (VmHWM)**: **146536 KiB** (143.10 MiB)
+- **Uji Stabilitas Leak**: Run 1 = 146536 KiB, Run 2 = 145536 KiB (Delta 0.68% $\le 5\%$, ✅ LEAK-FREE)
 
 | Tier RAM Budget | Anggaran $M_{budget}$ | $\mathcal{R}_{RAM} = \text{VmHWM}/M_{budget}$ | Batas Maksimum | Status |
 |:---|:---:|:---:|:---:|:---:|
-| `tier_8gb` | 8.0 GiB | 1.73% | $\le 95\%$ | ✅ PASS |
+| `tier_8gb` | 8.0 GiB | 1.75% | $\le 95\%$ | ✅ PASS |
 | `tier_16gb` | 16.0 GiB | 0.87% | $\le 95\%$ | ✅ PASS |
-| `tier_32gb` | 32.0 GiB | 0.43% | $\le 95\%$ | ✅ PASS |
+| `tier_32gb` | 32.0 GiB | 0.44% | $\le 95\%$ | ✅ PASS |
 | `tier_64gb` | 64.0 GiB | 0.22% | $\le 95\%$ | ✅ PASS |
-| `host_active` | 4.8 GiB | 2.88% | $\le 95\%$ | ✅ PASS |
+| `host_active` | 4.8 GiB | 2.91% | $\le 95\%$ | ✅ PASS |
 
 ## 3. Asersi Stabilitas Throughput Storage ($E_{BW} \le 5\%$)
 
 - **Laporan Sumber W2b**: `m11_w2_async_overlap.json`
-- **Variasi Throughput Maksimum $E_{BW}$**: **3.48%**
+- **Variasi Throughput Maksimum $E_{BW}$**: **1.59%**
 - **Kriteria Stabilitas**: $E_{BW} \le 5.0\%$ (✅ TERPENUHI)
 
 ## 4. Formal Scorecard Gate G-M11-3
 
 - [x] Ukuran Sampel $N \ge 100$: **PASS** ($N = 100$)
-- [x] Project SLO $R_{tail} \le 1.35$: **PASS** ($R_{tail} = 1.1615$)
+- [x] Project SLO $R_{tail} \le 1.35$: **PASS** ($R_{tail} = 1.1259$)
 - [x] Dynamic RAM Budget Adherence $\mathcal{R}_{RAM} \le 0.95$: **PASS**
 - [x] Verifikasi Tanpa Kebocoran Memori (Leak-Free): **PASS**
 - [x] Stabilitas Bandwidth Storage $E_{BW} \le 5\%$: **PASS**
