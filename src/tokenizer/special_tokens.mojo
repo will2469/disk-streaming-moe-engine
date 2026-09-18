@@ -19,7 +19,8 @@ from std.collections import List
 
 
 def sha256_hex(data: List[UInt8]) -> String:
-    """Menghitung digest SHA-256 dalam representasi 64-karakter lowercase hex."""
+    """Menghitung digest SHA-256 dalam representasi 64-karakter lowercase hex.
+    """
     var digest = sha256(data)
     var hex_bytes = List[UInt8]()
     hex_bytes.reserve(64)
@@ -51,7 +52,8 @@ struct SpecialTokenResolver(Copyable, Movable):
 
 
 def verify_tokenizer_lockfile(model_dir: String, lock_path: String) raises:
-    """Memverifikasi SHA-256 dan revision tokenizer terhadap models.lock.json."""
+    """Memverifikasi SHA-256 dan revision tokenizer terhadap models.lock.json.
+    """
     var raw_lock = read_small_file(lock_path)
     var sc = Scanner(raw_lock^, lock_path, True)
     sc.skip_ws()

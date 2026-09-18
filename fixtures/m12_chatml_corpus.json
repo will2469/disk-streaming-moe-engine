@@ -1,0 +1,244 @@
+{
+  "valid_cases": [
+    {
+      "name": "single-turn",
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are a helpful assistant."
+        },
+        {
+          "role": "user",
+          "content": "Halo, siapa kamu?"
+        }
+      ],
+      "add_generation_prompt": true,
+      "expected_prompt": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\nHalo, siapa kamu?<|im_end|>\n<|im_start|>assistant\n<think>\n"
+    },
+    {
+      "name": "multi-turn",
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are a helpful assistant."
+        },
+        {
+          "role": "user",
+          "content": "Halo, siapa kamu?"
+        },
+        {
+          "role": "assistant",
+          "content": "Saya Dismoen."
+        },
+        {
+          "role": "user",
+          "content": "Lanjut."
+        }
+      ],
+      "add_generation_prompt": true,
+      "expected_prompt": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\nHalo, siapa kamu?<|im_end|>\n<|im_start|>assistant\nSaya Dismoen.<|im_end|>\n<|im_start|>user\nLanjut.<|im_end|>\n<|im_start|>assistant\n<think>\n"
+    },
+    {
+      "name": "whitespace-trim",
+      "messages": [
+        {
+          "role": "system",
+          "content": "  System message with spaces  \n"
+        },
+        {
+          "role": "user",
+          "content": "\n\n  User message with tabs and newlines\t\n  "
+        }
+      ],
+      "add_generation_prompt": true,
+      "expected_prompt": "<|im_start|>system\nSystem message with spaces<|im_end|>\n<|im_start|>user\nUser message with tabs and newlines<|im_end|>\n<|im_start|>assistant\n<think>\n"
+    },
+    {
+      "name": "think-strip",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Q1"
+        },
+        {
+          "role": "assistant",
+          "content": "<think>\nThinking step 1\n</think>\nAnswer 1"
+        },
+        {
+          "role": "user",
+          "content": "Q2"
+        }
+      ],
+      "add_generation_prompt": true,
+      "expected_prompt": "<|im_start|>user\nQ1<|im_end|>\n<|im_start|>assistant\nAnswer 1<|im_end|>\n<|im_start|>user\nQ2<|im_end|>\n<|im_start|>assistant\n<think>\n"
+    },
+    {
+      "name": "think-wrap",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Q1"
+        },
+        {
+          "role": "assistant",
+          "content": "<think>\nThinking step 1\n</think>\nAnswer 1"
+        }
+      ],
+      "add_generation_prompt": true,
+      "expected_prompt": "<|im_start|>user\nQ1<|im_end|>\n<|im_start|>assistant\n<think>\nThinking step 1\n</think>\n\nAnswer 1<|im_end|>\n<|im_start|>assistant\n<think>\n"
+    },
+    {
+      "name": "trailing-assistant-no-think",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Q1"
+        },
+        {
+          "role": "assistant",
+          "content": "Answer 1"
+        }
+      ],
+      "add_generation_prompt": true,
+      "expected_prompt": "<|im_start|>user\nQ1<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nAnswer 1<|im_end|>\n<|im_start|>assistant\n<think>\n"
+    },
+    {
+      "name": "user-only",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hello world"
+        }
+      ],
+      "add_generation_prompt": true,
+      "expected_prompt": "<|im_start|>user\nHello world<|im_end|>\n<|im_start|>assistant\n<think>\n"
+    },
+    {
+      "name": "user-with-think-tag",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What does <think> mean?"
+        }
+      ],
+      "add_generation_prompt": true,
+      "expected_prompt": "<|im_start|>user\nWhat does <think> mean?<|im_end|>\n<|im_start|>assistant\n<think>\n"
+    },
+    {
+      "name": "user-with-tool-response-middle",
+      "messages": [
+        {
+          "role": "user",
+          "content": "<tool_response>result</tool_response>"
+        },
+        {
+          "role": "user",
+          "content": "Analyze the result."
+        }
+      ],
+      "add_generation_prompt": true,
+      "expected_prompt": "<|im_start|>user\n<tool_response>result</tool_response><|im_end|>\n<|im_start|>user\nAnalyze the result.<|im_end|>\n<|im_start|>assistant\n<think>\n"
+    }
+  ],
+  "negative_cases": [
+    {
+      "name": "empty-messages",
+      "messages": [],
+      "expected_error": "unsupported: empty_messages"
+    },
+    {
+      "name": "system-not-first",
+      "messages": [
+        {
+          "role": "user",
+          "content": "hi"
+        },
+        {
+          "role": "system",
+          "content": "sys"
+        }
+      ],
+      "expected_error": "unsupported: system_not_first"
+    },
+    {
+      "name": "duplicate-system",
+      "messages": [
+        {
+          "role": "system",
+          "content": "s1"
+        },
+        {
+          "role": "system",
+          "content": "s2"
+        },
+        {
+          "role": "user",
+          "content": "hi"
+        }
+      ],
+      "expected_error": "unsupported: duplicate_system"
+    },
+    {
+      "name": "no-user-query",
+      "messages": [
+        {
+          "role": "system",
+          "content": "sys"
+        }
+      ],
+      "expected_error": "unsupported: no_user_query"
+    },
+    {
+      "name": "only-tool-response-user",
+      "messages": [
+        {
+          "role": "user",
+          "content": "<tool_response>res</tool_response>"
+        }
+      ],
+      "expected_error": "unsupported: no_user_query"
+    },
+    {
+      "name": "unsupported-role-tool",
+      "messages": [
+        {
+          "role": "tool",
+          "content": "call"
+        }
+      ],
+      "expected_error": "unsupported: role=tool"
+    },
+    {
+      "name": "unsupported-role-custom",
+      "messages": [
+        {
+          "role": "bot",
+          "content": "hi"
+        }
+      ],
+      "expected_error": "unsupported: role=bot"
+    },
+    {
+      "name": "reasoning-content-field",
+      "messages": [
+        {
+          "role": "user",
+          "content": "hi",
+          "has_reasoning_content": true
+        }
+      ],
+      "expected_error": "unsupported: field=reasoning_content"
+    },
+    {
+      "name": "tool-calls-field",
+      "messages": [
+        {
+          "role": "assistant",
+          "content": "calling",
+          "has_tool_calls": true
+        }
+      ],
+      "expected_error": "unsupported: field=tool_calls"
+    }
+  ]
+}

@@ -67,17 +67,24 @@ def setup_synthetic_fixture(
     var tj = String(
         '{\n  "added_tokens": [\n    {\n      "id": ',
         String(im_start_id),
-        ',\n      "content": "<|im_start|>",\n      "single_word": false,\n'
-        '      "lstrip": false,\n      "rstrip": false,\n      "normalized":'
-        ' false,\n      "special": true\n    },\n    {\n      "id": ',
+        (
+            ',\n      "content": "<|im_start|>",\n      "single_word": false,\n'
+            '      "lstrip": false,\n      "rstrip": false,\n     '
+            ' "normalized": false,\n      "special": true\n    },\n    {\n     '
+            ' "id": '
+        ),
         String(im_end_id),
-        ',\n      "content": "<|im_end|>",\n      "single_word": false,\n'
-        '      "lstrip": false,\n      "rstrip": false,\n      "normalized":'
-        ' false,\n      "special": true\n    },\n    {\n      "id": ',
+        (
+            ',\n      "content": "<|im_end|>",\n      "single_word": false,\n  '
+            '    "lstrip": false,\n      "rstrip": false,\n      "normalized":'
+            ' false,\n      "special": true\n    },\n    {\n      "id": '
+        ),
         String(eot_id),
-        ',\n      "content": "<|endoftext|>",\n      "single_word": false,\n'
-        '      "lstrip": false,\n      "rstrip": false,\n      "normalized":'
-        ' false,\n      "special": true\n    }\n  ]\n}\n',
+        (
+            ',\n      "content": "<|endoftext|>",\n      "single_word":'
+            ' false,\n      "lstrip": false,\n      "rstrip": false,\n     '
+            ' "normalized": false,\n      "special": true\n    }\n  ]\n}\n'
+        ),
     )
     write_file(String(base_dir, "/tokenizer.json"), tj)
 
@@ -85,18 +92,24 @@ def setup_synthetic_fixture(
     var tc = String(
         '{\n  "added_tokens_decoder": {\n    "',
         String(dec_im_start_id),
-        '": {\n      "content": "<|im_start|>",\n      "lstrip": false,\n'
-        '      "normalized": false,\n      "rstrip": false,\n     '
-        ' "single_word": false,\n      "special": true\n    },\n    "',
+        (
+            '": {\n      "content": "<|im_start|>",\n      "lstrip": false,\n'
+            '      "normalized": false,\n      "rstrip": false,\n     '
+            ' "single_word": false,\n      "special": true\n    },\n    "'
+        ),
         String(dec_im_end_id),
-        '": {\n      "content": "<|im_end|>",\n      "lstrip": false,\n'
-        '      "normalized": false,\n      "rstrip": false,\n     '
-        ' "single_word": false,\n      "special": true\n    },\n    "',
+        (
+            '": {\n      "content": "<|im_end|>",\n      "lstrip": false,\n'
+            '      "normalized": false,\n      "rstrip": false,\n     '
+            ' "single_word": false,\n      "special": true\n    },\n    "'
+        ),
         String(dec_eot_id),
-        '": {\n      "content": "<|endoftext|>",\n      "lstrip": false,\n'
-        '      "normalized": false,\n      "rstrip": false,\n     '
-        ' "single_word": false,\n      "special": true\n    }\n  },\n '
-        ' "eos_token": "',
+        (
+            '": {\n      "content": "<|endoftext|>",\n      "lstrip": false,\n'
+            '      "normalized": false,\n      "rstrip": false,\n     '
+            ' "single_word": false,\n      "special": true\n    }\n  },\n '
+            ' "eos_token": "'
+        ),
         eos_token_ref,
         '"\n}\n',
     )
@@ -119,7 +132,8 @@ def setup_synthetic_fixture(
 
 
 def test_real_model_resolution() raises:
-    """Menguji resolusi special token pada model aktual bila direktori tersedia."""
+    """Menguji resolusi special token pada model aktual bila direktori tersedia.
+    """
     var model_dir = getenv("DISMOEN_MODEL_DIR")
     if model_dir == "":
         var model_root = getenv("DISMOEN_MODEL_ROOT")
@@ -220,7 +234,8 @@ def test_synthetic_happy_path() raises:
 
 
 def test_path_1_mapping_mismatch() raises:
-    """Jalur 1: Mismatch pemetaan token ID antara tokenizer.json dan tokenizer_config.json."""
+    """Jalur 1: Mismatch pemetaan token ID antara tokenizer.json dan tokenizer_config.json.
+    """
     var fx_dir = "/tmp/dismoen_test_tok_err_map"
     var base_id = 800
     var id_start = base_id + 1
@@ -259,7 +274,8 @@ def test_path_1_mapping_mismatch() raises:
 
 
 def test_path_2_invalid_eos_token_ref() raises:
-    """Jalur 2: eos_token pada tokenizer_config.json bukan token khusus yang sah."""
+    """Jalur 2: eos_token pada tokenizer_config.json bukan token khusus yang sah.
+    """
     var fx_dir = "/tmp/dismoen_test_tok_err_eos"
     var base_id = 900
     var id_start = base_id + 1
@@ -298,7 +314,8 @@ def test_path_2_invalid_eos_token_ref() raises:
 
 
 def test_path_3_stop_policy_subset_violation() raises:
-    """Jalur 3: generation_config.json:eos_token_id tidak memuat {im_end, endoftext}."""
+    """Jalur 3: generation_config.json:eos_token_id tidak memuat {im_end, endoftext}.
+    """
     var fx_dir = "/tmp/dismoen_test_tok_err_stop"
     var base_id = 1100
     var id_start = base_id + 1
@@ -336,7 +353,8 @@ def test_path_3_stop_policy_subset_violation() raises:
 
 
 def test_path_4_range_violation_token_invalid() raises:
-    """Jalur 4: Salah satu token ID >= vocab_size (pelanggaran rentang -> TOKEN_INVALID)."""
+    """Jalur 4: Salah satu token ID >= vocab_size (pelanggaran rentang -> TOKEN_INVALID).
+    """
     var fx_dir = "/tmp/dismoen_test_tok_err_range"
     var base_id = 1200
     var id_start = base_id + 1
@@ -375,7 +393,8 @@ def test_path_4_range_violation_token_invalid() raises:
 
 
 def test_shifted_id_negative_test() raises:
-    """Uji negatif: ID pada tokenizer.json digeser tanpa update tokenizer_config.json."""
+    """Uji negatif: ID pada tokenizer.json digeser tanpa update tokenizer_config.json.
+    """
     var fx_dir = "/tmp/dismoen_test_tok_shifted"
     var base_id = 1300
     var id_start = base_id + 1
@@ -414,7 +433,8 @@ def test_shifted_id_negative_test() raises:
 
 
 def test_lockfile_tamper_detection() raises:
-    """Verifikasi lockfile menolak berkas tokenizer yang hash SHA-256-nya tidak cocok."""
+    """Verifikasi lockfile menolak berkas tokenizer yang hash SHA-256-nya tidak cocok.
+    """
     var fx_dir = "/tmp/dismoen_test_tok_lock_tamper"
     var base_id = 1400
     var id_start = base_id + 1
@@ -447,7 +467,7 @@ def test_lockfile_tamper_detection() raises:
         ' "0000000000000000000000000000000000000000000000000000000000000000",\n'
         '    "tokenizer_config.json":'
         ' "1111111111111111111111111111111111111111111111111111111111111111"\n'
-        '  }\n}\n'
+        "  }\n}\n"
     )
     write_file(fake_lock_path, fake_lock_content)
 
