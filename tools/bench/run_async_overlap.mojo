@@ -98,7 +98,6 @@ def _create_synthetic_chunk_file(path: String, total_bytes: Int) raises -> Int:
     return Int(fd_read)
 
 
-
 def _sort_list(mut lst: List[Float64]):
     """Mengurutkan daftar Float64 ascending untuk perhitungan median."""
     for i in range(len(lst)):
@@ -202,9 +201,7 @@ def main() raises:
         var t0 = perf_counter_ns()
         var job_ids = List[Int]()
         for s in range(num_slots):
-            job_ids.append(
-                pipeline.dispatch_chunk_io(s, fd, s * chunk_size, s)
-            )
+            job_ids.append(pipeline.dispatch_chunk_io(s, fd, s * chunk_size, s))
         for s in range(num_slots):
             pipeline.wait_chunk_io(s, job_ids[s])
         var t1 = perf_counter_ns()
@@ -213,7 +210,6 @@ def main() raises:
 
     _sort_list(io_runs)
     var t_io_ms = io_runs[7]
-
 
     # -------------------------------------------------------------
     # 2. Ukur T_comp(c) murni via WorkerPool (3 warm-up, 11 measured)
@@ -244,7 +240,6 @@ def main() raises:
     var t_comp_ms = comp_runs[5]
     var t_seq_ms = t_io_ms + t_comp_ms
 
-
     # -------------------------------------------------------------
     # 3. Overlap Priming & Warm-up (Fill Phase) — DIABAIKAN (§2.5)
     # -------------------------------------------------------------
@@ -255,9 +250,7 @@ def main() raises:
 
     var init_jobs = List[Int]()
     for s in range(num_slots):
-        init_jobs.append(
-            pipeline.dispatch_chunk_io(s, fd, s * chunk_size, s)
-        )
+        init_jobs.append(pipeline.dispatch_chunk_io(s, fd, s * chunk_size, s))
     for s in range(num_slots):
         pipeline.wait_chunk_io(s, init_jobs[s])
 
@@ -267,9 +260,7 @@ def main() raises:
     for _ in range(num_warmup):
         var jobs = List[Int]()
         for s in range(num_slots):
-            jobs.append(
-                pipeline.dispatch_chunk_io(s, fd, s * chunk_size, s)
-            )
+            jobs.append(pipeline.dispatch_chunk_io(s, fd, s * chunk_size, s))
 
         pool.parallel_dequant_bf16(
             scales_addr=p_scales,
@@ -298,9 +289,7 @@ def main() raises:
         var t0 = perf_counter_ns()
         var jobs = List[Int]()
         for s in range(num_slots):
-            jobs.append(
-                pipeline.dispatch_chunk_io(s, fd, s * chunk_size, s)
-            )
+            jobs.append(pipeline.dispatch_chunk_io(s, fd, s * chunk_size, s))
         var t1 = perf_counter_ns()
 
         pool.parallel_dequant_bf16(
@@ -318,11 +307,7 @@ def main() raises:
             pipeline.wait_chunk_io(s, jobs[s])
         var t3 = perf_counter_ns()
 
-
-
-        steady_overlap_latencies.append(
-            Float64(t3 - t_step_start) / 1000000.0
-        )
+        steady_overlap_latencies.append(Float64(t3 - t_step_start) / 1000000.0)
 
         pipeline.flip_stages()
         pipeline.acquire_all_compute()
@@ -367,17 +352,29 @@ def main() raises:
         print('  "t_overlap_ms": ' + String(t_overlap_ms) + ",")
         print('  "bw_eff_mbs": ' + String(bw_eff_mbs) + ",")
         print('  "e_overlap_pct": ' + String(e_overlap_pct) + ",")
-        print('  "gate_g_m11_2_pass": ' + ("true" if e_overlap_pct >= 80.0 else "false"))
+        print(
+            '  "gate_g_m11_2_pass": '
+            + ("true" if e_overlap_pct >= 80.0 else "false")
+        )
         print("}")
     else:
-        print("=== Rezim 2 Steady-State Overlap (c=" + String(threads) + ", N_in_flight=" + String(n_in_flight) + ") ===")
+        print(
+            "=== Rezim 2 Steady-State Overlap (c="
+            + String(threads)
+            + ", N_in_flight="
+            + String(n_in_flight)
+            + ") ==="
+        )
         print("T_IO (murni):       " + String(t_io_ms) + " ms")
         print("T_comp (murni):     " + String(t_comp_ms) + " ms")
         print("T_seq (naif):       " + String(t_seq_ms) + " ms")
         print("T_overlap (riil):   " + String(t_overlap_ms) + " ms")
         print("BW_eff:             " + String(bw_eff_mbs) + " MB/s")
         print("E_overlap (F18):    " + String(e_overlap_pct) + " %")
-        print("Gate G-M11-2:       " + ("PASS" if e_overlap_pct >= 80.0 else "FAIL"))
+        print(
+            "Gate G-M11-2:       "
+            + ("PASS" if e_overlap_pct >= 80.0 else "FAIL")
+        )
 
     # Cleanup resources
     pool.shutdown()

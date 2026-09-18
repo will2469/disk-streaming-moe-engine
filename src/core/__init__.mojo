@@ -25,3 +25,17 @@ from core.worker_pool import (
     WorkerPool,
     partition_range,
 )
+from core.topology import (
+    MODE_ASYNC_DOUBLE_BUFFER,
+    MODE_SYNC_FALLBACK,
+    OS_RAM_RESERVE_BYTES,
+    CoreAllocation,
+    CpuInfo,
+    CpuTopology,
+    build_core_allocation,
+    parse_cpu_list,
+    probe_cpu_topology,
+    probe_ram_available,
+    read_sysfs_string,
+    validate_runtime_feasibility,
+)

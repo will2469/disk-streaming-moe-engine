@@ -50,9 +50,7 @@ def _create_temp_test_file(path: String, size_bytes: Int) raises -> Int:
     for i in range(size_bytes):
         ptr[unsafe_offset=i] = UInt8(i % 251)
 
-    var written = external_call["pwrite", Int](
-        Int32(fd), p_buf, size_bytes, 0
-    )
+    var written = external_call["pwrite", Int](Int32(fd), p_buf, size_bytes, 0)
     _ = external_call["close", Int32](Int32(fd))
     external_call["free", NoneType](p_buf)
 
@@ -74,7 +72,8 @@ def _cleanup_temp_file(path: String, fd: Int):
 
 
 def test_async_io_worker_lifecycle() raises:
-    """Verifikasi inisialisasi, sinkronisasi pthread/condvar, dan shutdown bersih AsyncIOWorker."""
+    """Verifikasi inisialisasi, sinkronisasi pthread/condvar, dan shutdown bersih AsyncIOWorker.
+    """
     var worker = AsyncIOWorker(n_in_flight=2)
     assert_true(worker.is_active)
     assert_equal(worker.n_in_flight, 2)
@@ -119,7 +118,8 @@ def test_n_in_flight_concurrency_2_to_4() raises:
 
 
 def test_async_chunk_job_submission() raises:
-    """Verifikasi pengiriman job chunk ke background thread dan completion per-chunk."""
+    """Verifikasi pengiriman job chunk ke background thread dan completion per-chunk.
+    """
     var test_path = "/tmp/dismoen_m11_w2b_job_test.bin"
     var chunk_size = 4096
     var num_chunks = 4
@@ -131,7 +131,9 @@ def test_async_chunk_job_submission() raises:
     var worker = AsyncIOWorker(n_in_flight=2)
 
     var j0 = worker.submit_job(fd, 0, p_buf, chunk_size, 0)
-    var j1 = worker.submit_job(fd, chunk_size, p_buf + chunk_size, chunk_size, 1)
+    var j1 = worker.submit_job(
+        fd, chunk_size, p_buf + chunk_size, chunk_size, 1
+    )
     var j2 = worker.submit_job(
         fd, chunk_size * 2, p_buf + chunk_size * 2, chunk_size, 2
     )
@@ -161,7 +163,8 @@ def test_async_chunk_job_submission() raises:
 
 
 def test_double_buffer_stage_flip() raises:
-    """Verifikasi transisi ping-pong double-buffering antar Stage A dan Stage B."""
+    """Verifikasi transisi ping-pong double-buffering antar Stage A dan Stage B.
+    """
     var test_path = "/tmp/dismoen_m11_w2b_flip_test.bin"
     var chunk_size = 4096
     var num_slots = 4
@@ -278,7 +281,6 @@ def test_async_overlap_hiding_simulation() raises:
     var dummy1 = _synthetic_compute(comp_iters)
     t1_c = perf_counter_ns()
 
-
     t_comp_ns = t1_c - t0_c
 
     # 2. Ukur T_overlap (I/O berjalan di background sementara CPU menghitung bersamaan)
@@ -308,7 +310,18 @@ def test_async_overlap_hiding_simulation() raises:
     var hidden_time = sum_time - t_overlap_ns
 
     var e_overlap_pct = (Float64(hidden_time) / Float64(min_time)) * 100.0
-    print("Overlap timing debug: t_io_ns=" + String(t_io_ns) + " t_comp_ns=" + String(t_comp_ns) + " t_ov=" + String(t_overlap_ns) + " hidden=" + String(hidden_time) + " pct=" + String(Int(e_overlap_pct)))
+    print(
+        "Overlap timing debug: t_io_ns="
+        + String(t_io_ns)
+        + " t_comp_ns="
+        + String(t_comp_ns)
+        + " t_ov="
+        + String(t_overlap_ns)
+        + " hidden="
+        + String(hidden_time)
+        + " pct="
+        + String(Int(e_overlap_pct))
+    )
     assert_true(t_overlap_ns < sum_time)
     assert_true(e_overlap_pct >= 30.0 or hidden_time > 0)
 
