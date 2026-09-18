@@ -280,7 +280,39 @@ with open(record_file, "w") as out_f:
 print(f"   Scorecard successfully written to: {record_file}")
 print("   Scorecard summary:")
 print(json.dumps(scorecard, indent=2))
-print("======================================================================")
-print("GATE G-M10-2 (STORAGE SANITIZATION & BYTE VERIFICATION) PASSED 100%!")
-print("======================================================================")
 EOF
+
+# ---------------------------------------------------------------------------
+# Stage 7: Source Zero-Legacy Sweep (§4.3)
+# ---------------------------------------------------------------------------
+echo "--> Stage 7: Source Zero-Legacy Multi-Layer Invariant Sweep (§4.3)"
+
+PATTERNS=(
+    '"trial"'
+    'quant_model\.bin'
+    '\.kimo\.bin'
+    'QuantHeader'
+    'QuantTensorMetadata'
+    'parse_model_config_adapter'
+    'kimo-tools'
+    'quant_format'
+)
+
+for pat in "${PATTERNS[@]}"; do
+    MATCH_COUNT=$(rg -e "$pat" src/ | wc -l || true)
+    if [ "$MATCH_COUNT" -ne 0 ]; then
+        echo "FAIL: Ditemukan $MATCH_COUNT kemunculan pola legacy '$pat' di src/:"
+        rg -n -e "$pat" src/
+        exit 1
+    fi
+done
+
+if [ -f "src/format/quant_format.mojo" ]; then
+    echo "FAIL: Berkas src/format/quant_format.mojo belum di-retire!"
+    exit 1
+fi
+
+echo "   PASS: Seluruh 8 pola legacy §4.3 bernilai 0 di src/ dan quant_format.mojo retired."
+echo "======================================================================"
+echo "GATE G-M10-2 (STORAGE SANITIZATION & ZERO-LEGACY) 100% PASSED (GREEN)"
+echo "======================================================================"
