@@ -32,7 +32,8 @@ from std.testing import (
 
 
 def test_dio_probe_query_and_fallback() raises:
-    """Verifikasi probe O_DIRECT statx dan fallback constraint terdokumentasi."""
+    """Verifikasi probe O_DIRECT statx dan fallback constraint terdokumentasi.
+    """
     # 1. Probe path riil (src/main.mojo)
     var align_real = probe_dio_alignment("src/main.mojo")
     assert_true(align_real.mem_align > 0)
@@ -53,7 +54,8 @@ def test_dio_probe_query_and_fallback() raises:
 
 
 def test_dio_triple_alignment_validation() raises:
-    """Verifikasi kepatuhan ketiga sisi: buffer address, file offset, dan request length."""
+    """Verifikasi kepatuhan ketiga sisi: buffer address, file offset, dan request length.
+    """
     var align = DioAlignment(
         mem_align=4096,
         offset_align=4096,
@@ -95,7 +97,8 @@ def test_dio_triple_alignment_validation() raises:
 
 
 def test_round_up_logic() raises:
-    """Verifikasi round-up chunk size dan buffer capacity saat probe != 4096B."""
+    """Verifikasi round-up chunk size dan buffer capacity saat probe != 4096B.
+    """
     # Profil standar 4096B
     assert_equal(calculate_chunk_size(4096), BASE_CHUNK_SIZE)
     assert_equal(calculate_buffer_capacity(4096), BASE_BUFFER_CAPACITY)
@@ -115,7 +118,8 @@ def test_round_up_logic() raises:
 
 
 def test_staging_memory_upfront_allocation() raises:
-    """Verifikasi alokasi upfront M_staging >= 128 MiB ter-align dan layout dua tahap."""
+    """Verifikasi alokasi upfront M_staging >= 128 MiB ter-align dan layout dua tahap.
+    """
     var staging = StagingMemory(
         required_align=4096,
         buffer_capacity=64 * 1024 * 1024,
@@ -157,7 +161,8 @@ def test_staging_memory_upfront_allocation() raises:
 
 
 def test_ring_slot_state_machine_transitions() raises:
-    """Verifikasi siklus formal EMPTY -> IO_IN_FLIGHT -> READY -> COMPUTING -> EMPTY."""
+    """Verifikasi siklus formal EMPTY -> IO_IN_FLIGHT -> READY -> COMPUTING -> EMPTY.
+    """
     var staging = StagingMemory(required_align=4096)
     var ring = ChunkRingBuffer(
         stage_base_addr=staging.get_stage_addr(0),
@@ -241,7 +246,8 @@ def test_chunk_completion_size_verification() raises:
 
 
 def test_1000_ring_transitions_stability() raises:
-    """Verifikasi stabilitas 1000 transisi siklus ring buffer tanpa alokasi memori."""
+    """Verifikasi stabilitas 1000 transisi siklus ring buffer tanpa alokasi memori.
+    """
     var staging = StagingMemory(required_align=4096)
     var ring = ChunkRingBuffer(
         stage_base_addr=staging.get_stage_addr(0),

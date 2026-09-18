@@ -87,3 +87,5 @@ validate-m10 = "bash -c 'bash tests/integration/test_m10_w1_rebrand.sh && bash t
 test-m10 = "bash -c 'pixi run validate-m10'"
 test-m11-w1 = "bash tests/integration/test_m11_w1_workerpool.sh"
 test-m11-w2a = "bash tests/integration/test_m11_w2a_staging.sh"
+test-m11-w2b = "pixi run mojo run -I src tests/unit/test_m11_w2b_overlap.mojo"
+test-m11-w2 = "bash tests/integration/test_m11_w2_async_io.sh"
