@@ -15,7 +15,7 @@
 | **Deliverable** | CLI interaktif `dismoen chat` dan HTTP micro-daemon `dismoen serve` (OpenAI-compatible)              |
 | **Komponen**    | Terminal REPL, ChatML Formatter, SSE Streaming Engine, KMSS v1 Multi-Turn Session State, HTTP Router |
 | **Integrasi**   | Direct zero-harness connect: Aider, Cline, Continue.dev, Open WebUI, Python `openai` SDK, `curl`     |
-| **Prasyarat**   | M11 hijau (Engine konkurensi $c^*$ stabil, latency hiding $\mathcal{E}_{overlap} \ge 80\%$)          |
+| **Prasyarat**   | M11 hijau (Engine konkurensi $c^*_{system}$ stabil, latency hiding $\mathcal{E}_{overlap} \ge 80\%$)          |
 | **Gate**        | G-M12-1..G-M12-5                                                                                     |
 
 ---
@@ -63,7 +63,7 @@ Milestone M12 mentransformasi `dismoen` menjadi **produk inferensi mandiri (_sel
 │  1. ChatML Template Engine (SUBSET TEXT-ONLY, §2.1):                        │
 │     <|im_start|>system ... <|im_end|>                                       │
 │     <|im_start|>user ... <|im_end|>                                         │
-│     <|im_start|>assistant ...                                               │
+│     <|im_start|>assistant ... (+ \n<think>\n, lihat §2.1)                   │
 │     Non-subset (tool/vision/reasoning terstruktur) → TOLAK eksplisit.       │
 │                                                                             │
 │  2. KMSS v1 State Continuity Manager:                                       │
@@ -78,7 +78,7 @@ Milestone M12 mentransformasi `dismoen` menjadi **produk inferensi mandiri (_sel
                                        ▼ (M11 Multi-Thread & Async I/O Engine)
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │             CORE DISK-STREAMING INFERENCE (M0–M11 ENGINE RUNTIME)           │
-│         Worker Threads (c*) + Async Double-Buffer Ping-Pong (F18)           │
+│         Worker Threads (c*_system) + Async Double-Buffer Ping-Pong (F18)    │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -100,12 +100,13 @@ Milestone M12 mentransformasi `dismoen` menjadi **produk inferensi mandiri (_sel
 
 **Subset yang didukung M12** (satu-satunya input yang boleh di-render):
 
-| Dimensi | Subset M12 | Di luar subset → DITOLAK eksplisit |
+| Dimensi | Subset M12 | Di luar subset → DITOLAK eksplisit (`400`/`422` + `unsupported`) |
 | :--- | :--- | :--- |
-| Role | `system`, `user`, `assistant` | Role lain (`tool`, `developer`, …) |
-| Konten | String teks (termasuk blok `<think>` sebagai teks passthrough, tanpa parsing khusus) | Konten list terstruktur (image/video/audio), `image_url`, `reasoning_content` terstruktur |
+| Role | `system` (opsional, maks 1, wajib `messages[0]`), `user`, `assistant` | Role lain; `system` di posisi ≠ 0; `system` ganda |
+| Konten | String; di-`trim` saat render. Tag `<think>` pada konten **user** = literal tanpa semantik; pada konten **assistant** = diproses persis aturan ekstraksi upstream (butir 3 di bawah), BUKAN passthrough | Konten non-string; field `reasoning_content` **dalam bentuk apa pun**; field `tool_calls`; konten list terstruktur (image/video/audio), `image_url` |
+| Keberadaan query | Wajib ≥ 1 user-query genuin (replikasi pemindai upstream: pesan `user` yang konten-trim-nya bukan pasangan `<tool_response>…</tool_response>`) | Array kosong; tanpa user-query genuin (upstream: `No user query found`) |
 | Tool use | — | `tools`, `tool_calls`, `tool_response` |
-| Generation prompt | Suffix `<|im_start|>assistant` (level string) | Parameter template lain (`enable_thinking`, `preserve_thinking`, …) |
+| Thinking mode | Normatif = default upstream: thinking ENABLED (sufiks generasi mengandung blok `<think>`, di bawah) | Parameter template lain (`enable_thinking`, `preserve_thinking`, `add_generation_prompt=false`, …) |
 
 **Kontrak penolakan**: input di luar subset TIDAK BOLEH di-render
 sebagian/salah. `dismoen serve` menjawab HTTP `400`/`422` dengan body
@@ -114,53 +115,107 @@ JSON ber-field `unsupported` yang menyebut fitur pemicunya
 CLI yang setara. Daftar fitur yang ditolak wajib terdokumentasi di
 help/error output, bukan hanya di doc ini.
 
-Format prompt subset (level string/template):
+> **P0 — render byte-exact mengikuti template ter-pin, bukan contoh lama.**
+> Contoh formatter yang sebelumnya berakhir pada `<|im_start|>assistant`
+> polos **salah**: template upstream menambahkan newline per pesan dan,
+> secara default, blok `<think>\n` pada prompt generasi. Karena G-M12-1
+> mewajibkan kecocokan seluruh token vs `chat_template`, renderer yang
+> mengikuti contoh lama pasti FAIL. Aturan normatif di bawah diverifikasi
+> dengan me-render `chat_template` upstream (Jinja) pada revision ter-pin.
+
+**Rendering normatif subset** (mode thinking ENABLED = default upstream;
+`add_generation_prompt=true`). Renderer M12 wajib mereplikasi SEMUA cabang
+upstream berikut untuk pesan flat `{role, string}` — diverifikasi satu per
+satu via render Jinja revision ter-pin:
+
+1. **System**: hanya bila `messages[0]`; render
+   `<|im_start|>system\n{trimmed}<|im_end|>\n`. System di posisi lain
+   (termasuk kedua) → upstream me-raise; renderer menolak `400`/`422`.
+2. **User**: render literal
+   `<|im_start|>user\n{trimmed}<|im_end|>\n` — tag `<think>` di sini
+   TIDAK punya semantik (terbukti via render).
+3. **Assistant — ekstraksi think persis template** (bukan passthrough —
+   upstream me-strip diam-diam bila kita literal):
+   bila content mengandung `</think>`:
+   `reasoning = content.split('</think>')[0].rstrip('\n').split('<think>')[-1].lstrip('\n')`
+   dan `content = content.split('</think>')[-1].lstrip('\n')`;
+   lalu bila pesan ini SEBELUM/SETARA query user terakhir → render polos
+   `<|im_start|>assistant\n{content}<|im_end|>\n` (blok think dibuang —
+   sesuai oracle); bila SETELAH query user terakhir (trailing assistant)
+   → render think-wrapped
+   `<|im_start|>assistant\n<think>\n{reasoning}\n</think>\n\n{content}<|im_end|>\n`
+   (termasuk quirk reasoning-kosong → `<think>\n\n</think>`).
+   Tanpa tag `</think>`: aturan posisi yang sama dengan reasoning kosong.
+4. **Pemindai last-query** direplikasi untuk butir 3: pindai dari belakang,
+   query user terakhir = pesan `user` pertama (dari belakang) yang
+   konten-trim-nya TIDAK terbungkus `<tool_response>…</tool_response>`.
+5. **Sufiks prompt generasi** (wajib, bukan opsional):
+   `<|im_start|>assistant\n<think>\n`
+
+Bentuk byte-exact untuk contoh dua-turn (`\n` eksplisit):
 
 ```text
-<|im_start|>system
-You are a helpful assistant.<|im_end|>
-<|im_start|>user
-Halo, siapa kamu?<|im_end|>
-<|im_start|>assistant
+<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\nHalo, siapa kamu?<|im_end|>\n<|im_start|>assistant\n<think>\n
 ```
 
+Contoh yang SAMA bila histori sudah berisi jawaban assistant:
+
+```text
+<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\nHalo, siapa kamu?<|im_end|>\n<|im_start|>assistant\nSaya Kimo.<|im_end|>\n<|im_start|>user\nLanjut.<|im_end|>\n<|im_start|>assistant\n<think>\n
+```
+
+Kedua string di atas direproduksi persis dari render Jinja
+`chat_template` revision ter-pin (bukan ditulis tangan): perbedaan satu
+newline saja = FAIL G-M12-1.
+
 > **M12-1 (P0) — DILARANG hardcode token ID ChatML.**
-> Nilai era-Qwen2 (`151644`/`151645`) **salah** untuk checkpoint Qwen3.6
-> saat ini; ID special-token bergantung pada revisi tokenizer yang
-> dipublikasikan upstream dan dapat berubah antar revisi. Hardcode numerik
-> — di spec, kode, maupun test — akan menghasilkan prompt/token contract
-> yang salah secara diam-diam. Tidak ada angka ID token di milestone ini;
-> satu-satunya sumber kebenaran adalah metadata tokenizer di `--model-dir`.
+> Nilai era-Qwen2 yang sebelumnya tertulis di §2.1 ini **salah** untuk
+> checkpoint Qwen3.6 saat ini; ID special-token bergantung pada revisi
+> tokenizer yang dipublikasikan upstream dan dapat berubah antar revisi.
+> Hardcode numerik — di spec, kode, maupun test — akan menghasilkan
+> prompt/token contract yang salah secara diam-diam. Tidak ada angka ID
+> token di milestone ini (termasuk di box ini); satu-satunya sumber
+> kebenaran adalah metadata tokenizer di `--model-dir`.
 
 **Kontrak resolusi token (runtime, per `--model-dir`):**
 
-1. **Sumber otoritatif**: `tokenizer.json` → `added_tokens`
+1. **Sumber otoritatif peta token↔ID**: `tokenizer.json` → `added_tokens`
    (`content` + `id` + `special: true`) untuk
    `<|im_start|>`, `<|im_end|>`, `<|endoftext|>`.
-2. **Cross-check wajib**: `tokenizer_config.json` → `added_tokens_decoder`
-   (pasangan id ↔ content harus identik dengan butir 1) dan nama
-   `eos_token` harus merujuk ke salah satu special-token di atas.
-3. **Stop set**: `generation_config.json` → `eos_token_id` (list).
-   Pembangkitan berhenti secara deterministik saat model memprediksi token
-   yang termasuk himpunan `eos_token_ids` hasil resolve ini
-   (mencakup `<|im_end|>` dan `<|endoftext|>` tanpa menyebut angka).
-4. **Konsistensi atau tolak start**: ketiga sumber (butir 1–3) wajib sepakat
-   untuk ketiga special-token; inkonsistensi apa pun → startup error
-   (`CONFIG_MISMATCH`), bukan fallback diam-diam.
+2. **Cross-check peta (bukan stop-set)**: `tokenizer_config.json` →
+   `added_tokens_decoder` (pasangan id ↔ content harus identik dengan
+   butir 1) dan nama `eos_token` harus merujuk ke salah satu special-token
+   di atas. Butir 1–2 adalah validasi **pemetaan**, bukan policy stop.
+3. **Stop set**: `generation_config.json` → `eos_token_id` (list) —
+   file ini **hanya menyatakan ID stop/EOS, bukan pemetaan `im_start`**.
+   Policy stop engine: himpunan ID hasil resolve butir 1 untuk
+   `<|im_end|>` dan `<|endoftext|>` wajib termuat ($\subseteq$) dalam
+   himpunan `eos_token_id`; bila tidak → startup error (`CONFIG_MISMATCH`).
+   Pembangkitan berhenti saat model memprediksi token dalam himpunan ini.
+4. **Konsistensi atau tolak start**: kegagalan validasi butir 2 atau 3
+   → startup error (`CONFIG_MISMATCH`), bukan fallback diam-diam.
 5. **Validasi range**: setiap resolved ID wajib `< vocab_size` dari config
    model (Qwen3.6: `248320`, M9-port §); pelanggaran → `TOKEN_INVALID`.
 6. **Pin lockfile**: identitas tokenizer — SHA-256 `tokenizer.json` +
    `tokenizer_config.json` beserta revision HF — wajib tercatat di model
-   lockfile (`models.lock.port.json`, sejajar pin shard SEC-1 /
+   lockfile (`models.lock.json`, lock production tunggal pasca-retire
+   `models.lock.port.json` di M10-W3 — M10 §4.5; sejajar pin shard SEC-1 /
    `ref-ground-truth`). Engine menegaskan pin saat startup; mismatch
-   → tolak start. (`models.lock.port.json` saat ini hanya memuat shard;
-   penambahan section tokenizer adalah pekerjaan wajib W1.)
+   → tolak start. (Penambahan section tokenizer adalah pekerjaan wajib W1.)
 
 **Oracle G-M12-1**: tokenizers HF (`Qwen2Tokenizer`) + `chat_template`
 upstream pada revision ter-pin di lockfile. Formatter lulus bila dan hanya
-bila: (a) untuk setiap input dalam subset §2.1, seluruh urutan ID —
-termasuk special-token hasil resolve — match 100% vs oracle yang diberi
-input subset yang sama; (b) uji negatif: metadata tokenizer yang digeser
+bila: (a) untuk setiap input dalam subset §2.1 — termasuk korpus fixture
+wajib yang mencakup single-turn, multi-turn berhistori assistant, konten
+ber-whitespace (uji trim), sufiks generasi, DAN korpus edge: system di
+tengah/akhir, system ganda, tanpa user-query, histori assistant
+ber-tag-think (strip/wrap exact), trailing assistant, user
+berbungkus-tool_response, field `reasoning_content`, array kosong —
+seluruh urutan ID, termasuk special-token hasil resolve, `<think>`, dan
+newline struktural, match 100% vs oracle yang diberi input subset yang
+sama (`apply_chat_template` HF pada revision ter-pin; bukan rekonstruksi
+tangan), dan setiap input di luar grammar DITOLAK renderer (bukan
+di-render); (b) uji negatif: metadata tokenizer yang digeser
 ID-nya wajib terdeteksi (mismatch error), bukan lolos diam-diam;
 (c) setiap input di luar subset wajib ditolak eksplisit sesuai kontrak
 penolakan (tidak ter-render).
@@ -181,35 +236,87 @@ Pada obrolan multi-turn sekuensial, menghitung ulang _KV cache_ dan _GDN recurre
 > - **`model` + panjang `messages`** — dua user berbeda dapat punya prompt
 >   dengan panjang sama; skema ini menjamin tabrakan.
 
+> **P0 follow-up — equality hash atas prompt penuh MEMBUNUH reuse.**
+> Aturan lama ("reuse hanya bila hash seluruh prompt identik") membuat
+> delta-prefill unreachable: turn berikutnya selalu memperpanjang riwayat
+> sehingga hash penuh selalu berubah dan tabel lama memerintahkan
+> full-prefill. Kontrak di bawah menggantinya dengan
+> **longest-prefix lookup** — satu-satunya aturan yang membuat janji
+> multi-turn (§2.2, G-M12-2) dapat terpenuhi.
+
 **Rantai identitas kanonis** (satu-satunya cara me-resolve request → state):
 
 ```text
 Canonical message history
         ↓ (render subset §2.1 → token ID, termasuk special-token)
-tokenized prefix
-        ↓ (hash kriptografis atas urutan ID + domain kunci)
-prefix hash / session key
-        ↓
-KMSS state (KV cache + GDN state atas prefix itu)
+request token sequence T (panjang n)
+        ↓ (lookup prefix terpanjang yang terverifikasi eksak)
+cached entry P == T[0..|P|]  →  reuse state(P), prefill delta T[|P|..n]
 ```
 
 - **Kanonikalisasi**: histori `messages` (role + konten string per pesan,
   berurutan) di-render oleh renderer subset §2.1 menjadi urutan token ID
-  lengkap turn itu. Session key = hash atas urutan ID tersebut dalam domain
-  kunci `(model_id, tokenizer_pin, template_subset_rev)`.
-- **Aturan reuse/invalidasi**:
+  lengkap turn itu ($T$). Setiap entri cache menyimpan urutan token
+  prefix-nya ($P$) beserta state KMSS atas $P$.
+- **Lookup longest-prefix (aturan tunggal, uniform)**:
+  1. Cari entri cache dengan $P$ terpanjang sehingga $P$ sama **token-per-token**
+     dengan awalan $T$ ($P = T[0..|P|]$). Perbandingan token eksak adalah
+     bukti reuse; hash domain-separated
+     `(model_id, tokenizer_pin, template_subset_rev, P)` hanya dipakai
+     sebagai **indeks**, tidak pernah sebagai bukti kebenaran
+     (kesetaraan hash tanpa verifikasi token = dilarang).
+  2. Bila ketemu ($|P| > 0$): sambung state($P$), prefill hanya
+     $\Delta N_{tokens} = n - |P|$. Kasus normal multi-turn — request
+     memperpanjang prefix cached — otomatis ter-cover: reuse + delta.
+  3. Bila tak ada ($|P| = 0$ atau cache kosong/miss): full prefill dari awal.
+  4. Divergensi tengah (pesan lama diedit/di-regenerate): $P$ terpanjang
+     yang masih cocok adalah common prefix sebelum titik divergensi;
+     reuse sampai sana, prefill ulang sisanya. Tidak ada jalur khusus —
+     aturan yang sama, kebenaran yang sama.
+- **Aturan reuse/invalidasi** (dalam bahasa prefix):
 
 | Kondisi | Keputusan |
 | :--- | :--- |
-| Prefix eksak sama (hash cocok) | **Reusable** — sambung state, prefill hanya $$\Delta N_{tokens} = N_{new\_prompt}$$ |
-| Prefix mismatch (pesan mana pun berbeda/berubah urutan) | **Invalidate** — recompute penuh dari awal |
-| System prompt berubah | **Invalidate** (kasus khusus prefix mismatch, disebut eksplisit agar tak dioptimasi keliru) |
-| Model berubah | **Invalidate by construction** (domain kunci memuat `model_id`) |
-| Tokenizer berubah (pin/revisi) | **Invalidate by construction** (domain kunci memuat `tokenizer_pin`) |
+| Request memperpanjang prefix cached ($T$ berawalan $P$ terverifikasi) | **Reuse + delta-prefill** $\Delta N = n - \|P\|$ — jalur multi-turn normal |
+| Divergensi / edit / urutan berubah | Reuse common prefix terverifikasi, prefill ulang dari titik divergensi |
+| System prompt berubah | Common prefix runtuh ke pendek/kosong → praktis recompute (disebut eksplisit agar tak dioptimasi keliru) |
+| Model berubah | Domain hash berbeda → no-match by construction → full prefill |
+| Tokenizer berubah (pin/revisi) | Domain hash berbeda → no-match by construction → full prefill |
+
+- **Insertion policy: canonical rebase saat completion (P1).**
+  Lookup di atas hanya bisa hit bila cache menyimpan state atas
+  representasi **kanonis**. Masalahnya: generasi berjalan di atas
+  `…assistant\n<think>\n + token-tergenerasi`, sedangkan histori kanonis
+  turn berikutnya me-render assistant **polos** (think di-strip, §2.1
+  butir 3) — state mentah generasi ≠ state($P_{canonical}$), sehingga
+  tanpa kebijakan insertion, lookup turn-2 selalu miss dan janji
+  delta-prefill/G-M12-2 gugur. Aturannya:
+  1. Insert HANYA pada completion bersih (`finish_reason` stop/length).
+     Generasi ter-abort/error/timeout tidak meng-insert apa pun
+     (konsisten dengan kebijakan KMSS M12-7: turn parsial dibuang).
+  2. Saat completion, engine melakukan **canonical rebase**: prefill
+     teacher-forced (deterministik, tanpa sampling) atas render histori
+     kanonis — assistant polos per aturan cabang §2.1 — untuk
+     mematerialisasi state($P_{canonical}$), lalu meng-insert
+     ($P_{canonical}$ → state) ke prefix cache. State mentah generasi
+     boleh dibuang (dilarang diindeks di bawah kunci kanonis).
+  3. Rebase berjalan di dalam slot eksklusif executor serial (§2.4,
+     `max_concurrent_generations = 1`) SEBELUM slot dilepas — turn
+     berikutnya selalu menemukan entri kanonis yang sudah jadi.
+  4. Biaya eksplisit: satu prefill tambahan sepanjang turn assistant
+     ($O(answer)$, bukan $O(history)$) per completion; TTFT turn-2
+     tidak terpengaruh (rebase di luar critical path token-pertama).
+  Verifier G-M12-2 wajib menegaskan turn-2 benar-benar HIT (jumlah token
+  prefill teramati == delta, bukan full) — bukan sekadar TTFT cepat.
 
 - **Cache = optimasi opsional, bukan syarat semantik.** API wajib tetap
-  benar bila cache mati/penuh/di-evict: setiap request yang recompute penuh
-  menghasilkan output identik dengan yang memakai cache-hit. Eviksi
+  benar bila cache mati/penuh/di-evict. Klaim "output cache-hit identik
+  dengan full-prefill" hanya terdefinisi pada **decoding deterministik**
+  (greedy, `temperature=0`): untuk sampling (`temperature>0`/`top_p<1`),
+  kesetaraan output menuntut seed + algoritme RNG + state RNG yang
+  dikontrak — ketiganya non-goal M12 (API upstream sendiri mengaitkan
+  determinisme sampling dengan `seed`; M12 menerima-meneruskan `seed`
+  tanpa meng-gate reproduksibilitas sampling). Eviksi
   (LRU berbatas — cache tidak boleh tumbuh tanpa batas) hanya mengubah
   latensi, tidak pernah mengubah kebenaran.
 - Status KV cache 10 layer attention dan state matriks 30 layer GDN yang
@@ -248,9 +355,9 @@ data: [DONE]
 ### 2.4 Concurrency, Admission Control & Cancellation Ownership (M12-6)
 
 > **Asumsi M11 tidak berlaku untuk server konkuren.**
-> M11 mengkalibrasi **satu** engine: $c^*$ + worker pool + single pipeline +
-> double-buffer I/O untuk workload `1 request × c*`. Dua request yang
-> berbagi pool yang sama (`2 request × c*`) adalah workload yang berbeda:
+> M11 mengkalibrasi **satu** engine: $c^*_{system}$ + worker pool + single pipeline +
+> double-buffer I/O untuk workload `1 request × c*_system`. Dua request yang
+> berbagi pool yang sama (`2 request × c*_system`) adalah workload yang berbeda:
 > bandwidth DRAM, antrean NVMe, dan penalti $\beta(c-1)$ terbagi/berubah,
 > sehingga model Amdahl fixed-workload M11 tidak langsung berlaku untuk
 > concurrent inference. M12 **tidak** mengklaim konkurensi generasi.
@@ -280,7 +387,7 @@ via flag CLI yang terdokumentasi):
 | Max context length (input + output) | 16384 | `--max-context-tokens` (plafon keras: tidak boleh > 262144) | `400` |
 | Max concurrent generations | 1 | `--max-concurrent-generations` | antre/429 (kontrak di atas) |
 | Max queue depth | 8 | `--max-queue-depth` | `429` (kontrak di atas) |
-| Request timeout (admisi → selesai) | 900 s | `--request-timeout-s` | abort + `500` (`type: "timeout"`); stream diputus dengan error event |
+| Request timeout (admisi → selesai) | 900 s | `--request-timeout-s` | kontrak §2.5 (pre-header vs mid-stream, di bawah) |
 | Queue-wait timeout | 60 s | `--queue-wait-timeout-s` | `429` |
 | SSE keepalive | komentar `: keepalive` per 15 s | `--sse-keepalive-s` | — (mencegah intermediary memutus stream idle) |
 
@@ -294,7 +401,7 @@ terjadi sebelum limit dicek.
 > ```text
 > M10  Model correctness
 >        ↓
-> M11  single-request performance (F16/F18 @ 1 request × c*)
+> M11  single-request performance (F16/F18 @ 1 request × c*_system)
 >        ↓
 > M12  single-request serving + protocol (kontrak §2.4–§2.5)
 >        ↓
@@ -305,7 +412,7 @@ terjadi sebelum limit dicek.
 > *general-purpose concurrent server*. Daftar non-goal M12 yang eksplisit
 > menjadi problem milestone scheduling kelak: scheduler, fairness,
 > queueing di luar FIFO berbatas, admission control adaptif, isolasi cache
-> antar-tenant di luar session key §2.2, akuntansi memori per-tenant, dan
+> antar-tenant di luar longest-prefix lookup §2.2, akuntansi memori per-tenant, dan
 > multi-request batching. Semuanya berpotensi menggeser kurva F16/F18,
 > sehingga milestone tersebut wajib kalibrasi ulang — bukan reuse angka M11.
 
@@ -315,7 +422,7 @@ terjadi sebelum limit dicek.
   engine: generasi berikutnya — dari sesi mana pun — wajib berjalan normal
   (di-gate G-M12-4).
 - **Konkurensi > 1 eksplisit di luar scope M12** dan menjadi
-  milestone/bench terpisah (dengan kalibrasi ulang $c^*$/$\beta$/$BW_{eff}$
+  milestone/bench terpisah (dengan kalibrasi ulang $c^*_{system}$/$\beta$/$BW_{eff}$
   di bawah beban konkuren). Kode M12 dilarang mengandung jalur generasi
   paralel setengah-jadi; yang ada hanya serial + antrean + 429.
 
@@ -345,8 +452,10 @@ wajib ada (field tambahan diizinkan).
 | `messages` | Wajib; array `{role, content}`; di luar subset §2.1 → `400`/`422` + field `unsupported` |
 | `stream` | `true` (SSE §2.3) / `false` (default) |
 | `max_tokens` / `max_completion_tokens` | Alias; didukung dan dibatasi plafon konteks; bila keduanya ada dan berbeda → `400` |
-| `temperature`, `top_p` | Didukung; `0` → greedy deterministik |
+| `temperature`, `top_p` | Didukung; `0` → greedy deterministik (satu-satunya rezim yang di-gate paritas cache, G-M12-2) |
+| `seed` | Diterima dan diteruskan; reproduksibilitas sampling di luar gate M12 |
 | `stop` | Didukung (string atau array string) |
+| `stream_options` | Objek tervalidasi; satu-satunya subfield yang didukung `include_usage: bool` (default `false`); subfield lain → `400`. Bila `true` pada request stream: chunk final berbentuk `choices: []` + `usage` terisi, dikirim SEBELUM `data: [DONE]` |
 | `tools`, `tool_choice` | Dikenali tetapi **ditolak** → `400`/`422` + `unsupported` (subset text-only, §2.1) |
 | Field tak dikenal lain | Diabaikan (forward-compat), tidak boleh menggagalkan request valid |
 
@@ -357,8 +466,10 @@ wajib ada (field tambahan diizinkan).
   `usage: {prompt_tokens, completion_tokens, total_tokens}` wajib ada.
 - Stream (`stream: true`): chunk `object: "chat.completion.chunk"`,
   `choices[{index, delta, finish_reason}]`, terminator `data: [DONE]`
-  (framing §2.3); `usage` dikirim pada akhir stream bila klien meminta
-  `stream_options.include_usage`.
+  (framing §2.3). `[DONE]` hanya pada penyelesaian bersih — terminasi
+  abnormal (timeout mid-stream, error) menutup stream TANPA `[DONE]`
+  (kontrak timeout di bawah). Bila `stream_options.include_usage=true`:
+  chunk final ber-`choices: []` + `usage` terisi, lalu `[DONE]`.
 - `finish_reason` dalam subset: `"stop"` | `"length"`.
 
 **Matriks error** (body gaya OpenAI `{error: {message, type, code}}`;
@@ -367,15 +478,38 @@ wajib ada (field tambahan diizinkan).
 | Kode | Makna | Pemicu |
 | :---: | :--- | :--- |
 | 400 | malformed request | JSON invalid, field wajib hilang, alias konflik, payload non-subset tanpa penanda |
-| 401 | unauthorized | Header `Authorization` hilang/kosong (kunci non-kosong apa pun diterima — M12 tanpa auth ketat) |
-| 404 | model not found | `model` tak dikenal (termasuk di `/v1/models`) |
+| 401 | unauthorized | `Authorization` hilang/kosong (mode loopback: kunci non-kosong apa pun diterima); bearer tak-cocok pada bind non-loopback + `--api-key-required` |
+| 404 | model not found | `model` tak dikenal pada `/v1/chat/completions` (endpoint list tidak menerima model ID — lihat baris berikut) |
+| 404 | unknown path | Path di luar `/v1/models` dan `/v1/chat/completions` |
 | 405 | method not allowed | Method salah pada path yang ada |
 | 413 | body too large | Body/konteks melebihi budget pra-admisi (§2.4) |
 | 429 | overloaded | Antrean FIFO penuh (§2.4) |
-| 500 | engine failure | Error internal engine |
+| 500 | engine failure | Error internal engine — pre-header: HTTP `500`; mid-stream: error event `type: "engine_error"` tanpa `[DONE]` (kontrak terminasi abnormal di bawah) |
 
 Seluruh sel matriks di atas wajib tercakup verifier G-M12-3 (sukses +
-setiap kode error dipicu dan diassert bentuknya).
+setiap kode error dipicu dan diassert bentuknya — termasuk error event
+mid-stream `timeout`/`engine_error` TANPA `[DONE]`).
+
+**Kontrak terminasi abnormal vs fase respons (P1).**
+Setelah `200 OK` + header SSE terkirim, status HTTP **tidak dapat**
+diubah menjadi `500` — maka SEMUA terminasi abnormal (timeout MAUPUN
+engine failure) didefinisikan per fase dengan SATU bentuk event:
+
+- **Pre-header** (header respons belum terkirim: masih antre, admisi,
+  atau prefill awal): abort generasi → HTTP `500` dengan body error
+  `{error: {message, type, code}}` (`type` = `"timeout"` atau
+  `"engine_error"`).
+- **Mid-stream** (header `200` sudah terkirim): status tak tersentuh;
+  server mengirim **satu error event**
+  `data: {"error": {"message": ..., "type": ..., "code": 500}}`
+  (`type` = `"timeout"` atau `"engine_error"` — bentuk SAMA, hanya type
+  yang membedakan; engine failure TIDAK hanya-close-diam-diam)
+  lalu **menutup stream TANPA `data: [DONE]`**.
+  `[DONE]` hanya dikirim pada penyelesaian bersih; absennya `[DONE]`
+  adalah sinyal terminasi abnormal yang wajib diasert verifier
+  (klien yang menerima error event dilarang menganggap respons komplit).
+- **Client disconnect kapan pun**: mengikuti rantai kanselasi §2.4/M12-7
+  (bukan error event — tidak ada yang mendengarkan).
 
 **Rantai kanselasi deterministik (M12-7).**
 "Tidak crash" belum cukup: worker yang masih menghitung puluhan token
@@ -440,9 +574,16 @@ Fitur Terminal:
 ### 3.2 Mode HTTP Server OpenAI-Compatible
 
 ```bash
-# Menjalankan micro-server lokal di port 8000
+# Menjalankan micro-server lokal di port 8000 (default bind loopback)
 dismoen serve --host 127.0.0.1 --port 8000 --model-dir /home/will/models/qwen3.6-35b-a3b --auto
 ```
+
+> **Kebijakan bind/auth (P1).** Default `--host 127.0.0.1` (loopback):
+> kunci non-kosong apa pun diterima; `Authorization` hilang/kosong → `401`.
+> Bind non-loopback (`--host 0.0.0.0` / IP LAN) **dilarang tanpa**
+> `--api-key-required <secret>` — server menolak start (`CONFIG_ERROR`)
+> bila flag itu absen; bila ada, bearer wajib cocok persis (mismatch →
+> `401`). M12 tidak mengenal mode "terbuka di LAN tanpa auth".
 
 #### Integrasi Langsung dengan Klien Populer:
 
@@ -485,7 +626,6 @@ dismoen serve --host 127.0.0.1 --port 8000 --model-dir /home/will/models/qwen3.6
        print(chunk.choices[0].delta.content or "", end="", flush=True)
    ```
 
-```
 
 ---
 
@@ -494,7 +634,7 @@ dismoen serve --host 127.0.0.1 --port 8000 --model-dir /home/will/models/qwen3.6
 | Gate | Kriteria Penilaian | Ambang Batas | Verifier Tool |
 | :--- | :--- | :---: | :--- |
 | **G-M12-1** | **ChatML Prompt Fidelity (subset text-only) & Detokenization**: Resolver special-token (`<|im_start|>`, `<|im_end|>`, `eos_token_ids`) dari metadata tokenizer valid vs lockfile; input subset ter-encode tepat, input non-subset ditolak eksplisit, detokenisasi streaming UTF-8 multi-byte valid tanpa karakter corrupt | 100% token match vs oracle (HF tokenizer + chat_template @ pinned revision, input subset) + uji negatif tamper-ID & non-subset terdeteksi/ditolak, zero encoding error | `tests/unit/test_chatml_formatter.mojo` |
-| **G-M12-2** | **KMSS v1 Session Identity & Delta Latency**: Request di-resolve ke state via session key (§2.2); prefix sama → reuse + TTFT turn-2 jauh lebih cepat vs recompute; prefix/system/model/tokenizer berbeda → invalidate; dua sesi beda-prefix tak pernah tercampur; output cache-hit identik dengan full-prefill | $TTFT_{turn2} \le 0{,}5 \times TTFT_{recompute}$ + reuse/invalidate/isolation/parity-cache-vs-recompute 100% benar | `tests/integration/test_m12_session_continuity.sh` |
+| **G-M12-2** | **KMSS v1 Longest-Prefix Reuse & Delta Latency**: Request di-resolve via longest-prefix lookup terverifikasi-token (§2.2); perpanjangan prefix → reuse + delta-prefill dengan TTFT turn-2 jauh lebih cepat vs recompute; divergensi → reuse common prefix + prefill dari titik divergensi; domain beda → no-match; dua sesi beda-prefix tak pernah tercampur; output cache-hit identik dengan full-prefill (rezim greedy deterministik; sampling di luar gate, §2.2) | $TTFT_{turn2} \le 0{,}5 \times TTFT_{recompute}$ + reuse/invalidate/isolation/parity-greedy-vs-recompute 100% benar | `tests/integration/test_m12_session_continuity.sh` |
 | **G-M12-3** | **OpenAI Compatibility Contract (§2.5)**: `GET /v1/models` + `POST /v1/chat/completions` (subset) lulus via Python OpenAI SDK resmi (stream & non-stream: skema, `finish_reason`, `usage`); seluruh sel matriks error (400/401/404/405/413/429/500) terpicu dan berbentuk benar; non-subset → error terstruktur | Kontrak §2.5 100% tercakup (termasuk batas resource §2.4 → 400/413) + zero SDK exception pada jalur sukses | `tools/bench/verify_openai_conformance.py` |
 | **G-M12-4** | **Serial Execution, Admission & Full-Graph Cancellation**: Tepat satu generasi aktif (`max_concurrent_generations = 1`); overflow antrean → 429 terstruktur; over-budget → tolak pre-admisi; disconnect/abort memutus seluruh execution graph (§2.4: HTTP → generasi → worker → I/O → buffer → KMSS) dengan metrik kanselasi terpenuhi; generasi berikutnya normal | 0 segfault, 0 zombie threads, VmHWM stabil, tidak pernah 2 generasi aktif, `orphan_compute_tokens == 0`, `pending_io_after_cancel == 0`, p95 `cancel_propagation_ms` ≤ 500 ms (Project SLO) | `tests/integration/test_m12_resilience.sh` |
 | **G-M12-5** | **Harness Integration (Aider, pola resmi)**: Klien aider asli terhubung ke `dismoen serve` memakai kontrak §3.2 (env `OPENAI_API_BASE`/`OPENAI_API_KEY` + `--model openai/<id>`) dan menyelesaikan satu pertukaran pesan non-interaktif | Model ter-list via routing `openai/`, exit 0, respons assistant tak-kosong; skip eksplisit bila biner aider tak terinstal | `tests/integration/test_m12_harness_compat.sh` |
@@ -504,17 +644,21 @@ dismoen serve --host 127.0.0.1 --port 8000 --model-dir /home/will/models/qwen3.6
 ## 5. Rencana Gelombang Kerja (Execution Waves)
 
 - **Gelombang 1 (M12-W1: ChatML Template & Streaming Detokenizer)**:
-  - Implementasi resolver special-token runtime + pin section tokenizer di `models.lock.port.json` (kontrak §2.1 butir 1–6; tanpa konstanta ID numerik di kode/test).
+  - Implementasi resolver special-token runtime + pin section tokenizer di `models.lock.json` (kontrak §2.1 butir 1–6; tanpa konstanta ID numerik di kode/test).
   - Implementasi renderer subset text-only + jalur penolakan eksplisit untuk semua input non-subset (tabel §2.1).
   - Implementasi formatter prompt ChatML untuk format role system, user, dan assistant.
   - Streaming detokenizer yang menangani potongan byte UTF-8 multi-byte (Gate G-M12-1).
 - **Gelombang 2 (M12-W2: Terminal Interactive REPL `dismoen chat`)**:
-  - Implementasi derivasi session key + tabel invalidasi §2.2 (termasuk uji
-    isolasi dua sesi sama-panjang dan uji paritas cache-hit vs full-prefill).
+  - Implementasi longest-prefix lookup + canonical rebase saat completion
+    + tabel reuse §2.2 (termasuk uji isolasi dua sesi sama-panjang, uji
+    divergensi-tengah, uji paritas cache-hit vs full-prefill, dan asersi
+    turn-2 HIT dengan prefill == delta).
   - Implementasi antarmuka loop terminal interaktif dengan graceful abort `Ctrl+C`.
   - Integrasi session continuity KMSS v1 (Gate G-M12-2).
 - **Gelombang 3 (M12-W3: Embedded HTTP Micro-Server `dismoen serve`)**:
-  - Server HTTP ringan berbasis socket lokal berkinerja tinggi.
+  - Server HTTP ringan berbasis socket lokal berkinerja tinggi (default
+    loopback; bind non-loopback wajib `--api-key-required`, tolak start
+    bila absen — §3.2).
   - Penanganan router `/v1/models` dan `/v1/chat/completions`.
   - Serial executor + antrean FIFO berbatas + admission control + kepemilikan
     pembatalan sesuai kontrak §2.4 (Gate G-M12-4).
@@ -541,7 +685,7 @@ dismoen serve --host 127.0.0.1 --port 8000 --model-dir /home/will/models/qwen3.6
 ## 6. Definisi Selesai (DoD M12)
 
 - [ ] Subperintah `dismoen chat` berfungsi sebagai REPL terminal interaktif dengan live streaming dan formatting subset text-only yang akurat (Gate G-M12-1).
-- [ ] Tidak ada hardcode ID ChatML di spec/kode/test; `models.lock.port.json` memuat pin tokenizer (SHA-256 + revision) dan engine menolak start saat mismatch (kontrak §2.1).
+- [ ] Tidak ada hardcode ID ChatML di spec/kode/test; `models.lock.json` memuat pin tokenizer (SHA-256 + revision) dan engine menolak start saat mismatch (kontrak §2.1).
 - [ ] Input non-subset (role `tool`, tool-calls, konten multimodal, dsb.) selalu ditolak eksplisit dengan penyebutan fitur pemicu — tidak pernah ter-render sebagian/salah.
 - [ ] Multi-turn session state KMSS v1 berhasil menjaga konteks percakapan tanpa menghitung ulang prefill dari awal giliran (Gate G-M12-2).
 - [ ] Identitas sesi mengikuti rantai kanonis §2.2 (skema socket=session dan model+length dilarang); cache murni optimasi — output tetap benar saat cache mati/di-evict.
@@ -549,8 +693,7 @@ dismoen serve --host 127.0.0.1 --port 8000 --model-dir /home/will/models/qwen3.6
 - [ ] Seluruh batas resource §2.4 aktif by-default dengan nilai konservatif (konteks default 16384, jauh di bawah maksimum model 262144) dan dapat dioverride via flag; M12 tetap single-request serving — problem multi-request scheduling eksplisit non-goal untuk M13+.
 - [ ] Terverifikasi sukses terhubung langsung dengan perkakas klien AI eksternal (Aider, Cline, Python `openai` SDK) pada alur chat teks subset tanpa lapisan perantara pihak ketiga (*zero-harness* dalam subset) — untuk aider via integration test kontrak resmi G-M12-5, bukan sekadar contoh doc.
 - [ ] Server mengeksekusi tepat satu generasi dalam satu waktu (default `max_concurrent_generations = 1`), antrean FIFO berbatas dengan 429 jujur saat penuh, dan abort/disconnect memutus seluruh execution graph hingga idle bersih dengan `orphan_compute_tokens == 0` dan `pending_io_after_cancel == 0` (Gate G-M12-4); konkurensi > 1 di luar scope M12.
+- [ ] Server bind loopback by-default; bind non-loopback hanya dengan `--api-key-required` (exact-match) dan menolak start bila flag absen (Gate G-M12-3/G-M12-4 via matriks 401 + uji start-refusal).
 - [ ] Server tangguh terhadap *early disconnect / client abort* tanpa memicu thread deadlock atau kebocoran memori (Gate G-M12-4).
 - [ ] Seluruh suite pengujian regresi (`validate-m11`, `validate-m10`, `validate-m9`) dan 13 hook `pre-commit` 100% hijau.
 - [ ] Scorecard formal sertifikasi M12 ter-commit di `reports/YYYY-MM-DD/M12-gates-scorecard.md`.
-
-```
