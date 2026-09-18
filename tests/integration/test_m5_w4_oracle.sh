@@ -18,13 +18,13 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-COMPARE_BIN="${COMPARE_BIN:-target/debug/kimo-tools}"
+COMPARE_BIN="${COMPARE_BIN:-target/debug/dismoen-tools}"
 FIXTURE_DIR="tools/fixtures"
 EXPECTED_BYTES=$((64 * 151936 * 4)) # 38.895.616 bytes
 
 if [ ! -f "$COMPARE_BIN" ]; then
-    echo ">> Membangun kimo-tools..."
-    cargo build --manifest-path tools/kimo-tools/Cargo.toml
+    echo ">> Membangun dismoen-tools..."
+    cargo build --manifest-path tools/dismoen-tools/Cargo.toml --bin dismoen-tools
 fi
 
 TEST_DIR="/tmp/test_m5_w4_oracle_$$"
@@ -121,9 +121,9 @@ sz_rec=$(stat -c%s "$REC_BIN")
 echo "   PASS: Artefak golden biner ($EXPECTED_BYTES B) & SHA-256 identity pins valid"
 
 # ----------------------------------------------------------------------
-# 3. Evaluasi Gate G-M5-1 via kimo-tools compare (Rust)
+# 3. Evaluasi Gate G-M5-1 via dismoen-tools compare (Rust)
 # ----------------------------------------------------------------------
-echo ">> [3/5] Evaluasi Gate G-M5-1 via kimo-tools compare (Rust)..."
+echo ">> [3/5] Evaluasi Gate G-M5-1 via dismoen-tools compare (Rust)..."
 
 COMPARE_OUT=$("$COMPARE_BIN" compare \
     --ref "$REC_BIN" \

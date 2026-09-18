@@ -45,17 +45,21 @@ impl Drop for TempDir {
     }
 }
 
-fn get_kimo_bin() -> Option<PathBuf> {
-    if let Ok(p) = std::env::var("KIMO") {
+fn get_dismoen_bin() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("DISMOEN") {
         let pb = PathBuf::from(p);
         if pb.exists() {
             return Some(pb);
         }
     }
     let root = get_root_dir();
-    let kimo = root.join("kimo");
-    if kimo.exists() {
-        return Some(kimo);
+    let dismoen = root.join("dismoen");
+    if dismoen.exists() {
+        return Some(dismoen);
+    }
+    let bin = root.join("build/bin/dismoen");
+    if bin.exists() {
+        return Some(bin);
     }
     if let Ok(status) = Command::new("pixi")
         .current_dir(&root)
@@ -63,12 +67,12 @@ fn get_kimo_bin() -> Option<PathBuf> {
             "run",
             "bash",
             "-c",
-            "PATH=\"/usr/bin:$PATH\" mojo build -I src src/main.mojo -o kimo",
+            "PATH=\"/usr/bin:$PATH\" mojo build -I src src/main.mojo -o dismoen",
         ])
         .status()
     {
-        if status.success() && kimo.exists() {
-            return Some(kimo);
+        if status.success() && dismoen.exists() {
+            return Some(dismoen);
         }
     }
     None
@@ -101,15 +105,15 @@ fn get_model_dir() -> Option<PathBuf> {
 // 1. Happy path: layers 0, 12, 23 pass Gate G-M2-1
 #[test]
 fn test_1_happy_path() {
-    let Some(kimo) = get_kimo_bin() else {
-        eprintln!("SKIPPED: kimo binary not available");
+    let Some(dismoen) = get_dismoen_bin() else {
+        eprintln!("SKIPPED: dismoen binary not available");
         return;
     };
     let root = get_root_dir();
     let act_path = root.join("fixtures/m2/activation.bin");
     assert!(act_path.exists(), "activation fixture missing");
 
-    let compare_bin = PathBuf::from(env!("CARGO_BIN_EXE_kimo-tools"));
+    let compare_bin = PathBuf::from(env!("CARGO_BIN_EXE_dismoen-tools"));
 
     if let Some(model_dir) = get_model_dir() {
         for lyr in [0, 12, 23] {
@@ -119,7 +123,7 @@ fn test_1_happy_path() {
             let ref_path = root.join(format!("fixtures/m2/attn_ref_{}.bin", lyr));
             assert!(ref_path.exists(), "ref bin missing: {:?}", ref_path);
 
-            let output = Command::new(&kimo)
+            let output = Command::new(&dismoen)
                 .current_dir(&root)
                 .args([
                     "layer",
@@ -134,12 +138,12 @@ fn test_1_happy_path() {
                     &out_file,
                 ])
                 .output()
-                .expect("Failed to execute kimo layer");
+                .expect("Failed to execute dismoen layer");
 
             assert_eq!(
                 output.status.code(),
                 Some(0),
-                "kimo layer {} failed: {}",
+                "dismoen layer {} failed: {}",
                 lyr,
                 String::from_utf8_lossy(&output.stderr)
             );
@@ -151,7 +155,7 @@ fn test_1_happy_path() {
             assert_eq!(rep["num_tokens"], 16);
             assert!(out_path.exists());
 
-            // Run kimo-tools compare (G-M2-1)
+            // Run dismoen-tools compare (G-M2-1)
             let cmp_output = Command::new(&compare_bin)
                 .current_dir(&root)
                 .args([
@@ -195,7 +199,7 @@ fn test_1_happy_path() {
 // 2. Layer validation: invalid layer numbers rejected with LAYER_INVALID
 #[test]
 fn test_2_layer_validation() {
-    let Some(kimo) = get_kimo_bin() else {
+    let Some(dismoen) = get_dismoen_bin() else {
         return;
     };
     let root = get_root_dir();
@@ -203,7 +207,7 @@ fn test_2_layer_validation() {
     let act_path = root.join("fixtures/m2/activation.bin");
 
     for bad_layer in ["5", "24", "-1", "abc"] {
-        let output = Command::new(&kimo)
+        let output = Command::new(&dismoen)
             .current_dir(&root)
             .args([
                 "layer",
@@ -223,7 +227,7 @@ fn test_2_layer_validation() {
     }
 
     // Missing --layer argument
-    let output = Command::new(&kimo)
+    let output = Command::new(&dismoen)
         .current_dir(&root)
         .args([
             "layer",
@@ -242,7 +246,7 @@ fn test_2_layer_validation() {
 // 3. Activation load failure: missing, truncated, NaN/Inf, outlier
 #[test]
 fn test_3_activation_load_failure() {
-    let Some(kimo) = get_kimo_bin() else {
+    let Some(dismoen) = get_dismoen_bin() else {
         return;
     };
     let Some(model_dir) = get_model_dir() else {
@@ -253,7 +257,7 @@ fn test_3_activation_load_failure() {
     let tmp_dir = TempDir::new("m2_act_fail");
 
     // Missing file
-    let output = Command::new(&kimo)
+    let output = Command::new(&dismoen)
         .current_dir(&root)
         .args([
             "layer",
@@ -274,7 +278,7 @@ fn test_3_activation_load_failure() {
     // Truncated file
     let trunc_path = tmp_dir.path().join("truncated.bin");
     fs::write(&trunc_path, vec![0u8; 100]).unwrap();
-    let output = Command::new(&kimo)
+    let output = Command::new(&dismoen)
         .current_dir(&root)
         .args([
             "layer",
@@ -298,7 +302,7 @@ fn test_3_activation_load_failure() {
     let nan_f32 = f32::NAN.to_le_bytes();
     nan_bytes[0..4].copy_from_slice(&nan_f32);
     fs::write(&nan_path, nan_bytes).unwrap();
-    let output = Command::new(&kimo)
+    let output = Command::new(&dismoen)
         .current_dir(&root)
         .args([
             "layer",
@@ -322,7 +326,7 @@ fn test_3_activation_load_failure() {
     let out_f32 = 1e7f32.to_le_bytes();
     out_bytes[0..4].copy_from_slice(&out_f32);
     fs::write(&outlier_path, out_bytes).unwrap();
-    let output = Command::new(&kimo)
+    let output = Command::new(&dismoen)
         .current_dir(&root)
         .args([
             "layer",
@@ -402,7 +406,7 @@ fn test_5_softmax_overflow() {
 // 6. Bias mismatch: missing 72 attention bias tensors rejected
 #[test]
 fn test_6_bias_mismatch() {
-    let Some(kimo) = get_kimo_bin() else {
+    let Some(dismoen) = get_dismoen_bin() else {
         return;
     };
     let root = get_root_dir();
@@ -414,7 +418,7 @@ fn test_6_bias_mismatch() {
         "hidden_size": 2048,
         "num_hidden_layers": 24,
         "num_attention_heads": 16,
-        "vocab_size": 151936,
+        "vocab_size": 2048,
         "rms_norm_eps": 1e-6
     });
     fs::write(
@@ -436,7 +440,7 @@ fn test_6_bias_mismatch() {
     )
     .unwrap();
 
-    let output = Command::new(&kimo)
+    let output = Command::new(&dismoen)
         .current_dir(&root)
         .args([
             "layer",
@@ -463,7 +467,7 @@ fn test_6_bias_mismatch() {
 // 7. Causal mask verification: output token t only depends on inputs <= t
 #[test]
 fn test_7_causal_mask_verification() {
-    let Some(kimo) = get_kimo_bin() else {
+    let Some(dismoen) = get_dismoen_bin() else {
         return;
     };
     let Some(model_dir) = get_model_dir() else {
@@ -495,7 +499,7 @@ fn test_7_causal_mask_verification() {
     let out_a = tmp_dir.path().join("out_a.bin");
     let out_b = tmp_dir.path().join("out_b.bin");
 
-    let res_a = Command::new(&kimo)
+    let res_a = Command::new(&dismoen)
         .current_dir(&root)
         .args([
             "layer",
@@ -513,7 +517,7 @@ fn test_7_causal_mask_verification() {
         .unwrap();
     assert!(res_a.success());
 
-    let res_b = Command::new(&kimo)
+    let res_b = Command::new(&dismoen)
         .current_dir(&root)
         .args([
             "layer",
@@ -555,7 +559,7 @@ fn test_7_causal_mask_verification() {
 fn test_8_oracle_mismatch() {
     let root = get_root_dir();
     let tmp_dir = TempDir::new("m2_mismatch");
-    let compare_bin = PathBuf::from(env!("CARGO_BIN_EXE_kimo-tools"));
+    let compare_bin = PathBuf::from(env!("CARGO_BIN_EXE_dismoen-tools"));
 
     let ref_path = root.join("fixtures/m2/attn_ref_0.bin");
     let mut cand_bytes = fs::read(&ref_path).unwrap();

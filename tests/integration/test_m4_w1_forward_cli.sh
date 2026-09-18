@@ -14,7 +14,7 @@
 
 set -u
 
-KIMO="${KIMO:-./kimo}"
+KIMO="${KIMO:-./dismoen}"
 TEST_DIR="/tmp/test_m4_w1_cli_$$"
 WORKDIR="$TEST_DIR/workdir"
 MODEL_DIR="$TEST_DIR/model"

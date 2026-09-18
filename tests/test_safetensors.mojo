@@ -36,8 +36,8 @@ def write_shard(path: String, header: String, payload_len: Int) raises:
 
 def test_valid_two_tensors() raises:
     var h = '{"t1":{"dtype":"BF16","shape":[4],"data_offsets":[0,8]},"t2":{"dtype":"F32","shape":[2],"data_offsets":[8,16]}}'
-    write_shard("/tmp/kimo_t1.st", h, 16)
-    var st = read_header("/tmp/kimo_t1.st")
+    write_shard("/tmp/dismoen_t1.st", h, 16)
+    var st = read_header("/tmp/dismoen_t1.st")
     assert_equal(len(st.entries), 2)
     assert_equal(st.entries[0].name, "t1")
     assert_equal(st.entries[0].dtype, "BF16")
@@ -50,44 +50,44 @@ def test_valid_two_tensors() raises:
 
 def test_begin_gt_end() raises:
     var h = '{"t":{"dtype":"BF16","shape":[4],"data_offsets":[8,0]}}'
-    write_shard("/tmp/kimo_t2.st", h, 16)
+    write_shard("/tmp/dismoen_t2.st", h, 16)
     with assert_raises(contains="OFFSET_OVERFLOW"):
-        _ = read_header("/tmp/kimo_t2.st")
+        _ = read_header("/tmp/dismoen_t2.st")
 
 
 def test_hole() raises:
     var h = '{"a":{"dtype":"BF16","shape":[4],"data_offsets":[0,8]},"b":{"dtype":"BF16","shape":[4],"data_offsets":[12,20]}}'
-    write_shard("/tmp/kimo_t3.st", h, 20)
+    write_shard("/tmp/dismoen_t3.st", h, 20)
     with assert_raises(contains="OFFSET_OVERFLOW"):
-        _ = read_header("/tmp/kimo_t3.st")
+        _ = read_header("/tmp/dismoen_t3.st")
 
 
 def test_unknown_dtype() raises:
     var h = '{"t":{"dtype":"Q8","shape":[4],"data_offsets":[0,8]}}'
-    write_shard("/tmp/kimo_t4.st", h, 8)
+    write_shard("/tmp/dismoen_t4.st", h, 8)
     with assert_raises(contains="UNKNOWN_DTYPE"):
-        _ = read_header("/tmp/kimo_t4.st")
+        _ = read_header("/tmp/dismoen_t4.st")
 
 
 def test_layout_mismatch() raises:
     var h = '{"t":{"dtype":"BF16","shape":[4],"data_offsets":[0,4]}}'
-    write_shard("/tmp/kimo_t5.st", h, 8)
+    write_shard("/tmp/dismoen_t5.st", h, 8)
     with assert_raises(contains="LAYOUT_MISMATCH"):
-        _ = read_header("/tmp/kimo_t5.st")
+        _ = read_header("/tmp/dismoen_t5.st")
 
 
 def test_duplicate_json_key() raises:
     var h = '{"t":{"dtype":"BF16","shape":[4],"data_offsets":[0,8]},"t":{"dtype":"BF16","shape":[4],"data_offsets":[8,16]}}'
-    write_shard("/tmp/kimo_t6.st", h, 16)
+    write_shard("/tmp/dismoen_t6.st", h, 16)
     with assert_raises(contains="DUPLICATE_JSON_KEY"):
-        _ = read_header("/tmp/kimo_t6.st")
+        _ = read_header("/tmp/dismoen_t6.st")
 
 
 def test_empty_accepted() raises:
     # tensor kosong (BEGIN==END, shape [0]) WAJIB diterima — regresi bug `<` ketat
     var h = '{"a":{"dtype":"BF16","shape":[4],"data_offsets":[0,8]},"e":{"dtype":"F32","shape":[0],"data_offsets":[8,8]}}'
-    write_shard("/tmp/kimo_t7.st", h, 8)
-    var st = read_header("/tmp/kimo_t7.st")
+    write_shard("/tmp/dismoen_t7.st", h, 8)
+    var st = read_header("/tmp/dismoen_t7.st")
     assert_equal(len(st.entries), 2)
     assert_equal(st.entries[1].begin, 8)
     assert_equal(st.entries[1].end, 8)
@@ -95,7 +95,7 @@ def test_empty_accepted() raises:
 
 def test_header_too_big() raises:
     # klaim 200 MB tanpa body: tolak tanpa alokasi besar
-    var f = open("/tmp/kimo_t8.st", "w")
+    var f = open("/tmp/dismoen_t8.st", "w")
     var prefix = List[UInt8]()
     var n = 200000000
     var mult = 1
@@ -105,11 +105,11 @@ def test_header_too_big() raises:
     f.write_all(Span(prefix))
     f.close()
     with assert_raises(contains="INVALID_HEADER"):
-        _ = read_header("/tmp/kimo_t8.st")
+        _ = read_header("/tmp/dismoen_t8.st")
 
 
 def test_truncated_header() raises:
-    var f = open("/tmp/kimo_t9.st", "w")
+    var f = open("/tmp/dismoen_t9.st", "w")
     var prefix = List[UInt8]()
     var n = 100
     var mult = 1
@@ -123,19 +123,19 @@ def test_truncated_header() raises:
     f.write_all(Span(tiny))
     f.close()
     with assert_raises(contains="INVALID_HEADER"):
-        _ = read_header("/tmp/kimo_t9.st")
+        _ = read_header("/tmp/dismoen_t9.st")
 
 
 def test_overflow_beyond_filesize() raises:
     var h = '{"t":{"dtype":"BF16","shape":[4000],"data_offsets":[0,8000]}}'
-    write_shard("/tmp/kimo_t10.st", h, 8)
+    write_shard("/tmp/dismoen_t10.st", h, 8)
     with assert_raises(contains="OFFSET_OVERFLOW"):
-        _ = read_header("/tmp/kimo_t10.st")
+        _ = read_header("/tmp/dismoen_t10.st")
 
 
 def test_file_not_found() raises:
     with assert_raises(contains="FILE_NOT_FOUND"):
-        _ = read_header("/tmp/kimo_tidak_ada.st")
+        _ = read_header("/tmp/dismoen_tidak_ada.st")
 
 
 struct LCG(Movable):
@@ -204,22 +204,22 @@ def build_case(mut rng: LCG, corrupt: Int, mut payload: List[Int]) -> String:
 
 def test_missing_field() raises:
     var h = String('{"t":{"dtype":"BF16","shape":[4]}}')
-    write_shard("/tmp/kimo_t11.st", h, 8)
+    write_shard("/tmp/dismoen_t11.st", h, 8)
     with assert_raises(contains="INVALID_HEADER"):
-        _ = read_header("/tmp/kimo_t11.st")
+        _ = read_header("/tmp/dismoen_t11.st")
 
 
 def test_not_json() raises:
-    write_shard("/tmp/kimo_t12.st", String("not json!!"), 0)
+    write_shard("/tmp/dismoen_t12.st", String("not json!!"), 0)
     with assert_raises(contains="JSON_PARSE_ERROR"):
-        _ = read_header("/tmp/kimo_t12.st")
+        _ = read_header("/tmp/dismoen_t12.st")
 
 
 def test_bad_arity() raises:
     var h = String('{"t":{"dtype":"BF16","shape":[4],"data_offsets":[0]}}')
-    write_shard("/tmp/kimo_t13.st", h, 8)
+    write_shard("/tmp/dismoen_t13.st", h, 8)
     with assert_raises(contains="JSON_PARSE_ERROR"):
-        _ = read_header("/tmp/kimo_t13.st")
+        _ = read_header("/tmp/dismoen_t13.st")
 
 
 def test_control_rejected() raises:
@@ -230,18 +230,18 @@ def test_control_rejected() raises:
     for i in range(len(hb)):
         buf.append(hb[i])
     buf[2] = 1
-    write_shard_bytes("/tmp/kimo_t14.st", buf, 8)
+    write_shard_bytes("/tmp/dismoen_t14.st", buf, 8)
     with assert_raises(contains="JSON_PARSE_ERROR"):
-        _ = read_header("/tmp/kimo_t14.st")
+        _ = read_header("/tmp/dismoen_t14.st")
 
 
 def test_lone_surrogate() raises:
     var js = String(
         '{"\\ud800":{"dtype":"BF16","shape":[1],"data_offsets":[0,2]}}'
     )
-    write_shard("/tmp/kimo_t15.st", js, 2)
+    write_shard("/tmp/dismoen_t15.st", js, 2)
     with assert_raises(contains="surrogate"):
-        _ = read_header("/tmp/kimo_t15.st")
+        _ = read_header("/tmp/dismoen_t15.st")
 
 
 def test_surrogate_pair() raises:
@@ -249,8 +249,8 @@ def test_surrogate_pair() raises:
     var js = String(
         '{"\\ud83d\\ude00":{"dtype":"BF16","shape":[1],"data_offsets":[0,2]}}'
     )
-    write_shard("/tmp/kimo_t16.st", js, 2)
-    var st = read_header("/tmp/kimo_t16.st")
+    write_shard("/tmp/dismoen_t16.st", js, 2)
+    var st = read_header("/tmp/dismoen_t16.st")
     assert_equal(len(st.entries), 1)
     assert_equal(st.entries[0].name.byte_length(), 4)
 
@@ -260,9 +260,9 @@ def test_cross_nesting() raises:
     var js = String(
         '{"t":{"dtype":"BF16","shape":[1],"data_offsets":[0,2],"x":{"a":[1}}}}'
     )
-    write_shard("/tmp/kimo_t17.st", js, 2)
+    write_shard("/tmp/dismoen_t17.st", js, 2)
     with assert_raises(contains="JSON_PARSE_ERROR"):
-        _ = read_header("/tmp/kimo_t17.st")
+        _ = read_header("/tmp/dismoen_t17.st")
 
 
 def test_escape_roundtrip() raises:
@@ -308,7 +308,7 @@ def test_prop_random_valid() raises:
     for trial in range(20):
         var payload = List[Int]()
         var js = build_case(rng, 0, payload)
-        var path = String("/tmp/kimo_pv", trial, ".st")
+        var path = String("/tmp/dismoen_pv", trial, ".st")
         write_shard(path, js, payload[0])
         var st = read_header(path)
         assert_equal(len(st.entries), payload[1])
@@ -319,7 +319,7 @@ def test_prop_random_invalid() raises:
     for trial in range(20):
         var payload = List[Int]()
         var js = build_case(rng, 1 + trial % 3, payload)
-        var path = String("/tmp/kimo_pi", trial, ".st")
+        var path = String("/tmp/dismoen_pi", trial, ".st")
         write_shard(path, js, payload[0])
         with assert_raises(contains="OFFSET_OVERFLOW"):
             _ = read_header(path)

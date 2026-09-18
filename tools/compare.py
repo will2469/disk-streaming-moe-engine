@@ -4,7 +4,7 @@
 # See LICENSE for details.
 """CLI Wrapper untuk evaluasi ekivalensi numerik F10 (Gate G-M5-1).
 
-Menghubungkan Mojo engine / Oracle outputs ke `kimo-tools compare`
+Menghubungkan Mojo engine / Oracle outputs ke `dismoen-tools compare`
 (atau komputasi F10 fallback deterministik).
 Mendukung argumen:
   --mojo / --ref: path binary logits kandidat / mojo
@@ -21,17 +21,17 @@ import subprocess
 import sys
 
 
-def find_kimo_tools() -> str | None:
-    """Mencari executable kimo-tools."""
+def find_dismoen_tools() -> str | None:
+    """Mencari executable dismoen-tools."""
     env_bin = os.environ.get("COMPARE_BIN")
     if env_bin and os.path.isfile(env_bin) and os.access(env_bin, os.X_OK):
         return env_bin
 
     candidates = [
-        os.path.abspath("target/debug/kimo-tools"),
-        os.path.abspath("target/release/kimo-tools"),
-        os.path.abspath("tools/kimo-tools/target/debug/kimo-tools"),
-        os.path.abspath("tools/kimo-tools/target/release/kimo-tools"),
+        os.path.abspath("target/debug/dismoen-tools"),
+        os.path.abspath("target/release/dismoen-tools"),
+        os.path.abspath("tools/dismoen-tools/target/debug/dismoen-tools"),
+        os.path.abspath("tools/dismoen-tools/target/release/dismoen-tools"),
     ]
     for c in candidates:
         if os.path.isfile(c) and os.access(c, os.X_OK):
@@ -39,7 +39,7 @@ def find_kimo_tools() -> str | None:
 
     # Cek di PATH
     for path_dir in os.environ.get("PATH", "").split(os.pathsep):
-        candidate = os.path.join(path_dir, "kimo-tools")
+        candidate = os.path.join(path_dir, "dismoen-tools")
         if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
             return candidate
 
@@ -83,7 +83,7 @@ def compute_f10_fallback(
     gate: str,
     tolerance: float | None = None,
 ) -> tuple[int, str]:
-    """Fallback pure-Python perhitungan F10 jika kimo-tools belum ada."""
+    """Fallback pure-Python perhitungan F10 jika dismoen-tools belum ada."""
     import numpy as np
 
     if not os.path.exists(ref_path):
@@ -245,16 +245,16 @@ def compute_f10_fallback(
     return (0 if is_pass else 1), json.dumps(report, indent=2)
 
 
-def build_kimo_tools_cmd(
-    kimo_tools: str,
+def build_dismoen_tools_cmd(
+    dismoen_tools: str,
     ref_path: str,
     cand_path: str,
     gate: str,
     args: argparse.Namespace,
 ) -> list[str]:
-    """Menyusun argumen command untuk memanggil binary kimo-tools."""
+    """Menyusun argumen command untuk memanggil binary dismoen-tools."""
     cmd = [
-        kimo_tools,
+        dismoen_tools,
         "compare",
         "--ref",
         ref_path,
@@ -341,9 +341,9 @@ def main():
     if args.tolerance is not None and gate == "G-M5-1":
         gate = "G-M8-1"
 
-    kimo_tools = find_kimo_tools()
-    if kimo_tools:
-        cmd = build_kimo_tools_cmd(kimo_tools, ref_path, cand_path, gate, args)
+    dismoen_tools = find_dismoen_tools()
+    if dismoen_tools:
+        cmd = build_dismoen_tools_cmd(dismoen_tools, ref_path, cand_path, gate, args)
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.stdout:
             sys.stdout.write(res.stdout)
@@ -351,7 +351,7 @@ def main():
             sys.stderr.write(res.stderr)
         sys.exit(res.returncode)
     else:
-        # Fallback pure-Python jika binary kimo-tools belum terkompilasi
+        # Fallback pure-Python jika binary dismoen-tools belum terkompilasi
         rc, out = compute_f10_fallback(
             ref_path, cand_path, args.vocab_size, gate, args.tolerance
         )

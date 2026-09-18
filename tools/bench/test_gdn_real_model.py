@@ -6,7 +6,8 @@ r"""Integration Readiness Verification: Real Model & M9 Hybrid Architecture.
 
 Memverifikasi kesiapan integrasi GDN pada model asli dan arsitektur M9:
 1. Akses O_DIRECT dan LRU Cache pada model riil di disk (/home/will/models/).
-2. Eksekusi CLI kimo gdn dengan I/O configuration (O_DIRECT + LRU) di bawah SEC-4 (<6G).
+2. Eksekusi CLI dismoen gdn dengan I/O configuration (O_DIRECT + LRU)
+   di bawah SEC-4 (<6G).
 3. Integritas format GDNS v1 dan trailing SHA-256 checksum.
 4. Kesiapan arsitektur hibrida 40-layer M9 (30 GDN + 10 Gated Attention).
 """
@@ -22,9 +23,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 def test_real_model_readiness() -> int:
     """Menjalankan suite verifikasi readiness model asli dan M9."""
-    kimo_bin = str(REPO_ROOT / "kimo")
-    if not os.path.exists(kimo_bin):
-        sys.stderr.write("ERROR: kimo binary tidak ditemukan!\n")
+    dismoen_bin = str(REPO_ROOT / "dismoen")
+    if not os.path.exists(dismoen_bin):
+        sys.stderr.write("ERROR: dismoen binary tidak ditemukan!\n")
         return 1
 
     print("=" * 72)
@@ -82,7 +83,7 @@ def test_real_model_readiness() -> int:
     )
     out_tmp = str(REPO_ROOT / "reports" / "m8_real_model_state.bin")
     cmd_gdn_real = [
-        kimo_bin,
+        dismoen_bin,
         "gdn",
         "--model-dir",
         "fixtures",
@@ -106,7 +107,7 @@ def test_real_model_readiness() -> int:
     ]
     res_gdn = subprocess.run(cmd_gdn_real, capture_output=True, text=True)
     if res_gdn.returncode != 0:
-        print("ERROR: kimo gdn dengan O_DIRECT + LRU gagal!")
+        print("ERROR: dismoen gdn dengan O_DIRECT + LRU gagal!")
         print(res_gdn.stderr)
         return 1
 

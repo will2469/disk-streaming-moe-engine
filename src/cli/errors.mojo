@@ -1,7 +1,7 @@
 # Copyright 2026 will2469
 # Licensed under the Apache License, Version 2.0 (the "License");
 # See LICENSE for details.
-"""Utilitas penanganan error JSON dan path string untuk Kimo CLI."""
+"""Utilitas penanganan error JSON dan path string untuk Dismoen CLI."""
 
 from format.types import error_json, json_escape
 from std.collections import List
@@ -11,7 +11,7 @@ from std.sys.terminate import exit
 
 def eprint_json(msg: String) raises:
     # Kontrak machine-readable: stdout = protocol/result saja; error JSON
-    # TIDAK PERNAH ke stdout (konsumen result=$(kimo ...) wajib steril).
+    # TIDAK PERNAH ke stdout (konsumen result=$(dismoen ...) wajib steril).
     # /dev/stderr dibuka append (tanpa truncate: O_TRUNC di pipe -> ENXIO).
     # Bila /dev tak ada (chroot dsb) tapi fd 2 masih terbuka, tulis langsung
     # via write(2). Dua-duanya gagal → diam; exit code caller tetap

@@ -23,10 +23,7 @@ cd "${REPO_ROOT}"
 
 DISMOEN="./dismoen"
 if [[ ! -x "$DISMOEN" ]]; then
-    DISMOEN="./kimo"
-fi
-if [[ ! -x "$DISMOEN" ]]; then
-    echo "FAIL: Binary dismoen/kimo tidak ditemukan. Jalankan 'pixi run build' terlebih dahulu."
+    echo "FAIL: Binary dismoen tidak ditemukan. Jalankan 'pixi run build' terlebih dahulu."
     exit 1
 fi
 

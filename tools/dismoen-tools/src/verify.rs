@@ -79,7 +79,7 @@ pub fn run(args: &[String]) -> i32 {
     }
     if lock.is_empty() || dir.is_empty() {
         eprintln!(
-            r#"{{"error_type":"USAGE","detail":"pakai: kimo-tools verify --lock <models.lock.json> --dir <model-dir>"}}"#
+            r#"{{"error_type":"USAGE","detail":"pakai: dismoen-tools verify --lock <models.lock.json> --dir <model-dir>"}}"#
         );
         return 2;
     }
@@ -167,7 +167,7 @@ mod tests {
 
     #[test]
     fn tamper_satu_byte_ditolak() {
-        let d = std::env::temp_dir().join("kimo-w3-tamper");
+        let d = std::env::temp_dir().join("dismoen-w3-tamper");
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         tiny(&d, "a.bin", b"0123456789abcdef");
@@ -185,7 +185,7 @@ mod tests {
 
     #[test]
     fn hash_deterministik() {
-        let d = std::env::temp_dir().join("kimo-w3-det");
+        let d = std::env::temp_dir().join("dismoen-w3-det");
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         let h1 = tiny(&d, "b.bin", b"abc");

@@ -18,9 +18,9 @@
 
 set -euo pipefail
 
-KIMO_TOOLS="${KIMO_TOOLS:-target/release/kimo-tools}"
+KIMO_TOOLS="${KIMO_TOOLS:-target/debug/dismoen-tools}"
 if [ ! -f "$KIMO_TOOLS" ]; then
-    KIMO_TOOLS="target/debug/kimo-tools"
+    KIMO_TOOLS="target/release/dismoen-tools"
 fi
 PYTHON="${PYTHON:-.venv/bin/python}"
 if [ ! -x "$PYTHON" ]; then

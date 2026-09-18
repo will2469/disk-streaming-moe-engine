@@ -8,5 +8,5 @@ from std.collections import List
 
 
 def cmd_forward_port(args: List[String]) raises:
-    """Alias transisi kimo forward-port menuju dismoen forward."""
+    """Alias transisi forward-port menuju dismoen forward."""
     cmd_forward(args)

@@ -180,14 +180,14 @@ def evaluate_gate_g_m9_1(python_bin: str) -> dict[str, Any]:
         }
 
 
-def evaluate_gate_g_m9_2(kimo_bin: Path) -> dict[str, Any]:
+def evaluate_gate_g_m9_2(dismoen_bin: Path) -> dict[str, Any]:
     """Evaluasi Gate G-M9-2: Full Forward & Peak Memory Budget <= 7.5 GiB."""
     mini_config = REPO_ROOT / "fixtures/m9_port_config_mini.json"
     tokens_file = REPO_ROOT / "fixtures/m9_port_tokens.json"
 
-    # 1. Jalankan forward-port pada kimo binary dan baca VmHWM
+    # 1. Jalankan forward-port pada dismoen binary dan baca VmHWM
     cmd = [
-        str(kimo_bin),
+        str(dismoen_bin),
         "forward-port",
         "--architecture",
         "qwen3.6",
@@ -249,7 +249,7 @@ def evaluate_gate_g_m9_2(kimo_bin: Path) -> dict[str, Any]:
     }
 
 
-def evaluate_gate_g_m9_3(kimo_bin: Path) -> dict[str, Any]:
+def evaluate_gate_g_m9_3(dismoen_bin: Path) -> dict[str, Any]:
     """Evaluasi Gate G-M9-3: Decode >= 0.5 tok/s cold & KV reuse validity."""
     mini_config = REPO_ROOT / "fixtures/m9_port_config_mini.json"
     tokens_file = REPO_ROOT / "fixtures/m9_port_tokens.json"
@@ -261,7 +261,7 @@ def evaluate_gate_g_m9_3(kimo_bin: Path) -> dict[str, Any]:
 
         # Step 1: Prefill prompt 8 token & simpan sesi
         cmd1 = [
-            str(kimo_bin),
+            str(dismoen_bin),
             "forward-port",
             "--architecture",
             "qwen3.6",
@@ -282,7 +282,7 @@ def evaluate_gate_g_m9_3(kimo_bin: Path) -> dict[str, Any]:
 
         # Step 2: Decode 1 token continuation dari sesi 1
         cmd2 = [
-            str(kimo_bin),
+            str(dismoen_bin),
             "forward-port",
             "--architecture",
             "qwen3.6",
@@ -555,9 +555,9 @@ def main() -> None:
     """Fungsi utama sertifikasi gerbang Milestone M9."""
     venv_py = REPO_ROOT / ".venv/bin/python"
     python_bin = str(venv_py) if venv_py.exists() else sys.executable
-    kimo_bin = REPO_ROOT / "kimo"
-    if not kimo_bin.exists() and (REPO_ROOT / "build/bin/kimo").exists():
-        kimo_bin = REPO_ROOT / "build/bin/kimo"
+    dismoen_bin = REPO_ROOT / "dismoen"
+    if not dismoen_bin.exists() and (REPO_ROOT / "build/bin/dismoen").exists():
+        dismoen_bin = REPO_ROOT / "build/bin/dismoen"
 
     print("===================================================================")
     print("MILESTONE M9: FORMAL QUALITY GATES (G-M9-1..4) CERTIFICATION")
@@ -569,12 +569,12 @@ def main() -> None:
     print(f"    G-M9-1 Result: [{g1['verdict']}] (Delta_max: {dmax:.2e})")
 
     print("--> [2/5] Mengevaluasi Gate G-M9-2 (Peak Memory Budget <= 7.5 GiB)...")
-    g2 = evaluate_gate_g_m9_2(kimo_bin)
+    g2 = evaluate_gate_g_m9_2(dismoen_bin)
     nom_g2 = g2["f1_budget_nominal_gib"]
     print(f"    G-M9-2 Result: [{g2['verdict']}] (Nominal: {nom_g2:.2f} GiB)")
 
     print("--> [3/5] Mengevaluasi Gate G-M9-3 (Decode >= 0.5 tok/s & KV Reuse)...")
-    g3 = evaluate_gate_g_m9_3(kimo_bin)
+    g3 = evaluate_gate_g_m9_3(dismoen_bin)
     print(f"    G-M9-3 Result: [{g3['verdict']}] (Recompute: {g3['recompute_tokens']})")
 
     print("--> [4/5] Mengevaluasi Gate G-M9-4 (Formula F2 KV Scaling <= 5%)...")

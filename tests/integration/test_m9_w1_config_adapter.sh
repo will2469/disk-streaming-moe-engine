@@ -22,7 +22,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-KIMO="${KIMO:-./kimo}"
+KIMO="${KIMO:-./dismoen}"
 TEST_DIR="/tmp/test_m9_w1_$$"
 TRIAL_MODEL_DIR="${HOME}/models/qwen1.5-moe-a2.7b-chat"
 QWEN36_MODEL_DIR="${HOME}/models/qwen3.6-35b-a3b"

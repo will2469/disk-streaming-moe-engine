@@ -1,7 +1,7 @@
 # Copyright 2026 will2469
 # Licensed under the Apache License, Version 2.0 (the "License");
 # See LICENSE for details.
-"""Implementasi CLI kimo gdn untuk recurrent scan Gated DeltaNet (M8-W3)."""
+"""Implementasi CLI dismoen gdn untuk recurrent scan Gated DeltaNet (M8-W3)."""
 
 from cli.errors import eprint_json
 from cli.m8_errors import fail_m8
@@ -95,7 +95,7 @@ def load_tensor_by_keys(
 
 
 def cmd_gdn(args: List[String]) raises:
-    """Entry point untuk subcommand kimo gdn."""
+    """Entry point untuk subcommand dismoen gdn."""
     var t_start = perf_counter_ns()
 
     var model_dir = String("")
@@ -160,7 +160,7 @@ def cmd_gdn(args: List[String]) raises:
             i += 1
         elif a == "--help" or a == "-h":
             print(
-                "Usage: kimo gdn --model-dir <dir> --tokens <path> --output"
+                "Usage: dismoen gdn --model-dir <dir> --tokens <path> --output"
                 " <path> [--state-input <path>] [--layers N] [--dk N] [--dv N]"
                 " [--chunk-size N] [--workdir <dir>] [--threads N]"
                 " [--run-id <id>] [--timing-profile]"

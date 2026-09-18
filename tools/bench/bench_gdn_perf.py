@@ -124,10 +124,10 @@ def main():
     n_runs = 3 if args.quick else args.n_runs
     n_warmup = 1 if args.quick else args.warmup
 
-    kimo_bin = REPO_ROOT / "kimo"
+    dismoen_bin = REPO_ROOT / "dismoen"
     weights_path = REPO_ROOT / "fixtures" / "m8_gdn_weights.safetensors"
 
-    if not kimo_bin.exists():
+    if not dismoen_bin.exists():
         subprocess.run(["pixi", "run", "build"], check=True, cwd=REPO_ROOT)
 
     today_str = datetime.date.today().strftime("%Y-%m-%d")
@@ -157,7 +157,7 @@ def main():
         print(f"--> [Warm-up] Menjalankan {n_warmup} iterasi awal...")
         for w in range(n_warmup):
             cmd_warm = [
-                str(kimo_bin),
+                str(dismoen_bin),
                 "gdn",
                 "--model-dir",
                 str(weights_path),
@@ -187,7 +187,7 @@ def main():
         for i in range(1, n_runs + 1):
             run_id = f"M8-{date_code}-{i:03d}"
             cmd = [
-                str(kimo_bin),
+                str(dismoen_bin),
                 "gdn",
                 "--model-dir",
                 str(weights_path),
@@ -240,7 +240,7 @@ def main():
         for c_val in chunks_to_test:
             sweep_id = f"M8-{date_code}-chunk{c_val}"
             cmd_sw = [
-                str(kimo_bin),
+                str(dismoen_bin),
                 "gdn",
                 "--model-dir",
                 str(weights_path),

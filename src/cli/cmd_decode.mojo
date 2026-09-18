@@ -1,7 +1,7 @@
 # Copyright 2026 will2469
 # Licensed under the Apache License, Version 2.0 (the "License");
 # See LICENSE for details.
-"""Implementasi subperintah decode CLI kimo (M5 KV cache incremental decode)."""
+"""Implementasi subperintah decode CLI dismoen (M5 KV cache incremental decode)."""
 
 from cli.config_parser import parse_model_config
 from cli.errors import dirname
@@ -167,7 +167,7 @@ def argmax_sample(logits: List[Float32], vocab_size: Int) raises -> Int:
 
 
 def cmd_decode(args: List[String]) raises:
-    """CLI handler untuk kimo decode."""
+    """CLI handler untuk dismoen decode."""
     var t_start = perf_counter_ns()
 
     var model_dir = String("")

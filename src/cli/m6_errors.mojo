@@ -1,7 +1,7 @@
 # Copyright 2026 will2469
 # Licensed under the Apache License, Version 2.0 (the "License");
 # See LICENSE for details.
-"""Skema error M6 dan penanganan failure fail-closed untuk Kimo quantize CLI."""
+"""Skema error M6 dan penanganan failure fail-closed untuk Dismoen quantize CLI."""
 
 from cli.sys_utils import c_unlink
 from format.types import json_escape

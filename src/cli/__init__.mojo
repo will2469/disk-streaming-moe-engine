@@ -1,7 +1,7 @@
 # Copyright 2026 will2469
 # Licensed under the Apache License, Version 2.0 (the "License");
 # See LICENSE for details.
-"""Kimo CLI subcommands and utilities."""
+"""Dismoen CLI subcommands and utilities."""
 
 from cli.cmd_check_index import cmd_check_index
 from cli.cmd_decode import cmd_decode

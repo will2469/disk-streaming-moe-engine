@@ -23,9 +23,9 @@ if [ ! -x "$PYTHON" ]; then
     PYTHON="python3"
 fi
 
-COMPARE_BIN="${COMPARE_BIN:-target/debug/kimo-tools}"
+COMPARE_BIN="${COMPARE_BIN:-target/debug/dismoen-tools}"
 if [ ! -f "$COMPARE_BIN" ]; then
-    COMPARE_BIN="target/release/kimo-tools"
+    COMPARE_BIN="target/release/dismoen-tools"
 fi
 
 TEST_DIR="/tmp/test_m9_w4_$$"
@@ -151,7 +151,7 @@ echo "$COMPARE_OUT" | grep -q '"status": "MATCH"' || {
     exit 1
 }
 
-# Jika kimo-tools binary tersedia, uji juga via binary
+# Jika dismoen-tools binary tersedia, uji juga via binary
 if [ -x "$COMPARE_BIN" ]; then
     BIN_COMPARE=$("$COMPARE_BIN" compare "$LOGITS_FILE" "$CAND_FILE" --gate G-M9-1 --dim 1024)
     echo "$BIN_COMPARE" | grep -q '"verdict": "PASS"' || {

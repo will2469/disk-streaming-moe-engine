@@ -13,7 +13,7 @@ VOCAB_SIZE_LIMIT = 151936
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Tokenize text prompt for Kimo")
+    parser = argparse.ArgumentParser(description="Tokenize text prompt for Dismoen")
     parser.add_argument(
         "--model-dir",
         required=True,

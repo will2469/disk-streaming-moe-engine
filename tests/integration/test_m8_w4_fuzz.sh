@@ -12,13 +12,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 
-KIMO="./kimo"
+KIMO="./dismoen"
 DIR="fixtures/m8-fuzz"
-TMP_OUT="$(mktemp -d -t kimo_fuzz_m8_XXXXXX)"
+TMP_OUT="$(mktemp -d -t dismoen_fuzz_m8_XXXXXX)"
 trap 'rm -rf "$TMP_OUT"' EXIT
 
 if [ ! -f "$KIMO" ]; then
-    echo "kimo binary not found, building..."
+    echo "dismoen binary not found, building..."
     pixi run build
 fi
 

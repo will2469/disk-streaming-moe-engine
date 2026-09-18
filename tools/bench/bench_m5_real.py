@@ -73,7 +73,7 @@ def _parse_proc_oom_kills() -> int:
 
 
 def run_single_decode(
-    kimo_bin: Path,
+    dismoen_bin: Path,
     model_dir: Path,
     prompt: str,
     max_tokens: int,
@@ -84,12 +84,12 @@ def run_single_decode(
     threads: int = 1,
     skip_cgroup: bool = False,
 ) -> dict:
-    """Menjalankan satu iterasi kimo decode dan mengekstrak telemetri."""
+    """Menjalankan satu iterasi dismoen decode dan mengekstrak telemetri."""
     out_tokens = tmp_workdir / f"tokens_run_{run_idx}.json"
     run_id = f"M5-20260917-{run_idx:03d}"
 
     base_cmd = [
-        str(kimo_bin),
+        str(dismoen_bin),
         "decode",
         "--model-dir",
         str(model_dir),
@@ -377,7 +377,7 @@ def compute_f5_calibration(
 
 
 def _run_baseline_protocol(
-    kimo_bin: Path,
+    dismoen_bin: Path,
     args: argparse.Namespace,
     tmp_dir: Path,
 ) -> tuple[list[dict], list[dict]]:
@@ -388,7 +388,7 @@ def _run_baseline_protocol(
     for w in range(1, args.warmup + 1):
         print(f"   [Warmup {w}/{args.warmup}] Decode...", end="", flush=True)
         res = run_single_decode(
-            kimo_bin,
+            dismoen_bin,
             args.model_dir,
             args.prompt,
             args.max_tokens,
@@ -408,7 +408,7 @@ def _run_baseline_protocol(
     for r in range(1, args.runs + 1):
         run_idx = args.warmup + r
         res = run_single_decode(
-            kimo_bin,
+            dismoen_bin,
             args.model_dir,
             args.prompt,
             args.max_tokens,
@@ -431,7 +431,7 @@ def _run_baseline_protocol(
 
 
 def _run_core_sweep(
-    kimo_bin: Path,
+    dismoen_bin: Path,
     args: argparse.Namespace,
     tmp_dir: Path,
     c_levels: list[int],
@@ -439,7 +439,7 @@ def _run_core_sweep(
     print("\n[Step 4/4] Menjalankan F16 Core Scaling Sweep...")
     for pw in range(5):
         run_single_decode(
-            kimo_bin,
+            dismoen_bin,
             args.model_dir,
             args.prompt,
             args.max_tokens,
@@ -456,7 +456,7 @@ def _run_core_sweep(
         c_runs = []
         for cw in range(5):
             run_single_decode(
-                kimo_bin,
+                dismoen_bin,
                 args.model_dir,
                 args.prompt,
                 args.max_tokens,
@@ -469,7 +469,7 @@ def _run_core_sweep(
             )
         for cr in range(10):
             c_res = run_single_decode(
-                kimo_bin,
+                dismoen_bin,
                 args.model_dir,
                 args.prompt,
                 args.max_tokens,
@@ -556,10 +556,10 @@ def main():
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parent.parent.parent
-    kimo_bin = root / "kimo"
+    dismoen_bin = root / "dismoen"
 
-    if not kimo_bin.exists():
-        print(f"Error: binary {kimo_bin} tidak ditemukan.", file=sys.stderr)
+    if not dismoen_bin.exists():
+        print(f"Error: binary {dismoen_bin} tidak ditemukan.", file=sys.stderr)
         sys.exit(1)
 
     cpu_gov = get_cpu_governor()
@@ -597,12 +597,12 @@ def main():
 
     try:
         warmup_results, baseline_results = _run_baseline_protocol(
-            kimo_bin, args, tmp_dir
+            dismoen_bin, args, tmp_dir
         )
 
         print("\n[Step 3/4] Verifikasi Memory @4K Context (Gate G-M5-3)...")
         res_4k = run_single_decode(
-            kimo_bin,
+            dismoen_bin,
             args.model_dir,
             args.prompt,
             args.max_tokens,
@@ -623,7 +623,7 @@ def main():
         if c_levels[-1] != logical_cores and logical_cores > c_levels[-1]:
             c_levels.append(logical_cores)
 
-        core_sweep_data = _run_core_sweep(kimo_bin, args, tmp_dir, c_levels)
+        core_sweep_data = _run_core_sweep(dismoen_bin, args, tmp_dir, c_levels)
 
     finally:
         if workdir_obj:

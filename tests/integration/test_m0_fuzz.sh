@@ -2,7 +2,7 @@
 # G-M0-3: 20+ korpus fuzz -> clean error (exit 2) atau PASS kontrol (exit 0).
 # Timeout 10 dtk/kasus (anti-hang). OOM tak terpicu pada ukuran korpus ini (catat).
 set -u
-KIMO="${KIMO:-./kimo}"
+KIMO="${KIMO:-./dismoen}"
 DIR="fixtures/m0-fuzz"
 pass=0; fail=0
 for f in "$DIR"/*.st; do

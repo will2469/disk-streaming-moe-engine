@@ -13,16 +13,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 
-KIMO="./kimo"
+KIMO="./dismoen"
 FIXTURES_DIR="fixtures"
-TMP_DIR="$(mktemp -d -t kimo_m8_w5_XXXXXX)"
+TMP_DIR="$(mktemp -d -t dismoen_m8_w5_XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 echo "======================================================================="
 echo "=== M8-W5 Master Test Suite: M7/M9 Integration, Stress, Perf, & SEC ==="
 echo "======================================================================="
 
-# Pastikan binary kimo siap
+# Pastikan binary dismoen siap
 if [ ! -f "$KIMO" ]; then
     echo "Binary kimo tidak ditemukan, mengompilasi via pixi build..."
     pixi run build

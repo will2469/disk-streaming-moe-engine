@@ -1,7 +1,7 @@
 # Copyright 2026 will2469
 # Licensed under the Apache License, Version 2.0 (the "License");
 # See LICENSE for details.
-"""Skema error M8 dan penanganan failure fail-closed untuk Kimo GDN CLI."""
+"""Skema error M8 dan penanganan failure fail-closed untuk Dismoen GDN CLI."""
 
 from cli.errors import eprint_json
 from cli.sys_utils import c_unlink

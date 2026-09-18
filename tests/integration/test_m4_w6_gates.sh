@@ -16,8 +16,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-KIMO="${KIMO:-./kimo}"
-COMPARE_BIN="${COMPARE_BIN:-target/debug/kimo-tools}"
+KIMO="${KIMO:-./dismoen}"
+COMPARE_BIN="${COMPARE_BIN:-target/debug/dismoen-tools}"
 MODEL_DIR="${MODEL_DIR:-/home/will/models/qwen1.5-moe-a2.7b-chat}"
 FIXTURE_DIR="tools/fixtures"
 
@@ -32,12 +32,12 @@ if [ ! -d "$MODEL_DIR" ] || [ ! -f "$MODEL_DIR/model.safetensors.index.json" ]; 
 fi
 
 if [ ! -f "$COMPARE_BIN" ]; then
-    echo ">> Membangun kimo-tools..."
-    cargo build --manifest-path tools/kimo-tools/Cargo.toml
+    echo ">> Membangun dismoen-tools..."
+    cargo build --manifest-path tools/dismoen-tools/Cargo.toml --bin dismoen-tools
 fi
 
 if [ ! -f "$KIMO" ]; then
-    echo ">> Membangun engine kimo..."
+    echo ">> Membangun engine dismoen..."
     pixi run build
 fi
 
@@ -105,7 +105,7 @@ for p in $PROMPT_LIST; do
         exit 1
     }
 
-    # Evaluasi Gate G-M4-1 via kimo-tools compare
+    # Evaluasi Gate G-M4-1 via dismoen-tools compare
     COMPARE_REPORT=$("$COMPARE_BIN" compare \
         --ref "$ORACLE_BIN" \
         --cand "$OUTPUT" \

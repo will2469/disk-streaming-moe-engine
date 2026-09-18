@@ -2,9 +2,9 @@
 # Kontrak I/O M0 (hard gate): seluruh read pada shard HARUS dalam [0, data_base).
 # Bukti via strace (lseek+read/pread), bukan klaim kode. read_bytes total observasional.
 set -u
-KIMO="${KIMO:-./kimo}"
+KIMO="${KIMO:-./dismoen}"
 FX="fixtures/m0"
-LOG=/tmp/kimo-io-contract.log
+LOG=/tmp/dismoen-io-contract.log
 strace -f -e trace=openat,lseek,read,pread64 -o "$LOG" \
   "$KIMO" check-index "$FX"/fixture-0000*.safetensors >/dev/null 2>&1
 code=$?

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Integration test suite for kimo-tools compare & Gate G-M2-1 verdict (M2-W5)
+# Integration test suite for dismoen-tools compare & Gate G-M2-1 verdict (M2-W5)
 # Covers:
 # 1. Happy path: kimo layer (0, 12, 23) vs oracle attn_ref_*.bin (exit 0, MATCH, PASS, Gate G-M2-1)
 # 2. Gate G-M2-1 FAIL category classification (exit 1, MISMATCH, FAIL):
@@ -13,13 +13,10 @@
 
 set -u
 
-KIMO="${KIMO:-./kimo}"
-KIMO_TOOLS="${KIMO_TOOLS:-target/release/kimo-tools}"
+KIMO="${KIMO:-./dismoen}"
+KIMO_TOOLS="${KIMO_TOOLS:-target/debug/dismoen-tools}"
 if [ ! -f "$KIMO_TOOLS" ]; then
-    KIMO_TOOLS="target/debug/kimo-tools"
-fi
-if [ ! -f "$KIMO_TOOLS" ]; then
-    KIMO_TOOLS="tools/kimo-tools/target/debug/kimo-tools"
+    KIMO_TOOLS="target/release/dismoen-tools"
 fi
 
 MODEL_DIR="${MODEL_DIR:-/home/will/models/qwen1.5-moe-a2.7b-chat}"
@@ -29,11 +26,11 @@ ACT_BIN="fixtures/m2/activation.bin"
 
 fail=0
 
-# Ensure kimo-tools binary exists
+# Ensure dismoen-tools binary exists
 if [ ! -f "$KIMO_TOOLS" ]; then
-    echo "Building kimo-tools release binary..."
-    cargo build --release --manifest-path tools/kimo-tools/Cargo.toml > /dev/null 2>&1
-    KIMO_TOOLS="target/release/kimo-tools"
+    echo "Building dismoen-tools release binary..."
+    cargo build --release --manifest-path tools/dismoen-tools/Cargo.toml --bin dismoen-tools > /dev/null 2>&1
+    KIMO_TOOLS="target/release/dismoen-tools"
 fi
 
 # shellcheck disable=SC2317

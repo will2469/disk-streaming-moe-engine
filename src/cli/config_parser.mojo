@@ -1,7 +1,7 @@
 # Copyright 2026 will2469
 # Licensed under the Apache License, Version 2.0 (the "License");
 # See LICENSE for details.
-"""Parser konfigurasi model dan token JSON untuk Kimo CLI."""
+"""Parser konfigurasi model dan token JSON untuk Dismoen CLI."""
 
 from cli.sys_utils import str_to_float
 from core.config import ModelConfig
@@ -461,7 +461,9 @@ def parse_model_config(path: String) raises -> Tuple[ModelConfig, Float32]:
     var fields = _parse_config_object(raw)
 
     # Deteksi nested text_config (seperti pada Qwen3.6-35B-A3B)
+    var has_text_config = False
     if "text_config" in fields:
+        has_text_config = True
         var text_raw = fields["text_config"]
         var tb = text_raw.as_bytes()
         if len(tb) > 2 and tb[0] == 123 and tb[len(tb) - 1] == 125:
@@ -489,9 +491,21 @@ def parse_model_config(path: String) raises -> Tuple[ModelConfig, Float32]:
             ' expected","stage":"config"}'
         )
 
+    var arch_field = fields["architecture"] if "architecture" in fields else ""
+    var is_qwen36 = (
+        has_text_config
+        or model_type == '"qwen3_5_moe"'
+        or model_type == '"qwen3_5_moe_text"'
+        or arch_field == '"qwen3.6"'
+        or arch_field == '"qwen3_6"'
+        or arch_field.find("qwen3") >= 0
+        or raw_vocab == 248320
+        or (raw_vocab == 1024 and raw_experts == 8)
+    )
+
     var hidden_size = _find_config_int(fields, "hidden_size")
     var vocab_size = _find_config_int(fields, "vocab_size")
-    var def_layers = 40
+    var def_layers = 40 if is_qwen36 else 2
     var num_hidden_layers = _find_config_int_optional(
         fields, "num_hidden_layers", def_layers
     )
@@ -506,10 +520,10 @@ def parse_model_config(path: String) raises -> Tuple[ModelConfig, Float32]:
             ' must be finite and > 0","stage":"config"}'
         )
 
-    var def_experts = 256
-    var def_topk = 8
-    var def_inter = 512
-    var def_shared = 512
+    var def_experts = 256 if is_qwen36 else 8
+    var def_topk = 8 if is_qwen36 else 2
+    var def_inter = 512 if is_qwen36 else 64
+    var def_shared = 512 if is_qwen36 else 64
 
     var num_experts = _find_config_int_optional(
         fields, "num_experts", def_experts
@@ -524,7 +538,7 @@ def parse_model_config(path: String) raises -> Tuple[ModelConfig, Float32]:
         fields, "shared_expert_intermediate_size", def_shared
     )
 
-    var def_kv_heads = 2
+    var def_kv_heads = 2 if is_qwen36 else num_attention_heads
     var num_key_value_heads = _find_config_int_optional(
         fields, "num_key_value_heads", def_kv_heads
     )
@@ -555,84 +569,88 @@ def parse_model_config(path: String) raises -> Tuple[ModelConfig, Float32]:
                 ' must be boolean","stage":"config"}'
             )
 
-    # Mismatch Detector (Exit 3): Validasi Dimensi Arsitektur Normatif
-    var is_canonical = (
-        num_experts == 256 or vocab_size == 248320 or num_hidden_layers == 40
-    )
-    var is_mini = (
-        num_experts == 8 or vocab_size == 1024 or num_hidden_layers == 4
-    )
-    if is_canonical:
-        if num_experts != 256:
-            raise Error(
-                '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"canonical'
-                " Qwen3.6 requires num_experts=256, got "
-                + String(num_experts)
-                + '","stage":"config"}'
-            )
-        if num_experts_per_tok != 8:
-            raise Error(
-                '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"canonical'
-                " Qwen3.6 requires num_experts_per_tok=8, got "
-                + String(num_experts_per_tok)
-                + '","stage":"config"}'
-            )
-        if vocab_size != 248320:
-            raise Error(
-                '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"canonical'
-                " Qwen3.6 requires vocab_size=248320, got "
-                + String(vocab_size)
-                + '","stage":"config"}'
-            )
-        if num_hidden_layers != 40:
-            raise Error(
-                '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"canonical'
-                " Qwen3.6 requires num_hidden_layers=40, got "
-                + String(num_hidden_layers)
-                + '","stage":"config"}'
-            )
-        if num_key_value_heads != 2:
-            raise Error(
-                '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"canonical'
-                " Qwen3.6 requires num_key_value_heads=2 (GQA 16Q/2KV), got "
-                + String(num_key_value_heads)
-                + '","stage":"config"}'
-            )
-    elif is_mini:
-        if num_experts != 8:
-            raise Error(
-                '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"synthetic'
-                " mini port requires num_experts=8, got "
-                + String(num_experts)
-                + '","stage":"config"}'
-            )
-        if num_experts_per_tok != 2:
-            raise Error(
-                '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"synthetic'
-                " mini port requires num_experts_per_tok=2, got "
-                + String(num_experts_per_tok)
-                + '","stage":"config"}'
-            )
-        if vocab_size != 1024:
-            raise Error(
-                '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"synthetic'
-                " mini port requires vocab_size=1024, got "
-                + String(vocab_size)
-                + '","stage":"config"}'
-            )
-        if num_hidden_layers != 4:
-            raise Error(
-                '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"synthetic'
-                " mini port requires num_hidden_layers=4, got "
-                + String(num_hidden_layers)
-                + '","stage":"config"}'
-            )
-    else:
-        raise Error(
-            '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"Qwen3.6'
-            " config does not match canonical (40L/256E/248K) or mini"
-            ' (4L/8E/1K) dimensions","stage":"config"}'
+    # Mismatch Detector (Exit 3): Validasi Dimensi Arsitektur Normatif (hanya untuk Qwen 3.6)
+    if is_qwen36:
+        var is_canonical = (
+            num_experts == 256
+            or vocab_size == 248320
+            or num_hidden_layers == 40
         )
+        var is_mini = vocab_size == 1024 or (
+            num_experts == 8 and num_hidden_layers == 4
+        )
+        if is_canonical:
+            if num_experts != 256:
+                raise Error(
+                    '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"canonical'
+                    " Qwen3.6 requires num_experts=256, got "
+                    + String(num_experts)
+                    + '","stage":"config"}'
+                )
+            if num_experts_per_tok != 8:
+                raise Error(
+                    '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"canonical'
+                    " Qwen3.6 requires num_experts_per_tok=8, got "
+                    + String(num_experts_per_tok)
+                    + '","stage":"config"}'
+                )
+            if vocab_size != 248320:
+                raise Error(
+                    '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"canonical'
+                    " Qwen3.6 requires vocab_size=248320, got "
+                    + String(vocab_size)
+                    + '","stage":"config"}'
+                )
+            if num_hidden_layers != 40:
+                raise Error(
+                    '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"canonical'
+                    " Qwen3.6 requires num_hidden_layers=40, got "
+                    + String(num_hidden_layers)
+                    + '","stage":"config"}'
+                )
+            if num_key_value_heads != 2:
+                raise Error(
+                    '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"canonical'
+                    " Qwen3.6 requires num_key_value_heads=2 (GQA 16Q/2KV),"
+                    " got "
+                    + String(num_key_value_heads)
+                    + '","stage":"config"}'
+                )
+        elif is_mini:
+            if num_experts != 8:
+                raise Error(
+                    '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"synthetic'
+                    " mini port requires num_experts=8, got "
+                    + String(num_experts)
+                    + '","stage":"config"}'
+                )
+            if num_experts_per_tok != 2:
+                raise Error(
+                    '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"synthetic'
+                    " mini port requires num_experts_per_tok=2, got "
+                    + String(num_experts_per_tok)
+                    + '","stage":"config"}'
+                )
+            if vocab_size != 1024:
+                raise Error(
+                    '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"synthetic'
+                    " mini port requires vocab_size=1024, got "
+                    + String(vocab_size)
+                    + '","stage":"config"}'
+                )
+            if num_hidden_layers != 4:
+                raise Error(
+                    '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"synthetic'
+                    " mini port requires num_hidden_layers=4, got "
+                    + String(num_hidden_layers)
+                    + '","stage":"config"}'
+                )
+        else:
+            raise Error(
+                '{"error_code":3,"error_type":"CONFIG_MISMATCH","detail":"Qwen3.6'
+                " config does not match canonical (40L/256E/248K) or mini"
+                ' (4L/8E/1K) dimensions","stage":"config"}'
+            )
 
     var cfg = ModelConfig(
         hidden_size,

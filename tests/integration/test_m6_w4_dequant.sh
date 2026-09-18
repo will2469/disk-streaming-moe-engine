@@ -109,8 +109,8 @@ tensors = {
 save_file(tensors, os.path.join(model_dir, "model.safetensors"))
 EOF
 
-# Kuantisasi model via CLI kimo
-./kimo quantize \
+# Kuantisasi model via CLI dismoen
+./dismoen quantize \
     --input-dir "$BF16_MODEL_DIR" \
     --output-dir "$QUANT_OUT_DIR" \
     --group-size 128 \

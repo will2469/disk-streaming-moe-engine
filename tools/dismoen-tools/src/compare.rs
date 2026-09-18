@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // See LICENSE for details.
 
-//! Subcommand `kimo-tools compare` — evaluasi ekivalensi numerik F10.
+//! Subcommand `dismoen-tools compare` — evaluasi ekivalensi numerik F10.
 //!
 //! Menghitung kelima metrik F10:
 //!   - delta_max: selisih absolut maksimum
@@ -883,7 +883,7 @@ pub fn run(args: &[String]) -> i32 {
     if ref_path.is_empty() || cand_path.is_empty() {
         return emit_error(
             "USAGE",
-            "pakai: kimo-tools compare <ref.bin> <cand.bin> [--gate G-M1-1|G-M2-1|G-M3-1|G-M4-1|G-M5-1|G-M8-1] [--dim <N>] [--oracle-routing <json>] [--cand-routing <json>] [--min-jaccard <val>]",
+            "pakai: dismoen-tools compare <ref.bin> <cand.bin> [--gate G-M1-1|G-M2-1|G-M3-1|G-M4-1|G-M5-1|G-M8-1] [--dim <N>] [--oracle-routing <json>] [--cand-routing <json>] [--min-jaccard <val>]",
         );
     }
 

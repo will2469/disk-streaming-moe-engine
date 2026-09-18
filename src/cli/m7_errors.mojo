@@ -1,7 +1,7 @@
 # Copyright 2026 will2469
 # Licensed under the Apache License, Version 2.0 (the "License");
 # See LICENSE for details.
-"""Skema error M7 dan penanganan failure fail-closed untuk Kimo O_DIRECT dan LRU Cache."""
+"""Skema error M7 dan penanganan failure fail-closed untuk Dismoen O_DIRECT dan LRU Cache."""
 
 from cli.sys_utils import c_unlink, cleanup_run_resources
 from format.types import json_escape

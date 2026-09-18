@@ -1,7 +1,7 @@
 # Copyright 2026 will2469
 # Licensed under the Apache License, Version 2.0 (the "License");
 # See LICENSE for details.
-"""Implementasi subperintah head CLI kimo."""
+"""Implementasi subperintah head CLI dismoen."""
 
 from cli.config_parser import parse_model_config, parse_tokens_json
 from cli.errors import dirname, fail

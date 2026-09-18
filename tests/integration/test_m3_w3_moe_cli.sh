@@ -19,7 +19,7 @@
 
 set -u
 
-KIMO="${KIMO:-./kimo}"
+KIMO="${KIMO:-./dismoen}"
 TEST_DIR="/tmp/test_m3_w3_moe_cli_$$"
 FX_DIR="$TEST_DIR/fixture"
 WORKDIR="$TEST_DIR/workdir"

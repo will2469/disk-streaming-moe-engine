@@ -1,7 +1,7 @@
 # Copyright 2026 will2469
 # Licensed under the Apache License, Version 2.0 (the "License");
 # See LICENSE for details.
-"""Implementasi subperintah layer CLI kimo (dispatcher part attention dan MoE)."""
+"""Implementasi subperintah layer CLI dismoen (dispatcher part attention dan MoE)."""
 
 from cli.cmd_layer_attn import run_layer_attn
 from cli.cmd_layer_moe import run_layer_moe

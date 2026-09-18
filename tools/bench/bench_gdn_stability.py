@@ -93,12 +93,12 @@ def main():
     args = parse_args()
     seq_lengths = [1024, 2048, 4096] if args.quick else args.seq_lengths
 
-    kimo_bin = REPO_ROOT / "kimo"
+    dismoen_bin = REPO_ROOT / "dismoen"
     oracle_script = REPO_ROOT / "tools" / "oracle" / "oracle_gdn.py"
     weights_path = REPO_ROOT / "fixtures" / "m8_gdn_weights.safetensors"
 
-    if not kimo_bin.exists():
-        print("Binary kimo not found, compiling...")
+    if not dismoen_bin.exists():
+        print("Binary dismoen not found, compiling...")
         subprocess.run(["pixi", "run", "build"], check=True, cwd=REPO_ROOT)
 
     expected_state_bytes = args.layers * args.dv * args.dk * 4
@@ -128,9 +128,9 @@ def main():
             out_mojo = tmp_path / f"state_mojo_{s}.bin"
             out_oracle = tmp_path / f"state_oracle_{s}.bin"
 
-            # 1. Jalankan kimo gdn
+            # 1. Jalankan dismoen gdn
             cmd_mojo = [
-                str(kimo_bin),
+                str(dismoen_bin),
                 "gdn",
                 "--model-dir",
                 str(weights_path),
@@ -146,27 +146,30 @@ def main():
                 str(args.dv),
                 "--chunk-size",
                 str(args.chunk_size),
-                "--threads",
-                "1",
+                "--run-id",
+                f"STAB-{s}",
+                "--timing-profile",
             ]
-            res_mojo = subprocess.run(
-                cmd_mojo,
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            report = json.loads(res_mojo.stdout)
+            res = subprocess.run(cmd_mojo, capture_output=True, text=True)
+            if res.returncode != 0:
+                err_msg = (
+                    f"Mojo GDN crash on s={s}:\n"
+                    f"STDOUT: {res.stdout}\n"
+                    f"STDERR: {res.stderr}"
+                )
+                raise RuntimeError(err_msg)
+            report = json.loads(res.stdout)
             vmhwm = report["metrics"]["vmhwm_bytes"]
             wall_sec = report["metrics"]["walltime_sec"]
 
-            # 2. Jalankan oracle naive
+            # 2. Jalankan Oracle naive FP32
             cmd_oracle = [
                 py_exec,
                 str(oracle_script),
-                "--tokens",
-                str(tok_file),
                 "--weights",
                 str(weights_path),
+                "--tokens",
+                str(tok_file),
                 "--output",
                 str(out_oracle),
                 "--layers",
@@ -175,19 +178,17 @@ def main():
                 str(args.dk),
                 "--dv",
                 str(args.dv),
-                "--seed",
-                "42",
             ]
             subprocess.run(
                 cmd_oracle,
-                capture_output=True,
-                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 check=True,
             )
 
-            # 3. Bandingkan dengan kimo compare
+            # 3. Bandingkan dengan dismoen compare
             cmd_comp = [
-                str(kimo_bin),
+                str(dismoen_bin),
                 "compare",
                 "--reference",
                 str(out_oracle),

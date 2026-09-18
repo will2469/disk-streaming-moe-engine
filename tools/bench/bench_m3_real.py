@@ -5,18 +5,18 @@
 
 """Benchmark runner for M3: Real-checkpoint MoE layer benchmark.
 
-Executes N=5 runs of `./kimo layer --part moe` on
+Executes N=5 runs of `./dismoen layer --part moe` on
 `/home/will/models/qwen1.5-moe-a2.7b-chat` for layers 0, 12, and 23 under
 `systemd-run --user --scope -p MemoryMax=6G`.
 Measures parse time, compute time, total time, VmHWM, and I/O reads.
 """
 
 import json
-from pathlib import Path
 import statistics
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 DEFAULT_MODEL_DIR = Path("/home/will/models/qwen1.5-moe-a2.7b-chat")
 LAYERS = [0, 12, 23]
@@ -24,7 +24,7 @@ RUNS = 5
 
 
 def run_single_benchmark(
-    kimo_bin: Path,
+    dismoen_bin: Path,
     model_dir: Path,
     act_file: Path,
     layer: int,
@@ -33,7 +33,7 @@ def run_single_benchmark(
 ) -> dict:
     out_bin = "moe_out.bin"
     base_cmd = [
-        str(kimo_bin),
+        str(dismoen_bin),
         "layer",
         "--layer",
         str(layer),
@@ -122,12 +122,12 @@ def compute_layer_medians(results: list[dict]) -> dict:
 
 def main():
     root = Path(__file__).resolve().parent.parent.parent
-    kimo_bin = root / "kimo"
+    dismoen_bin = root / "dismoen"
     model_dir = DEFAULT_MODEL_DIR
     act_file = root / "fixtures/m3/activation.bin"
 
-    if not kimo_bin.exists():
-        print(f"Error: {kimo_bin} missing. Build first.", file=sys.stderr)
+    if not dismoen_bin.exists():
+        print(f"Error: {dismoen_bin} missing. Build first.", file=sys.stderr)
         sys.exit(1)
 
     if not model_dir.exists():
@@ -152,7 +152,7 @@ def main():
                 prefix=f"bench_m3_l{layer}_{i}_"
             ) as tmp_dir:
                 res = run_single_benchmark(
-                    kimo_bin, model_dir, act_file, layer, i, tmp_dir
+                    dismoen_bin, model_dir, act_file, layer, i, tmp_dir
                 )
                 layer_runs.append(res)
                 print(

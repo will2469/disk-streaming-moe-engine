@@ -34,27 +34,31 @@ echo "M10-W1: Rebranding & Toolchain Integrity Suite (Gate G-M10-1)"
 echo "======================================================================"
 
 # ---------------------------------------------------------------------------
-# Stage 1: Build Artifacts & Symlink Verification
+# Stage 1: Build Artifacts & Zero-Leftover Verification
 # ---------------------------------------------------------------------------
-echo "--> Stage 1: Build Artifacts & Symlink Verification"
+echo "--> Stage 1: Build Artifacts & Zero-Leftover Verification"
 
 if [ ! -x "$DISMOEN" ]; then
     echo "FAIL: Binary dismoen tidak ditemukan atau tidak executable: $DISMOEN"
     exit 1
 fi
 
-if [ ! -L "$KIMO" ]; then
-    echo "FAIL: Symlink kimo tidak ditemukan atau bukan symbolic link: $KIMO"
+if [ -e "$KIMO" ]; then
+    echo "FAIL: Sisa artefak kimo ditemukan: $KIMO (seharusnya sudah dieliminasi total)"
     exit 1
 fi
 
-LINK_TARGET="$(readlink "$KIMO")"
-if [[ "$LINK_TARGET" != "dismoen" && "$LINK_TARGET" != "$ROOT_DIR/dismoen" ]]; then
-    echo "FAIL: Symlink kimo mengarah ke target yang salah: $LINK_TARGET (diharapkan dismoen)"
+if [ -e "$ROOT_DIR/tools/kimo-tools" ]; then
+    echo "FAIL: Sisa artefak tools/kimo-tools ditemukan! (seharusnya sudah dieliminasi total)"
     exit 1
 fi
 
-echo "   PASS: dismoen executable valid dan symlink kimo terpasang benar."
+if [ ! -d "$ROOT_DIR/tools/dismoen-tools" ] || [ -L "$ROOT_DIR/tools/dismoen-tools" ]; then
+    echo "FAIL: tools/dismoen-tools harus berupa direktori fisik riil (bukan symlink)!"
+    exit 1
+fi
+
+echo "   PASS: dismoen executable valid, tools/dismoen-tools direktori fisik, 0 leftover kimo."
 
 # ---------------------------------------------------------------------------
 # Stage 2: Banner & Help Subcommand Verification
@@ -73,10 +77,10 @@ if ! grep -q "Penggunaan: dismoen" "$HELP_OUT"; then
     exit 1
 fi
 
-# Verifikasi via symlink kimo
-"$KIMO" -h > "$TEST_DIR/help_kimo.txt"
-if ! grep -q "DISMOEN (DIsk Streaming MOe ENgine)" "$TEST_DIR/help_kimo.txt"; then
-    echo "FAIL: Banner via symlink kimo -h tidak memuat DISMOEN"
+# Verifikasi flag -h
+"$DISMOEN" -h > "$TEST_DIR/help_short.txt"
+if ! grep -q "DISMOEN (DIsk Streaming MOe ENgine)" "$TEST_DIR/help_short.txt"; then
+    echo "FAIL: Banner via dismoen -h tidak memuat DISMOEN"
     exit 1
 fi
 
@@ -172,7 +176,8 @@ scorecard = {
     'verdict': 'PASS',
     'checks': {
         'binary_executable': '$DISMOEN',
-        'symlink_target': '$LINK_TARGET',
+        'kimo_eliminated': True,
+        'dismoen_tools_physical': True,
         'banner_verified': True,
         'usage_contract_rc2': True,
         'rust_tooling_single_bin': True

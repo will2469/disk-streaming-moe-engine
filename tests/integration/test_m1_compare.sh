@@ -1,5 +1,5 @@
 #!/bin/bash
-# Integration test suite for kimo-tools compare & F10 verdict (M1-W4)
+# Integration test suite for dismoen-tools compare & F10 verdict (M1-W4)
 # Covers:
 # 1. Happy path: kimo head output vs oracle logits_ref.bin (exit 0, MATCH, PASS)
 # 2. Positional shards head output vs oracle logits_ref.bin (exit 0, MATCH, PASS)
@@ -9,8 +9,8 @@
 
 set -u
 
-KIMO="${KIMO:-./kimo}"
-KIMO_TOOLS="${KIMO_TOOLS:-tools/kimo-tools/target/debug/kimo-tools}"
+KIMO="${KIMO:-./dismoen}"
+KIMO_TOOLS="${KIMO_TOOLS:-target/debug/dismoen-tools}"
 TEST_DIR="/tmp/test_m1_compare_$$"
 WORKDIR="$TEST_DIR/workdir"
 OUT_BIN="$WORKDIR/logits_mojo.bin"
@@ -18,9 +18,9 @@ REF_BIN="fixtures/m1/logits_ref.bin"
 
 fail=0
 
-# Ensure kimo-tools binary exists
+# Ensure dismoen-tools binary exists
 if [ ! -f "$KIMO_TOOLS" ]; then
-    cargo build --manifest-path tools/kimo-tools/Cargo.toml > /dev/null 2>&1
+    cargo build --manifest-path tools/dismoen-tools/Cargo.toml --bin dismoen-tools > /dev/null 2>&1
 fi
 
 # shellcheck disable=SC2317

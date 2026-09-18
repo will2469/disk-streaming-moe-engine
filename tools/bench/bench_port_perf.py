@@ -62,15 +62,15 @@ def generate_deterministic_tokens(path: Path, seq_len: int, vocab: int, seed: in
 
 
 def run_forward_port_cmd(
-    kimo_bin: Path,
+    dismoen_bin: Path,
     model_dir: Path,
     tokens_file: Path,
     run_id: str,
     extra_args: list[str] | None = None,
 ) -> dict:
-    """Menjalankan binary kimo forward-port dan membaca output JSON."""
+    """Menjalankan binary dismoen forward-port dan membaca output JSON."""
     cmd = [
-        str(kimo_bin),
+        str(dismoen_bin),
         "forward-port",
         "--architecture",
         "qwen3.6",
@@ -90,7 +90,7 @@ def run_forward_port_cmd(
     )
     if proc.returncode != 0:
         raise RuntimeError(
-            f"kimo forward-port failed (exit {proc.returncode}):\n{proc.stderr}"
+            f"dismoen forward-port failed (exit {proc.returncode}):\n{proc.stderr}"
         )
 
     try:
@@ -102,7 +102,7 @@ def run_forward_port_cmd(
 
 
 def execute_prefill_benchmark(
-    kimo_bin: Path,
+    dismoen_bin: Path,
     model_dir: Path,
     tokens_file: Path,
     n_runs: int,
@@ -114,7 +114,7 @@ def execute_prefill_benchmark(
     print(f"--> [Prefill] Menjalankan {warmup} warmup + {n_runs} runs...")
     for _ in range(warmup):
         run_forward_port_cmd(
-            kimo_bin, model_dir, tokens_file, "WARMUP-PREFILL", extra_args=[]
+            dismoen_bin, model_dir, tokens_file, "WARMUP-PREFILL", extra_args=[]
         )
 
     results = []
@@ -122,14 +122,14 @@ def execute_prefill_benchmark(
         run_id = f"M9-{today_str}-{idx:03d}"
         extra = ["--save-session", str(session_file)] if idx == n_runs else []
         res = run_forward_port_cmd(
-            kimo_bin, model_dir, tokens_file, run_id, extra_args=extra
+            dismoen_bin, model_dir, tokens_file, run_id, extra_args=extra
         )
         results.append(res)
     return results
 
 
 def execute_decode_benchmark(
-    kimo_bin: Path,
+    dismoen_bin: Path,
     model_dir: Path,
     work_dir: Path,
     n_runs: int,
@@ -148,7 +148,7 @@ def execute_decode_benchmark(
 
     for _ in range(warmup):
         run_forward_port_cmd(
-            kimo_bin,
+            dismoen_bin,
             model_dir,
             single_tok_file,
             "WARMUP-DECODE",
@@ -164,7 +164,7 @@ def execute_decode_benchmark(
     for idx in range(1, n_runs + 1):
         run_id = f"M9-{today_str}-{(start_run_idx + idx):03d}"
         res = run_forward_port_cmd(
-            kimo_bin,
+            dismoen_bin,
             model_dir,
             single_tok_file,
             run_id,
@@ -366,10 +366,12 @@ def main():
         description="M9 Port Performance Benchmark (Prefill N=5, Decode N=30)"
     )
     parser.add_argument(
+        "--dismoen-bin",
         "--kimo-bin",
+        dest="dismoen_bin",
         type=Path,
-        default=REPO_ROOT / "kimo",
-        help="Path ke binary kimo",
+        default=REPO_ROOT / "dismoen",
+        help="Path ke binary dismoen",
     )
     parser.add_argument(
         "--config-path",
@@ -412,7 +414,7 @@ def main():
     today_str = datetime.date.today().strftime("%Y%m%d")
     today_dash = datetime.date.today().strftime("%Y-%m-%d")
 
-    kimo_bin = args.kimo_bin.resolve()
+    dismoen_bin = args.dismoen_bin.resolve()
     config_path = args.config_path.resolve()
 
     out_dir = args.output_dir or (REPO_ROOT / "reports" / today_dash)
@@ -436,7 +438,7 @@ def main():
         session_file = tmp_dir / "prefill_session.kmss"
 
         prefill_runs = execute_prefill_benchmark(
-            kimo_bin,
+            dismoen_bin,
             config_path,
             tokens_file,
             args.n_prefill,
@@ -446,7 +448,7 @@ def main():
         )
 
         decode_runs = execute_decode_benchmark(
-            kimo_bin,
+            dismoen_bin,
             config_path,
             tmp_dir,
             args.n_decode,

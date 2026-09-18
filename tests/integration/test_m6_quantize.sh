@@ -81,11 +81,11 @@ echo "   PASS: Formatting Mojo dan Python bersih 100%."
 # ----------------------------------------------------------------------
 # 2. Build Kimo Executable
 # ----------------------------------------------------------------------
-echo ">> [2/8] Membangun binary kimo via pixi build..."
+echo ">> [2/8] Membangun binary dismoen via pixi build..."
 pixi run build
-KIMO="./kimo"
-[ -x "$KIMO" ] || { echo "FAIL: binary kimo tidak ditemukan"; exit 1; }
-echo "   PASS: Binary kimo siap dijalankan (0 warnings, 0 errors)."
+KIMO="./dismoen"
+[ -x "$KIMO" ] || { echo "FAIL: binary dismoen tidak ditemukan"; exit 1; }
+echo "   PASS: Binary dismoen siap dijalankan (0 warnings, 0 errors)."
 
 # ----------------------------------------------------------------------
 # 3. Setup Test Fixtures & Workdir Environment

@@ -27,7 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def evaluate_f2_kv_cache_grid(
-    kimo_bin: Path,
+    dismoen_bin: Path,
     config_path: Path,
     grid: list[int],
     work_dir: Path,
@@ -41,7 +41,7 @@ def evaluate_f2_kv_cache_grid(
         tok_file.write_text(json.dumps({"tokens": tokens, "seq_len": seq_len}))
 
         cmd = [
-            str(kimo_bin),
+            str(dismoen_bin),
             "forward-port",
             "--architecture",
             "qwen3.6",
@@ -58,7 +58,7 @@ def evaluate_f2_kv_cache_grid(
         )
         if proc.returncode != 0:
             raise RuntimeError(
-                f"kimo forward-port failed on seq_len={seq_len}:\n{proc.stderr}"
+                f"dismoen forward-port failed on seq_len={seq_len}:\n{proc.stderr}"
             )
 
         payload = json.loads(proc.stdout)
@@ -155,7 +155,7 @@ def calculate_f1_budget_model() -> dict:
 
 
 def calculate_f5_decode_calibration(
-    kimo_bin: Path, config_path: Path, work_dir: Path
+    dismoen_bin: Path, config_path: Path, work_dir: Path
 ) -> dict:
     """Mengkalibrasi waktu decode per token F5 terhadap eksekusi nyata."""
     single_tok = work_dir / "calib_single.json"
@@ -163,7 +163,7 @@ def calculate_f5_decode_calibration(
 
     sess_file = work_dir / "calib.kmss"
     cmd_init = [
-        str(kimo_bin),
+        str(dismoen_bin),
         "forward-port",
         "--architecture",
         "qwen3.6",
@@ -180,7 +180,7 @@ def calculate_f5_decode_calibration(
     measured_times = []
     for step in range(5):
         cmd_step = [
-            str(kimo_bin),
+            str(dismoen_bin),
             "forward-port",
             "--architecture",
             "qwen3.6",
@@ -352,10 +352,12 @@ def main():
         description="Verify M9 Port Calibration (F1, F2, F5, G-M9-4)"
     )
     parser.add_argument(
+        "--dismoen-bin",
         "--kimo-bin",
+        dest="dismoen_bin",
         type=Path,
-        default=REPO_ROOT / "kimo",
-        help="Path ke binary kimo",
+        default=REPO_ROOT / "dismoen",
+        help="Path ke binary dismoen",
     )
     parser.add_argument(
         "--config-path",
@@ -384,7 +386,7 @@ def main():
         print("--> [1/3] Menguji skala formula F2 KV Cache & Gate G-M9-4...")
         grid = [8, 16, 64, 128, 256, 512, 1024, 4096]
         f2_results = evaluate_f2_kv_cache_grid(
-            args.kimo_bin, args.config_path, grid, tmp_dir
+            args.dismoen_bin, args.config_path, grid, tmp_dir
         )
         for r in f2_results:
             print(
@@ -402,7 +404,7 @@ def main():
 
         print("--> [3/3] Mengkalibrasi waktu decode per token F5 & deviasi e_T...")
         f5_calib = calculate_f5_decode_calibration(
-            args.kimo_bin, args.config_path, tmp_dir
+            args.dismoen_bin, args.config_path, tmp_dir
         )
         t_ms = f5_calib["t_meas_sec"] * 1000.0
         p_ms = f5_calib["t_pred_sec"] * 1000.0

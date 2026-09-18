@@ -78,9 +78,9 @@ if [ ! -d "$QWEN15_MODEL_DIR" ]; then
     exit 0
 fi
 
-echo ">> [3/6] Menguji kimo decode dengan telemetri LRU cache (--cache-stats)..."
+echo ">> [3/6] Menguji dismoen decode dengan telemetri LRU cache (--cache-stats)..."
 STDOUT_DECODE="$WORKDIR/stdout_dec.json"
-./kimo decode \
+./dismoen decode \
   --model-dir "$HOME/models/qwen1.5-moe-a2.7b-chat-4bit" \
   --tokens tools/fixtures/m4_prompt1_tokens.json \
   --max-tokens 64 \

@@ -70,10 +70,10 @@ def main():
     )
     args = parser.parse_args()
 
-    kimo_bin = REPO_ROOT / "kimo"
+    dismoen_bin = REPO_ROOT / "dismoen"
     weights_path = REPO_ROOT / "fixtures" / "m8_gdn_weights.safetensors"
 
-    if not kimo_bin.exists():
+    if not dismoen_bin.exists():
         subprocess.run(["pixi", "run", "build"], check=True, cwd=REPO_ROOT)
 
     chunk_sizes = [64, 512] if args.quick else [64, 128, 256, 512, 1024]
@@ -109,7 +109,7 @@ def main():
             # 1. Jalankan Single-pass baseline combined
             state_comb = tmp_path / f"state_comb_C{c_val}.bin"
             cmd_comb = [
-                str(kimo_bin),
+                str(dismoen_bin),
                 "gdn",
                 "--model-dir",
                 str(weights_path),
@@ -148,7 +148,7 @@ def main():
 
                 # Step 1: Prefill seq1 -> simpan state
                 cmd_s1 = [
-                    str(kimo_bin),
+                    str(dismoen_bin),
                     "gdn",
                     "--model-dir",
                     str(weights_path),
@@ -171,7 +171,7 @@ def main():
 
                 # Step 2: Continuation seq2 dari state_s1
                 cmd_s2 = [
-                    str(kimo_bin),
+                    str(dismoen_bin),
                     "gdn",
                     "--model-dir",
                     str(weights_path),
@@ -196,7 +196,7 @@ def main():
 
                 # Step 3: Compare candidate continuation vs combined baseline
                 cmd_comp = [
-                    str(kimo_bin),
+                    str(dismoen_bin),
                     "compare",
                     "--reference",
                     str(state_comb),

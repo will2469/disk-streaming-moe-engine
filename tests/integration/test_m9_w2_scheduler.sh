@@ -22,7 +22,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-KIMO="${KIMO:-./kimo}"
+KIMO="${KIMO:-./dismoen}"
 TEST_DIR="/tmp/test_m9_w2_$$"
 MINI_CONFIG="fixtures/m9_port_config_mini.json"
 TOKENS_FIXTURE="fixtures/m9_port_tokens.json"
@@ -73,14 +73,14 @@ echo "   PASS: Formatting bersih, zero-suppression terverifikasi."
 # -----------------------------------------------------------------------------
 echo ">> [2/7] Memeriksa kompilasi binary kimo..."
 pixi run build >/dev/null 2>&1 || {
-    echo "FAIL: Gagal melakukan build binary kimo!"
+    echo "FAIL: Gagal melakukan build binary dismoen!"
     exit 1
 }
 if [[ ! -x "$KIMO" ]]; then
-    echo "FAIL: Binary kimo tidak ditemukan atau tidak executable: $KIMO"
+    echo "FAIL: Binary dismoen tidak ditemukan atau tidak executable: $KIMO"
     exit 1
 fi
-echo "   PASS: Binary kimo siap eksekusi."
+echo "   PASS: Binary dismoen siap eksekusi."
 
 # -----------------------------------------------------------------------------
 # Stage 3: Eksekusi Unit Test M9-W2

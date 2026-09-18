@@ -5,28 +5,28 @@
 
 """
 Benchmark runner for M1-C: Real-checkpoint head-path benchmark.
-Executes N=5 runs of `./kimo head` on `/home/will/models/qwen1.5-moe-a2.7b-chat`
+Executes N=5 runs of `./dismoen head` on `/home/will/models/qwen1.5-moe-a2.7b-chat`
 under `systemd-run --user --scope -p MemoryMax=6G`.
 """
 
-import os
-import sys
 import json
+import os
 import statistics
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 
 def main():
     root = Path(__file__).resolve().parent.parent.parent
-    kimo_bin = root / "kimo"
+    dismoen_bin = root / "dismoen"
     model_dir = Path("/home/will/models/qwen1.5-moe-a2.7b-chat")
     tokens_file = root / "fixtures/m1/tokens.json"
 
-    if not kimo_bin.exists():
+    if not dismoen_bin.exists():
         print(
-            f"Error: {kimo_bin} does not exist. Run pixi run build first.",
+            f"Error: {dismoen_bin} does not exist. Run pixi run build first.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -50,7 +50,7 @@ def main():
                 "--scope",
                 "-p",
                 "MemoryMax=6G",
-                str(kimo_bin),
+                str(dismoen_bin),
                 "head",
                 str(tokens_file),
                 "--model-dir",
@@ -60,7 +60,7 @@ def main():
                 "--output",
                 out_bin,
             ]
-            print(f"\n[Run {i}/{runs}] Executing kimo head...")
+            print(f"\n[Run {i}/{runs}] Executing dismoen head...")
             proc = subprocess.run(cmd, capture_output=True, text=True)
             if proc.returncode != 0:
                 print(f"Run {i} FAILED (exit {proc.returncode})", file=sys.stderr)

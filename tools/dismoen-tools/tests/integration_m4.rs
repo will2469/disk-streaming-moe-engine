@@ -54,7 +54,7 @@ fn get_root_dir() -> PathBuf {
 }
 
 fn get_compare_bin() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_kimo-tools"))
+    PathBuf::from(env!("CARGO_BIN_EXE_dismoen-tools"))
 }
 
 fn write_f32_le_file(path: &Path, data: &[f32]) {
@@ -115,7 +115,7 @@ fn test_ans_verdict_short_circuit() {
             c_path.to_str().unwrap(),
         ])
         .output()
-        .expect("failed to run kimo-tools compare");
+        .expect("failed to run dismoen-tools compare");
 
     assert_eq!(
         out.status.code(),

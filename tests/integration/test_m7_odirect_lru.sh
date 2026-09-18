@@ -77,17 +77,17 @@ fi
 echo "   PASS: Formatting Mojo dan Python bersih 100% tanpa supresi noqa."
 
 # ----------------------------------------------------------------------
-# 2. Membangun Eksekutabel Kimo dan IO Benchmark
+# 2. Membangun Eksekutabel Dismoen dan IO Benchmark
 # ----------------------------------------------------------------------
-echo ">> [2/8] Membangun binary kimo dan io_benchmark via pixi build..."
+echo ">> [2/8] Membangun binary dismoen dan io_benchmark via pixi build..."
 pixi run build
 pixi run bash -c 'PATH="/usr/bin:$PATH" mojo build -I src tools/bench/io_benchmark.mojo -o io_benchmark'
 
-KIMO="./kimo"
+KIMO="./dismoen"
 IO_BENCH="./io_benchmark"
-[ -x "$KIMO" ] || { echo "FAIL: binary kimo tidak ditemukan"; exit 1; }
+[ -x "$KIMO" ] || { echo "FAIL: binary dismoen tidak ditemukan"; exit 1; }
 [ -x "$IO_BENCH" ] || { echo "FAIL: binary io_benchmark tidak ditemukan"; exit 1; }
-echo "   PASS: Binary kimo dan io_benchmark siap dijalankan."
+echo "   PASS: Binary dismoen dan io_benchmark siap dijalankan."
 
 # ----------------------------------------------------------------------
 # 3. Setup Lingkungan Pengujian

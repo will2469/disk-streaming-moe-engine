@@ -12,16 +12,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 
-KIMO="./kimo"
+KIMO="./dismoen"
 FIXTURES_DIR="fixtures"
-TMP_DIR="$(mktemp -d -t kimo_m8_w3_XXXXXX)"
+TMP_DIR="$(mktemp -d -t dismoen_m8_w3_XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-echo "=== M8-W3 Master Integration Test Suite: kimo gdn CLI & State Lifecycle ==="
+echo "=== M8-W3 Master Integration Test Suite: dismoen gdn CLI & State Lifecycle ==="
 
-# Pastikan binary kimo tersedia
+# Pastikan binary dismoen tersedia
 if [ ! -f "$KIMO" ]; then
-    echo "Binary kimo tidak ditemukan, mengompilasi via pixi build..."
+    echo "Binary dismoen tidak ditemukan, mengompilasi via pixi build..."
     pixi run build
 fi
 

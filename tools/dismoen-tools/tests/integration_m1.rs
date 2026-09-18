@@ -44,17 +44,21 @@ impl Drop for TempDir {
     }
 }
 
-fn get_kimo_bin() -> Option<PathBuf> {
-    if let Ok(p) = std::env::var("KIMO") {
+fn get_dismoen_bin() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("DISMOEN") {
         let pb = PathBuf::from(p);
         if pb.exists() {
             return Some(pb);
         }
     }
     let root = get_root_dir();
-    let kimo = root.join("kimo");
-    if kimo.exists() {
-        return Some(kimo);
+    let dismoen = root.join("dismoen");
+    if dismoen.exists() {
+        return Some(dismoen);
+    }
+    let bin = root.join("build/bin/dismoen");
+    if bin.exists() {
+        return Some(bin);
     }
     if let Ok(status) = Command::new("pixi")
         .current_dir(&root)
@@ -62,12 +66,12 @@ fn get_kimo_bin() -> Option<PathBuf> {
             "run",
             "bash",
             "-c",
-            "PATH=\"/usr/bin:$PATH\" mojo build -I src src/main.mojo -o kimo",
+            "PATH=\"/usr/bin:$PATH\" mojo build -I src src/main.mojo -o dismoen",
         ])
         .status()
     {
-        if status.success() && kimo.exists() {
-            return Some(kimo);
+        if status.success() && dismoen.exists() {
+            return Some(dismoen);
         }
     }
     None
@@ -84,8 +88,8 @@ fn get_root_dir() -> PathBuf {
 
 #[test]
 fn test_1_happy_path_g_m1_1() {
-    let Some(kimo) = get_kimo_bin() else {
-        eprintln!("SKIPPED: kimo binary and pixi not available in environment");
+    let Some(dismoen) = get_dismoen_bin() else {
+        eprintln!("SKIPPED: dismoen binary and pixi not available in environment");
         return;
     };
     let root = get_root_dir();
@@ -95,8 +99,8 @@ fn test_1_happy_path_g_m1_1() {
     let model_dir = root.join("fixtures/m1");
     let ref_bin = root.join("fixtures/m1/logits_ref.bin");
 
-    // 1. Run kimo head
-    let output = Command::new(&kimo)
+    // 1. Run dismoen head
+    let output = Command::new(&dismoen)
         .current_dir(&root)
         .arg("head")
         .arg(&tokens_path)
@@ -107,25 +111,25 @@ fn test_1_happy_path_g_m1_1() {
         .arg("--output")
         .arg(&out_bin)
         .output()
-        .expect("Failed to execute kimo head");
+        .expect("Failed to execute dismoen head");
 
     assert_eq!(
         output.status.code(),
         Some(0),
-        "kimo head failed: {}",
+        "dismoen head failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
     let stdout_str = String::from_utf8_lossy(&output.stdout);
-    let report: Value = serde_json::from_str(&stdout_str).expect("Invalid JSON from kimo head");
+    let report: Value = serde_json::from_str(&stdout_str).expect("Invalid JSON from dismoen head");
     assert_eq!(report["status"], "success");
     assert_eq!(report["num_prompts"], 3);
     assert_eq!(report["tokens_per_prompt"], 16);
     assert_eq!(report["num_tokens_total"], 48);
     assert_eq!(report["vocab_size"], 512);
 
-    // 2. Run kimo-tools compare (G-M1-1)
-    let compare_bin = PathBuf::from(env!("CARGO_BIN_EXE_kimo-tools"));
+    // 2. Run dismoen-tools compare (G-M1-1)
+    let compare_bin = PathBuf::from(env!("CARGO_BIN_EXE_dismoen-tools"));
     let cmp_output = Command::new(&compare_bin)
         .current_dir(&root)
         .arg("compare")
@@ -134,12 +138,12 @@ fn test_1_happy_path_g_m1_1() {
         .arg("--gate")
         .arg("G-M1-1")
         .output()
-        .expect("Failed to execute kimo-tools compare");
+        .expect("Failed to execute dismoen-tools compare");
 
     assert_eq!(
         cmp_output.status.code(),
         Some(0),
-        "kimo-tools compare failed: {}",
+        "dismoen-tools compare failed: {}",
         String::from_utf8_lossy(&cmp_output.stderr)
     );
 
@@ -156,8 +160,8 @@ fn test_1_happy_path_g_m1_1() {
 
 #[test]
 fn test_2_token_validation() {
-    let Some(kimo) = get_kimo_bin() else {
-        eprintln!("SKIPPED: kimo binary and pixi not available in environment");
+    let Some(dismoen) = get_dismoen_bin() else {
+        eprintln!("SKIPPED: dismoen binary and pixi not available in environment");
         return;
     };
     let root = get_root_dir();
@@ -170,7 +174,7 @@ fn test_2_token_validation() {
     tokens[1][5] = 999;
     fs::write(&bad_tokens, serde_json::to_string(&tokens).unwrap()).unwrap();
 
-    let output = Command::new(&kimo)
+    let output = Command::new(&dismoen)
         .current_dir(&root)
         .arg("head")
         .arg(&bad_tokens)
@@ -179,7 +183,7 @@ fn test_2_token_validation() {
         .arg("--workdir")
         .arg(tmp_dir.path())
         .output()
-        .expect("Failed to execute kimo head");
+        .expect("Failed to execute dismoen head");
 
     assert_eq!(output.status.code(), Some(2));
     let err_str = String::from_utf8_lossy(&output.stderr);
@@ -191,8 +195,8 @@ fn test_2_token_validation() {
 
 #[test]
 fn test_3_weight_load_failure() {
-    let Some(kimo) = get_kimo_bin() else {
-        eprintln!("SKIPPED: kimo binary and pixi not available in environment");
+    let Some(dismoen) = get_dismoen_bin() else {
+        eprintln!("SKIPPED: dismoen binary and pixi not available in environment");
         return;
     };
     let root = get_root_dir();
@@ -200,7 +204,7 @@ fn test_3_weight_load_failure() {
     let tokens_path = root.join("fixtures/m1/tokens.json");
 
     // (a) Missing shard on disk -> FILE_NOT_FOUND (M0 propagated)
-    let output_a = Command::new(&kimo)
+    let output_a = Command::new(&dismoen)
         .current_dir(&root)
         .arg("head")
         .arg(&tokens_path)
@@ -209,14 +213,14 @@ fn test_3_weight_load_failure() {
         .arg("--workdir")
         .arg(tmp_dir.path())
         .output()
-        .expect("Failed to execute kimo head");
+        .expect("Failed to execute dismoen head");
 
     assert_eq!(output_a.status.code(), Some(2));
     let err_a: Value = serde_json::from_slice(&output_a.stderr).expect("Invalid error JSON");
     assert_eq!(err_a["error_type"], "FILE_NOT_FOUND");
 
     // (b) Shards valid but missing required norm weight -> WEIGHT_LOAD_FAILED
-    let output_b = Command::new(&kimo)
+    let output_b = Command::new(&dismoen)
         .current_dir(&root)
         .arg("head")
         .arg(&tokens_path)
@@ -224,7 +228,7 @@ fn test_3_weight_load_failure() {
         .arg("--workdir")
         .arg(tmp_dir.path())
         .output()
-        .expect("Failed to execute kimo head");
+        .expect("Failed to execute dismoen head");
 
     assert_eq!(output_b.status.code(), Some(2));
     let err_b: Value = serde_json::from_slice(&output_b.stderr).expect("Invalid error JSON");
@@ -247,7 +251,7 @@ fn test_4_oracle_mismatch() {
     let cand_bin = tmp_dir.path().join("cand_mutated.bin");
     fs::write(&cand_bin, &cand_data).unwrap();
 
-    let compare_bin = PathBuf::from(env!("CARGO_BIN_EXE_kimo-tools"));
+    let compare_bin = PathBuf::from(env!("CARGO_BIN_EXE_dismoen-tools"));
     let output = Command::new(&compare_bin)
         .current_dir(&root)
         .arg("compare")
@@ -256,7 +260,7 @@ fn test_4_oracle_mismatch() {
         .arg("--gate")
         .arg("G-M1-1")
         .output()
-        .expect("Failed to execute kimo-tools compare");
+        .expect("Failed to execute dismoen-tools compare");
 
     assert_eq!(output.status.code(), Some(1));
     let report: Value =
@@ -268,8 +272,8 @@ fn test_4_oracle_mismatch() {
 
 #[test]
 fn test_5_atomic_write_failure() {
-    let Some(kimo) = get_kimo_bin() else {
-        eprintln!("SKIPPED: kimo binary and pixi not available in environment");
+    let Some(dismoen) = get_dismoen_bin() else {
+        eprintln!("SKIPPED: dismoen binary and pixi not available in environment");
         return;
     };
     let root = get_root_dir();
@@ -286,7 +290,7 @@ fn test_5_atomic_write_failure() {
     let tokens_path = root.join("fixtures/m1/tokens.json");
     let model_dir = root.join("fixtures/m1");
 
-    let output = Command::new(&kimo)
+    let output = Command::new(&dismoen)
         .current_dir(&root)
         .arg("head")
         .arg(&tokens_path)
@@ -297,7 +301,7 @@ fn test_5_atomic_write_failure() {
         .arg("--output")
         .arg(&out_bin)
         .output()
-        .expect("Failed to execute kimo head");
+        .expect("Failed to execute dismoen head");
 
     assert_eq!(output.status.code(), Some(2));
     let err: Value = serde_json::from_slice(&output.stderr).expect("Invalid error JSON");
@@ -324,8 +328,8 @@ fn test_5_atomic_write_failure() {
 
 #[test]
 fn test_6_memory_boundary_and_caps() {
-    let Some(kimo) = get_kimo_bin() else {
-        eprintln!("SKIPPED: kimo binary and pixi not available in environment");
+    let Some(dismoen) = get_dismoen_bin() else {
+        eprintln!("SKIPPED: dismoen binary and pixi not available in environment");
         return;
     };
     let root = get_root_dir();
@@ -334,7 +338,7 @@ fn test_6_memory_boundary_and_caps() {
     let tokens_path = root.join("fixtures/m1/tokens.json");
     let model_dir = root.join("fixtures/m1");
 
-    let output = Command::new(&kimo)
+    let output = Command::new(&dismoen)
         .current_dir(&root)
         .arg("head")
         .arg(&tokens_path)
@@ -345,7 +349,7 @@ fn test_6_memory_boundary_and_caps() {
         .arg("--output")
         .arg(&out_bin)
         .output()
-        .expect("Failed to execute kimo head");
+        .expect("Failed to execute dismoen head");
 
     assert_eq!(output.status.code(), Some(0));
     let report: Value = serde_json::from_slice(&output.stdout).expect("Invalid JSON report");
@@ -373,8 +377,8 @@ fn test_6_memory_boundary_and_caps() {
 
 #[test]
 fn test_7_config_contract() {
-    let Some(kimo) = get_kimo_bin() else {
-        eprintln!("SKIPPED: kimo binary and pixi not available in environment");
+    let Some(dismoen) = get_dismoen_bin() else {
+        eprintln!("SKIPPED: dismoen binary and pixi not available in environment");
         return;
     };
     let root = get_root_dir();
@@ -382,7 +386,7 @@ fn test_7_config_contract() {
     let tokens_path = root.join("fixtures/m1/tokens.json");
     let m0_dir = root.join("fixtures/m0"); // lacks rms_norm_eps
 
-    let output = Command::new(&kimo)
+    let output = Command::new(&dismoen)
         .current_dir(&root)
         .arg("head")
         .arg(&tokens_path)
@@ -391,7 +395,7 @@ fn test_7_config_contract() {
         .arg("--workdir")
         .arg(tmp_dir.path())
         .output()
-        .expect("Failed to execute kimo head");
+        .expect("Failed to execute dismoen head");
 
     assert_eq!(output.status.code(), Some(2));
     let err: Value = serde_json::from_slice(&output.stderr).expect("Invalid error JSON");

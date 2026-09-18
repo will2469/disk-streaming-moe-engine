@@ -1,7 +1,7 @@
 # Copyright 2026 will2469
 # Licensed under the Apache License, Version 2.0 (the "License");
 # See LICENSE for details.
-"""POSIX C FFI dan utilitas sistem untuk Kimo CLI."""
+"""POSIX C FFI dan utilitas sistem untuk Dismoen CLI."""
 
 from cli.errors import basename, dirname, eprint_json, fail, fail_layer
 from format.file_io import c_realpath, path_is_within

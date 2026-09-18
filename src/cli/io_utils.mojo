@@ -1,7 +1,7 @@
 # Copyright 2026 will2469
 # Licensed under the Apache License, Version 2.0 (the "License");
 # See LICENSE for details.
-"""Operasi file atomik dan validasi binary aktivasi untuk Kimo CLI."""
+"""Operasi file atomik dan validasi binary aktivasi untuk Dismoen CLI."""
 
 from cli.errors import err_layer_json, fail_layer
 from cli.sys_utils import (

@@ -4,7 +4,7 @@
 #
 # Covers:
 # 1. IT-M5-1: Happy path (64 tokens @ ctx 2048, exit 0, F10 PASS loose)
-# 2. IT-M5-2: KV decode vs recompute (kimo-tools & compare.py F10 PASS loose)
+# 2. IT-M5-2: KV decode vs recompute (dismoen-tools & compare.py F10 PASS loose)
 # 3. IT-M5-3: Context size 4K execution (exit 0, VmHWM <= 4.50 GiB <= 5 GiB)
 # 4. IT-M5-4: Context size > s_max (8192 > 4096 -> exit 2, M5_ERR_CONTEXT_SIZE)
 # 5. IT-M5-5: KV cache alloc failure (mock OOM -> exit 3, M5_ERR_KV_ALLOC)
@@ -24,8 +24,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 MODEL_DIR="${MODEL_DIR:-/home/will/models/qwen1.5-moe-a2.7b-chat}"
-KIMO="${KIMO:-./kimo}"
-COMPARE_BIN="${COMPARE_BIN:-target/debug/kimo-tools}"
+KIMO="${KIMO:-./dismoen}"
+COMPARE_BIN="${COMPARE_BIN:-target/debug/dismoen-tools}"
 FIXTURE_DIR="tools/fixtures"
 BENCH_RAW_JSON="reports/2026-09-17/m5_benchmark_raw.json"
 TEST_DIR="/tmp/test_m5_kv_decode_$$"
@@ -48,15 +48,15 @@ echo "======================================================================"
 echo "M5-W6: Milestone M5 Final Integration Tests & Gate Verification"
 echo "======================================================================"
 
-# Build kimo and kimo-tools if necessary
+# Build dismoen and dismoen-tools if necessary
 if [ ! -f "$KIMO" ]; then
-    echo ">> Building kimo binary..."
+    echo ">> Building dismoen binary..."
     pixi run build
 fi
 
 if [ ! -f "$COMPARE_BIN" ]; then
-    echo ">> Building kimo-tools..."
-    cargo build --manifest-path tools/kimo-tools/Cargo.toml
+    echo ">> Building dismoen-tools..."
+    cargo build --manifest-path tools/dismoen-tools/Cargo.toml --bin dismoen-tools
 fi
 
 # ----------------------------------------------------------------------
@@ -93,7 +93,7 @@ print('   PASS: IT-M5-1 happy path generated 64 valid tokens.')
 # ----------------------------------------------------------------------
 # [IT-M5-2] KV decode vs recompute (Gate G-M5-1 F10 loose comparison)
 # ----------------------------------------------------------------------
-echo ">> [IT-M5-2] KV decode vs recompute (F10 loose comparison via kimo-tools & compare.py)..."
+echo ">> [IT-M5-2] KV decode vs recompute (F10 loose comparison via dismoen-tools & compare.py)..."
 KV_BIN="$FIXTURE_DIR/logits_kv_decode.bin"
 REC_BIN="$FIXTURE_DIR/logits_recompute.bin"
 

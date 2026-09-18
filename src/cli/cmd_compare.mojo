@@ -1,7 +1,7 @@
 # Copyright 2026 will2469
 # Licensed under the Apache License, Version 2.0 (the "License");
 # See LICENSE for details.
-"""Implementasi subperintah compare CLI kimo (F10 numerical equivalence)."""
+"""Implementasi subperintah compare CLI dismoen (F10 numerical equivalence)."""
 
 from cli.errors import fail
 from cli.sys_utils import c_access_r

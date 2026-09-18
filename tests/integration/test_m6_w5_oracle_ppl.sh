@@ -52,13 +52,13 @@ uvx ruff@0.8.4 format --check \
 echo "   PASS: Formatting Mojo dan Python bersih 100%."
 
 # ----------------------------------------------------------------------
-# 2. Build Kimo Executable
+# 2. Build Dismoen Executable
 # ----------------------------------------------------------------------
-echo ">> [2/6] Membangun binary kimo via pixi build..."
+echo ">> [2/6] Membangun binary dismoen via pixi build..."
 pixi run build
-KIMO="./kimo"
-[ -x "$KIMO" ] || { echo "FAIL: binary kimo tidak ditemukan"; exit 1; }
-echo "   PASS: Binary kimo siap dijalankan."
+KIMO="./dismoen"
+[ -x "$KIMO" ] || { echo "FAIL: binary dismoen tidak ditemukan"; exit 1; }
+echo "   PASS: Binary dismoen siap dijalankan."
 
 # ----------------------------------------------------------------------
 # 3. Setup Test Fixtures & Working Directories

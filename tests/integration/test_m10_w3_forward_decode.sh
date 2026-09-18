@@ -19,12 +19,12 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "$ROOT_DIR"
 
 DISMOEN="${DISMOEN:-$ROOT_DIR/dismoen}"
-if [[ ! -x "$DISMOEN" && -x "$ROOT_DIR/kimo" ]]; then
-    DISMOEN="$ROOT_DIR/kimo"
+if [[ ! -x "$DISMOEN" && -x "$ROOT_DIR/build/bin/dismoen" ]]; then
+    DISMOEN="$ROOT_DIR/build/bin/dismoen"
 fi
 
 if [[ ! -x "$DISMOEN" ]]; then
-    echo "FAIL: Binary dismoen/kimo tidak ditemukan atau tidak executable. Jalankan 'pixi run build'."
+    echo "FAIL: Binary dismoen tidak ditemukan atau tidak executable. Jalankan 'pixi run build'."
     exit 1
 fi
 
@@ -54,7 +54,7 @@ echo "======================================================================"
 # ---------------------------------------------------------------------------
 echo "--> Stage 1: Static Hygiene & Zero Suppression"
 
-for file in "src/cli/cmd_decode.mojo" "src/cli/cmd_forward.mojo" "tools/compare.py" "tools/kimo-tools/src/compare.rs"; do
+for file in "src/cli/cmd_decode.mojo" "src/cli/cmd_forward.mojo" "tools/compare.py" "tools/dismoen-tools/src/compare.rs"; do
     if grep -nE "noqa|#[[:space:]]*allow" "$file"; then
         echo "FAIL: Ditemukan suppressions terlarang di $file!"
         exit 1

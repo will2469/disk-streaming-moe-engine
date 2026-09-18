@@ -22,7 +22,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-COMPARE_BIN="${COMPARE_BIN:-target/debug/kimo-tools}"
+COMPARE_BIN="${COMPARE_BIN:-target/debug/dismoen-tools}"
 FIXTURE_DIR="tools/fixtures"
 
 if [ -x ".venv/bin/python3" ]; then
@@ -37,7 +37,7 @@ echo "======================================================================"
 
 # 1. Jalankan Rust integration test suite (integration_m4.rs)
 echo ">> [1/3] Menjalankan Cargo integration_m4 test suite..."
-cargo test --manifest-path tools/kimo-tools/Cargo.toml --test integration_m4
+cargo test --manifest-path tools/dismoen-tools/Cargo.toml --test integration_m4
 
 # 2. Jalankan Python BF16 test suite (test_m4_w4_bf16.py)
 echo ">> [2/3] Menjalankan Python BF16 normative decode & F10-S suite..."

@@ -9,7 +9,7 @@
 #   2. Oracle naive F14 loop reference (GDNS v1 framed format, 8352 bytes)
 #   3. SEC-6 Golden Hash & 5x Determinisme Reproducibility
 #   4. Asymmetric config probe (dk=32, dv=48, 12448 bytes)
-#   5. Kontrak Compare: kimo-tools compare, kimo compare, tools/compare.py
+#   5. Kontrak Compare: dismoen-tools compare, dismoen compare, tools/compare.py
 #   6. Gate G-M8-1 pre-validation di fixture sintetis
 #   7. Deteksi mismatch (Exit 1, MISMATCH, FAIL)
 #   8. Deteksi checksum korup (Exit 2, CORRUPT_STATE_CHECKSUM)
@@ -19,10 +19,10 @@
 
 set -euo pipefail
 
-KIMO="${KIMO:-./kimo}"
-KIMO_TOOLS="${KIMO_TOOLS:-target/release/kimo-tools}"
+KIMO="${KIMO:-./dismoen}"
+KIMO_TOOLS="${KIMO_TOOLS:-target/debug/dismoen-tools}"
 if [ ! -f "$KIMO_TOOLS" ]; then
-    KIMO_TOOLS="target/debug/kimo-tools"
+    KIMO_TOOLS="target/release/dismoen-tools"
 fi
 PYTHON="${PYTHON:-.venv/bin/python}"
 if [ ! -x "$PYTHON" ]; then
@@ -151,7 +151,7 @@ echo "PASS: Test 3 (Asymmetric layout probe MATCH)"
 # ---------------------------------------------------------------------------
 echo "--> Test 4: Compare Contract Happy Path (Gate G-M8-1)"
 
-# 4a: kimo-tools compare binary
+# 4a: dismoen-tools compare binary
 REPORT_HAPPY_A="$WORKDIR/report_happy_a.json"
 "$KIMO_TOOLS" compare \
     --reference "$STATE_FILE" \
@@ -171,7 +171,7 @@ assert m['delta_max'] <= 1e-3
 assert m['epsilon_rel'] <= 1e-4
 "
 
-# 4b: kimo CLI compare subcommand
+# 4b: dismoen CLI compare subcommand
 REPORT_HAPPY_B="$WORKDIR/report_happy_b.json"
 "$KIMO" compare \
     --reference "$STATE_FILE" \

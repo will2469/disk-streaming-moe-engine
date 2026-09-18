@@ -5,7 +5,7 @@
 
 """Benchmark runner for Milestone M4: Real-checkpoint Full Forward 24-Layer Prefill.
 
-Executes warm-up and measurement runs of `./kimo forward` on
+Executes warm-up and measurement runs of `./dismoen forward` on
 `/home/will/models/qwen1.5-moe-a2.7b-chat` under
 `systemd-run --user --scope -p MemoryMax=6G`.
 Measures walltime, VmHWM, cgroup peak/OOM, logical/physical bytes read,
@@ -69,7 +69,7 @@ def percentile(vals: list[float], pct: float) -> float:
 
 
 def run_single_forward(
-    kimo_bin: Path,
+    dismoen_bin: Path,
     model_dir: Path,
     tokens_file: Path,
     run_idx: int,
@@ -78,13 +78,13 @@ def run_single_forward(
     threads: int = 1,
     skip_cgroup: bool = False,
 ) -> dict:
-    """Menjalankan satu iterasi kimo forward dan mengekstrak telemetri."""
+    """Menjalankan satu iterasi dismoen forward dan mengekstrak telemetri."""
     out_bin = tmp_workdir / f"logits_run_{run_idx}.bin"
     timing_json = tmp_workdir / f"timing_run_{run_idx}.json"
     run_id = f"M4-20260916-{run_idx:03d}"
 
     base_cmd = [
-        str(kimo_bin),
+        str(dismoen_bin),
         "forward",
         "--model-dir",
         str(model_dir),
@@ -371,11 +371,11 @@ def main():
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parent.parent.parent
-    kimo_bin = root / "kimo"
+    dismoen_bin = root / "dismoen"
 
-    if not kimo_bin.exists():
+    if not dismoen_bin.exists():
         print(
-            f"Error: binary {kimo_bin} tidak ditemukan. "
+            f"Error: binary {dismoen_bin} tidak ditemukan. "
             "Jalankan `pixi run build` terlebih dahulu.",
             file=sys.stderr,
         )
@@ -427,7 +427,7 @@ def main():
             for w in range(1, args.warmup + 1):
                 print(f"   [Warmup {w}/{args.warmup}] Memulai forward pass...")
                 res = run_single_forward(
-                    kimo_bin,
+                    dismoen_bin,
                     args.model_dir,
                     args.tokens,
                     w,
@@ -450,7 +450,7 @@ def main():
             run_idx = args.warmup + r
             print(f"   [Cold Run {r}/{args.runs}] Memulai forward pass...")
             res = run_single_forward(
-                kimo_bin,
+                dismoen_bin,
                 args.model_dir,
                 args.tokens,
                 run_idx,

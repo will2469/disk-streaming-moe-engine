@@ -9,13 +9,13 @@ setiap komponen divalidasi layer-per-layer terhadap oracle PyTorch fp32.
 
 ## Prasyarat
 
-| Tool | Cara | Catatan |
-|---|---|---|
-| pixi | [pixi.prefix.dev](https://pixi.prefix.dev) | env Mojo + task runner |
-| Mojo 1.0.0 | `pixi install` (ter-pin di `pixi.toml`) | nightly dilarang untuk engine |
-| Rust stable | rustup | `cargo fmt` + clippy cognit ≤15 |
-| uv/uvx | [docs.astral.sh/uv](https://docs.astral.sh/uv) | Python oracle/tooling (bukan Python sistem) |
-| gcc | sistem | linker untuk kompilasi Mojo |
+| Tool        | Cara                                           | Catatan                                     |
+| ----------- | ---------------------------------------------- | ------------------------------------------- |
+| pixi        | [pixi.prefix.dev](https://pixi.prefix.dev)     | env Mojo + task runner                      |
+| Mojo 1.0.0  | `pixi install` (ter-pin di `pixi.toml`)        | nightly dilarang untuk engine               |
+| Rust stable | rustup                                         | `cargo fmt` + clippy cognit ≤15             |
+| uv/uvx      | [docs.astral.sh/uv](https://docs.astral.sh/uv) | Python oracle/tooling (bukan Python sistem) |
+| gcc         | sistem                                         | linker untuk kompilasi Mojo                 |
 
 ## Mulai cepat
 
@@ -23,7 +23,7 @@ setiap komponen divalidasi layer-per-layer terhadap oracle PyTorch fp32.
 pixi install && pixi run check        # Mojo 1.0.0?
 pixi run test-m0                       # parser safetensors + F15 (11 tests)
 pixi run fmt                           # mojo format src tests
-cargo test --manifest-path tools/kimo-tools/Cargo.toml
+cargo test --manifest-path tools/dismoen-tools/Cargo.toml
 uv tool install pre-commit && pre-commit install
 ```
 
@@ -40,7 +40,7 @@ shard nyicil; `~/models/`, revision ter-pin di `models.lock.json`.
 
 ```text
 src/                 # engine Mojo (safetensors.mojo, model.mojo, main.mojo)
-tools/kimo-tools/    # orchestration Rust (CLI, compare, benchmark, report)
+tools/dismoen-tools/ # orchestration Rust (CLI, compare, benchmark, report)
 tools/oracle/        # oracle PyTorch fp32 (Tier-1 normatif, bukan runtime)
 tools/fixtures/      # generator fixture synthetic + golden
 tests/               # TestSuite Mojo (*.mojo) + integrasi Rust

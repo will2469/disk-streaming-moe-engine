@@ -1,7 +1,8 @@
 [package]
-name = "kimo-tools"
+name = "dismoen-tools"
 version = "0.1.0"
 edition = "2021"
+default-run = "dismoen-tools"
 
 [dependencies]
 serde = { version = "1.0.229", features = ["derive"] }
@@ -15,7 +16,3 @@ path = "src/lib.rs"
 [[bin]]
 name = "dismoen-tools"
 path = "src/bin/dismoen-tools.rs"
-
-[[bin]]
-name = "kimo-tools"
-path = "src/bin/kimo-tools.rs"

@@ -4,6 +4,6 @@
 
 [workspace]
 members = [
-    "tools/kimo-tools",
+    "tools/dismoen-tools",
 ]
 resolver = "2"

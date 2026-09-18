@@ -87,7 +87,7 @@ def _parse_proc_oom_kills() -> int:
 
 
 def run_single_decode(
-    kimo_bin: Path,
+    dismoen_bin: Path,
     model_dir: Path,
     tokens_fixture: Path,
     max_tokens: int,
@@ -101,13 +101,13 @@ def run_single_decode(
     threads: int = 1,
     skip_cgroup: bool = False,
 ) -> dict:
-    """Menjalankan satu iterasi kimo decode dan mengekstrak telemetri M7."""
+    """Menjalankan satu iterasi dismoen decode dan mengekstrak telemetri M7."""
     out_tokens = tmp_workdir / f"tokens_run_{run_idx}.json"
     cache_stats_file = tmp_workdir / f"cache_stats_{run_idx}.json"
     run_id = f"M7-20260917-{run_idx:03d}"
 
     base_cmd = [
-        str(kimo_bin),
+        str(dismoen_bin),
         "decode",
         "--model-dir",
         str(model_dir),
@@ -155,7 +155,7 @@ def run_single_decode(
 
     if proc.returncode != 0:
         raise RuntimeError(
-            f"kimo decode failed (exit {proc.returncode}): {proc.stderr}\n"
+            f"dismoen decode failed (exit {proc.returncode}): {proc.stderr}\n"
             f"STDOUT: {proc.stdout}"
         )
 
@@ -610,11 +610,11 @@ def main():
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parent.parent.parent
-    kimo_bin = root / "kimo"
+    dismoen_bin = root / "dismoen"
     io_bin = root / "io_benchmark"
 
-    if not kimo_bin.exists():
-        print(f"Error: binary {kimo_bin} tidak ditemukan.", file=sys.stderr)
+    if not dismoen_bin.exists():
+        print(f"Error: binary {dismoen_bin} tidak ditemukan.", file=sys.stderr)
         sys.exit(1)
 
     model_file = args.model_dir / "quant_model.bin"
@@ -676,7 +676,7 @@ def main():
         print(f"   >> Warm-up ({warmup_count} runs, steady cache-warm)...")
         for w_idx in range(warmup_count):
             run_single_decode(
-                kimo_bin=kimo_bin,
+                dismoen_bin=dismoen_bin,
                 model_dir=args.model_dir,
                 tokens_fixture=args.tokens,
                 max_tokens=args.max_tokens,
@@ -696,7 +696,7 @@ def main():
         baseline_runs = []
         for r_idx in range(runs_count):
             r_data = run_single_decode(
-                kimo_bin=kimo_bin,
+                dismoen_bin=dismoen_bin,
                 model_dir=args.model_dir,
                 tokens_fixture=args.tokens,
                 max_tokens=args.max_tokens,
@@ -741,7 +741,7 @@ def main():
             c_runs = []
             for s_idx in range(sweep_per_level):
                 res_c = run_single_decode(
-                    kimo_bin=kimo_bin,
+                    dismoen_bin=dismoen_bin,
                     model_dir=args.model_dir,
                     tokens_fixture=args.tokens,
                     max_tokens=args.max_tokens,

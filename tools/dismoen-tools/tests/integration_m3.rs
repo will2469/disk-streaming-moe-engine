@@ -46,17 +46,21 @@ impl Drop for TempDir {
     }
 }
 
-fn get_kimo_bin() -> Option<PathBuf> {
-    if let Ok(p) = std::env::var("KIMO") {
+fn get_dismoen_bin() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("DISMOEN") {
         let pb = PathBuf::from(p);
         if pb.exists() {
             return Some(pb);
         }
     }
     let root = get_root_dir();
-    let kimo = root.join("kimo");
-    if kimo.exists() {
-        return Some(kimo);
+    let dismoen = root.join("dismoen");
+    if dismoen.exists() {
+        return Some(dismoen);
+    }
+    let bin = root.join("build/bin/dismoen");
+    if bin.exists() {
+        return Some(bin);
     }
     if let Ok(status) = Command::new("pixi")
         .current_dir(&root)
@@ -64,12 +68,12 @@ fn get_kimo_bin() -> Option<PathBuf> {
             "run",
             "bash",
             "-c",
-            "PATH=\"/usr/bin:$PATH\" mojo build -I src src/main.mojo -o kimo",
+            "PATH=\"/usr/bin:$PATH\" mojo build -I src src/main.mojo -o dismoen",
         ])
         .status()
     {
-        if status.success() && kimo.exists() {
-            return Some(kimo);
+        if status.success() && dismoen.exists() {
+            return Some(dismoen);
         }
     }
     None
@@ -109,15 +113,15 @@ fn compute_sha256(bytes: &[u8]) -> String {
 // 1. Happy path: layers 0, 12, 23 pass Gate G-M3-1
 #[test]
 fn test_1_happy_path() {
-    let Some(kimo) = get_kimo_bin() else {
-        eprintln!("SKIPPED: kimo binary not available");
+    let Some(dismoen) = get_dismoen_bin() else {
+        eprintln!("SKIPPED: dismoen binary not available");
         return;
     };
     let root = get_root_dir();
     let act_path = root.join("fixtures/m3/activation.bin");
     assert!(act_path.exists(), "activation fixture missing");
 
-    let compare_bin = PathBuf::from(env!("CARGO_BIN_EXE_kimo-tools"));
+    let compare_bin = PathBuf::from(env!("CARGO_BIN_EXE_dismoen-tools"));
 
     if let Some(model_dir) = get_model_dir() {
         for lyr in [0, 12, 23] {
@@ -127,7 +131,7 @@ fn test_1_happy_path() {
             let ref_path = root.join(format!("fixtures/m3/moe_ref_{}.bin", lyr));
             assert!(ref_path.exists(), "ref bin missing: {:?}", ref_path);
 
-            let output = Command::new(&kimo)
+            let output = Command::new(&dismoen)
                 .current_dir(&root)
                 .args([
                     "layer",
@@ -144,12 +148,12 @@ fn test_1_happy_path() {
                     &out_file,
                 ])
                 .output()
-                .expect("Failed to execute kimo layer moe");
+                .expect("Failed to execute dismoen layer moe");
 
             assert_eq!(
                 output.status.code(),
                 Some(0),
-                "kimo layer moe {} failed: {}",
+                "dismoen layer moe {} failed: {}",
                 lyr,
                 String::from_utf8_lossy(&output.stderr)
             );
@@ -162,7 +166,7 @@ fn test_1_happy_path() {
             assert_eq!(rep["num_tokens"], 16);
             assert!(out_path.exists());
 
-            // Run kimo-tools compare (G-M3-1)
+            // Run dismoen-tools compare (G-M3-1)
             let cmp_output = Command::new(&compare_bin)
                 .current_dir(&root)
                 .args([
@@ -206,7 +210,7 @@ fn test_1_happy_path() {
 // 2. Routing invariant test: SET top-4 identik 100% (G-M3-2)
 #[test]
 fn test_2_routing_invariant() {
-    let Some(kimo) = get_kimo_bin() else {
+    let Some(dismoen) = get_dismoen_bin() else {
         return;
     };
     let Some(model_dir) = get_model_dir() else {
@@ -222,7 +226,7 @@ fn test_2_routing_invariant() {
         assert!(ora_path.exists(), "oracle routing file missing");
 
         // Happy path: matching oracle routing
-        let output = Command::new(&kimo)
+        let output = Command::new(&dismoen)
             .current_dir(&root)
             .args([
                 "layer",
@@ -265,7 +269,7 @@ fn test_2_routing_invariant() {
     let bad_ora_path = tmp_dir.path().join("bad_routing.json");
     fs::write(&bad_ora_path, serde_json::to_string(&bad_ora).unwrap()).unwrap();
 
-    let output_bad = Command::new(&kimo)
+    let output_bad = Command::new(&dismoen)
         .current_dir(&root)
         .args([
             "layer",
@@ -394,7 +398,7 @@ fn test_5_swiglu_verification() {
 // 6. Expert load failure: invalid layer or corrupted parameters
 #[test]
 fn test_6_expert_load_failure() {
-    let Some(kimo) = get_kimo_bin() else {
+    let Some(dismoen) = get_dismoen_bin() else {
         return;
     };
     let root = get_root_dir();
@@ -402,7 +406,7 @@ fn test_6_expert_load_failure() {
     let act_path = root.join("fixtures/m3/activation.bin");
 
     // Invalid layer 24 (valid are 0..23)
-    let output = Command::new(&kimo)
+    let output = Command::new(&dismoen)
         .current_dir(&root)
         .args([
             "layer",
@@ -422,7 +426,7 @@ fn test_6_expert_load_failure() {
     assert_eq!(err["error_type"], "LAYER_INVALID");
 
     // Missing expert weights / model dir -> WEIGHT_LOAD_FAILED
-    let output_weight = Command::new(&kimo)
+    let output_weight = Command::new(&dismoen)
         .current_dir(&root)
         .args([
             "layer",
@@ -443,7 +447,7 @@ fn test_6_expert_load_failure() {
 
     // Missing activation file (with valid model dir) -> FILE_NOT_FOUND
     if let Some(model_dir) = get_model_dir() {
-        let output_act = Command::new(&kimo)
+        let output_act = Command::new(&dismoen)
             .current_dir(&root)
             .args([
                 "layer",
@@ -491,7 +495,7 @@ fn test_7_router_overflow() {
 // 8. Determinisme test: 5x identical SHA-256 output and routing
 #[test]
 fn test_8_determinisme() {
-    let Some(kimo) = get_kimo_bin() else {
+    let Some(dismoen) = get_dismoen_bin() else {
         return;
     };
     let Some(model_dir) = get_model_dir() else {
@@ -509,7 +513,7 @@ fn test_8_determinisme() {
         let out_file = format!("det_out_{}.bin", run_i);
         let out_path = tmp_dir.path().join(&out_file);
 
-        let output = Command::new(&kimo)
+        let output = Command::new(&dismoen)
             .current_dir(&root)
             .args([
                 "layer",

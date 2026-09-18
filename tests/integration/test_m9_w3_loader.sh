@@ -22,7 +22,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-KIMO="${KIMO:-./kimo}"
+KIMO="${KIMO:-./dismoen}"
 TEST_DIR="/tmp/test_m9_w3_$$"
 GGUF_FIXTURE="fixtures/m9_port_mini.gguf"
 TOKENS_FIXTURE="fixtures/m9_port_tokens.json"

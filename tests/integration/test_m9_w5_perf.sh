@@ -24,9 +24,9 @@ if [ ! -x "$PYTHON" ]; then
     PYTHON="python3"
 fi
 
-KIMO="${KIMO:-$ROOT_DIR/kimo}"
-if [[ ! -x "$KIMO" && -x "$ROOT_DIR/build/bin/kimo" ]]; then
-    KIMO="$ROOT_DIR/build/bin/kimo"
+KIMO="${KIMO:-$ROOT_DIR/dismoen}"
+if [[ ! -x "$KIMO" && -x "$ROOT_DIR/build/bin/dismoen" ]]; then
+    KIMO="$ROOT_DIR/build/bin/dismoen"
 fi
 
 MINI_CONFIG="fixtures/m9_port_config_mini.json"
@@ -66,7 +66,7 @@ echo "--> Test 2: Binary Build & CLI Flags Verification"
 pixi run build
 
 if [ ! -x "$KIMO" ]; then
-    echo "FAIL: Binary kimo tidak ditemukan atau tidak executable di $KIMO!"
+    echo "FAIL: Binary dismoen tidak ditemukan atau tidak executable di $KIMO!"
     exit 1
 fi
 

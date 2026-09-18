@@ -5,7 +5,7 @@
 r"""Gate G-M8-1 Certification: 100 Random Sequences Numerical Equivalence.
 
 Menguji 100 sekuens acak deterministik (seed 42) untuk membuktikan ekuivalensi
-numerik kernel chunked scan (Mojo kimo gdn) terhadap Naive Oracle FP32 (PyTorch):
+numerik kernel chunked scan (Mojo dismoen gdn) terhadap Naive Oracle FP32 (PyTorch):
     \Delta_{max} <= 10^{-3}
     \epsilon_{rel} <= 10^{-4}
 Wajib mencakup konfigurasi simetris (dk=dv=32) dan asimetris (dk=32, dv=48)
@@ -72,10 +72,10 @@ def run_random100_certification() -> int:
         write_gdns_v1,
     )
 
-    kimo_bin = str(REPO_ROOT / "kimo")
-    if not os.path.exists(kimo_bin):
+    dismoen_bin = str(REPO_ROOT / "dismoen")
+    if not os.path.exists(dismoen_bin):
         sys.stderr.write(
-            "ERROR: kimo binary tidak ditemukan. Jalankan pixi run build!\n"
+            "ERROR: dismoen binary tidak ditemukan. Jalankan pixi run build!\n"
         )
         return 1
 
@@ -158,9 +158,9 @@ def run_random100_certification() -> int:
             ref_tensor = run_oracle_naive(tokens, 2, dk, dv, weights)
             write_gdns_v1(ref_path, ref_tensor, 2, dk, dv)
 
-            # 2. Mojo kimo gdn
+            # 2. Mojo dismoen gdn
             cmd = [
-                kimo_bin,
+                dismoen_bin,
                 "gdn",
                 "--model-dir",
                 model_dir_arg,
@@ -181,9 +181,9 @@ def run_random100_certification() -> int:
             ]
             res = subprocess.run(cmd, capture_output=True, text=True)
             if res.returncode != 0:
-                print(f"[{idx:3d}/100] ERROR: kimo gdn exit {res.returncode}")
+                print(f"[{idx:3d}/100] ERROR: dismoen gdn exit {res.returncode}")
                 print(res.stderr)
-                failed_cases.append((idx, "KIMO_CRASH", 999.0, 999.0))
+                failed_cases.append((idx, "DISMOEN_CRASH", 999.0, 999.0))
                 continue
 
             # 3. Bandingkan binary payload

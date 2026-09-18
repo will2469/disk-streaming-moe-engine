@@ -27,7 +27,7 @@ echo "=== 1. Mojo Model Unit & Property Tests (TestSuite) ==="
 pixi run mojo run -I src src/model.mojo
 
 echo "=== 2. Rust Shape Fidelity & Property Tests ==="
-pixi run cargo test --manifest-path tools/kimo-tools/Cargo.toml --test shape_fidelity
+pixi run cargo test --manifest-path tools/dismoen-tools/Cargo.toml --test shape_fidelity
 
 echo "=== 3. PyTorch Oracle Slice Generation (256 random tokens) ==="
 uv run python3 tools/oracle/oracle_slice_router.py \
