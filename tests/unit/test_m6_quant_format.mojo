@@ -3,21 +3,23 @@
 # See LICENSE for details.
 """Unit tests untuk M6-W1: Format Kuantisasi 4-bit, Packing, Skala, dan Validasi."""
 
-from format.quant_format import (
+from format.half_float import (
     QUANT_DEFAULT_GROUP_SIZE,
+    compute_fp16_scale_ceil,
+    pack_4bit_pair,
+    unpack_4bit_pair,
+)
+from format.quant_reader import (
+    BlockHeader,
+    BlockTensorMeta,
     QUANT_FORMAT_NAME,
     QUANT_HEADER_SIZE,
     QUANT_SCALE_DTYPE,
     QUANTIZED_DTYPE_NAME,
-    QuantHeader,
-    QuantTensorMetadata,
     calculate_tensor_quant_size,
-    compute_fp16_scale_ceil,
-    pack_4bit_pair,
-    unpack_4bit_pair,
-    validate_quant_header,
+    validate_block_header,
+    validate_block_tensor_meta,
     validate_quant_payload,
-    validate_tensor_meta,
 )
 from std.collections import List
 from std.testing import (
@@ -32,7 +34,7 @@ from std.testing import (
 def test_quant_header_roundtrip_and_padding() raises:
     """Verifikasi header tepat 256 byte, padding spasi, dan parse JSON roundtrip.
     """
-    var hdr = QuantHeader(
+    var hdr = BlockHeader(
         model="qwen1.5-moe-a2.7b-chat",
         num_tensors=4659,
         total_bytes=7934542592,
@@ -48,7 +50,7 @@ def test_quant_header_roundtrip_and_padding() raises:
     assert_equal(bytes[QUANT_HEADER_SIZE - 2], 32)
 
     # Parse kembali dari bytes
-    var parsed = QuantHeader.from_bytes(bytes)
+    var parsed = BlockHeader.from_bytes(bytes)
     assert_equal(parsed.version, 1)
     assert_equal(parsed.model, "qwen1.5-moe-a2.7b-chat")
     assert_equal(parsed.format, QUANT_FORMAT_NAME)
@@ -58,13 +60,13 @@ def test_quant_header_roundtrip_and_padding() raises:
     assert_equal(parsed.total_bytes, 7934542592)
 
     # Validasi header lolos
-    validate_quant_header(parsed, 7934542592)
+    validate_block_header(parsed, 7934542592)
 
 
 def test_quant_tensor_metadata_serialization() raises:
     """Verifikasi metadata tensor, perhitungan grup, dan panjang payload."""
     var shape: List[Int] = [2048, 2048]
-    var meta = QuantTensorMetadata(
+    var meta = BlockTensorMeta(
         name="model.layers.0.self_attn.q_proj.weight",
         shape=shape,
         dtype="BF16",
@@ -81,7 +83,7 @@ def test_quant_tensor_metadata_serialization() raises:
     assert_equal(meta.payload_bytes(), 2162688)
 
     # Validasi lolos
-    validate_tensor_meta(meta)
+    validate_block_tensor_meta(meta)
 
     # Record bytes: 4 byte LE length + JSON
     var rec = meta.to_record_bytes()
@@ -98,7 +100,7 @@ def test_quant_tensor_metadata_serialization() raises:
     var json_bytes = List[UInt8]()
     for i in range(4, len(rec)):
         json_bytes.append(rec[i])
-    var parsed_meta = QuantTensorMetadata.from_json_bytes(json_bytes)
+    var parsed_meta = BlockTensorMeta.from_json_bytes(json_bytes)
     assert_equal(parsed_meta.name, meta.name)
     assert_equal(len(parsed_meta.shape), 2)
     assert_equal(parsed_meta.shape[0], 2048)
@@ -213,28 +215,28 @@ def test_negative_validation_cases() raises:
     """Verifikasi penolakan terhadap header dan metadata yang rusak/tidak valid.
     """
     # Header salah version
-    var bad_hdr = QuantHeader("model", 1, 100, version=2)
+    var bad_hdr = BlockHeader("model", 1, 100, version=2)
     var threw = False
     try:
-        validate_quant_header(bad_hdr, 100)
+        validate_block_header(bad_hdr, 100)
     except:
         threw = True
     assert_true(threw)
 
     # Header salah group_size (di luar himpunan izin, mis. 100)
-    var bad_grp_hdr = QuantHeader("model", 1, 100, group_size=100)
+    var bad_grp_hdr = BlockHeader("model", 1, 100, group_size=100)
     threw = False
     try:
-        validate_quant_header(bad_grp_hdr, 100)
+        validate_block_header(bad_grp_hdr, 100)
     except:
         threw = True
     assert_true(threw)
 
     # Header group_size pangkat-2 tapi di luar himpunan izin (512)
-    var bad_512_hdr = QuantHeader("model", 1, 100, group_size=512)
+    var bad_512_hdr = BlockHeader("model", 1, 100, group_size=512)
     threw = False
     try:
-        validate_quant_header(bad_512_hdr, 100)
+        validate_block_header(bad_512_hdr, 100)
     except:
         threw = True
     assert_true(threw)
@@ -243,17 +245,17 @@ def test_negative_validation_cases() raises:
     var tail_shape: List[Int] = [32]
     var threw_tail = False
     try:
-        var tail_meta = QuantTensorMetadata(name="m.tail", shape=tail_shape)
+        var tail_meta = BlockTensorMeta(name="m.tail", shape=tail_shape)
     except:
         threw_tail = True
     assert_true(threw_tail)
 
     # Metadata nama kosong
     var empty_shape: List[Int] = [128]
-    var bad_meta = QuantTensorMetadata("", empty_shape)
+    var bad_meta = BlockTensorMeta("", empty_shape)
     threw = False
     try:
-        validate_tensor_meta(bad_meta)
+        validate_block_tensor_meta(bad_meta)
     except:
         threw = True
     assert_true(threw)

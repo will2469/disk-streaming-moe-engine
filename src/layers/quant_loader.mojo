@@ -4,7 +4,7 @@
 """Loader bobot terkuantisasi 4-bit on-the-fly untuk layer forward (M6-W4).
 
 Alur kerja streaming:
-1. pread skala FP16 dan bobot 4-bit ter-pack dari berkas .kimo.bin.
+1. pread skala FP16 dan bobot 4-bit ter-pack dari berkas model binary.
 2. Dequantisasi on-the-fly via kernel SIMD ke buffer Float32/BF16.
 3. Konstruksi struct bobot layer (AttentionWeights / SwigluWeights).
 4. Discard buffer setelah komputasi forward selesai (lifetime otomatis Mojo).

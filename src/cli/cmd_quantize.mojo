@@ -15,15 +15,17 @@ from format import (
 )
 from format.file_io import resolve_within_root
 from format.index import parse_index
-from format.quant_format import (
+from format.half_float import (
     QUANT_DEFAULT_GROUP_SIZE,
-    QuantHeader,
-    QuantTensorMetadata,
     float16_to_u16,
     is_allowed_group_size,
     u16_to_float16,
-    validate_quant_header,
-    validate_tensor_meta,
+)
+from format.quant_reader import (
+    BlockHeader,
+    BlockTensorMeta,
+    validate_block_header,
+    validate_block_tensor_meta,
 )
 from format.types import json_escape
 from quant.quant_algo import (
@@ -76,9 +78,9 @@ def do_check(check_file: String, workdir: String) raises:
 
     _ = f.seek(0, SEEK_SET)
     var raw_hdr = f.read_bytes(256)
-    var hdr: QuantHeader
+    var hdr: BlockHeader
     try:
-        hdr = QuantHeader.from_bytes(raw_hdr)
+        hdr = BlockHeader.from_bytes(raw_hdr)
     except e:
         f.close()
         fail_m6(
@@ -89,7 +91,7 @@ def do_check(check_file: String, workdir: String) raises:
         return
 
     try:
-        validate_quant_header(hdr, file_size)
+        validate_block_header(hdr, file_size)
     except e:
         f.close()
         fail_m6(
@@ -128,9 +130,9 @@ def do_check(check_file: String, workdir: String) raises:
             return
 
         var json_bytes = f.read_bytes(meta_len)
-        var meta: QuantTensorMetadata
+        var meta: BlockTensorMeta
         try:
-            meta = QuantTensorMetadata.from_json_bytes(json_bytes)
+            meta = BlockTensorMeta.from_json_bytes(json_bytes)
         except e:
             f.close()
             fail_m6(
@@ -141,7 +143,7 @@ def do_check(check_file: String, workdir: String) raises:
             return
 
         try:
-            validate_tensor_meta(meta)
+            validate_block_tensor_meta(meta)
         except e:
             f.close()
             fail_m6(
@@ -570,9 +572,9 @@ def cmd_quantize(args: List[String]) raises:
             return
 
         # Buat metadata tensor
-        var qmeta: QuantTensorMetadata
+        var qmeta: BlockTensorMeta
         try:
-            qmeta = QuantTensorMetadata(
+            qmeta = BlockTensorMeta(
                 name=dt.name,
                 shape=dt.shape.copy(),
                 dtype="BF16",
@@ -657,7 +659,7 @@ def cmd_quantize(args: List[String]) raises:
     # ------------------------------------------------------------------
     var total_output_bytes = 256 + total_records_bytes
     var model_name = "qwen1.5-moe-a2.7b-chat"
-    var final_hdr = QuantHeader(
+    var final_hdr = BlockHeader(
         model=model_name,
         num_tensors=len(discovered),
         total_bytes=total_output_bytes,
@@ -711,7 +713,7 @@ def cmd_quantize(args: List[String]) raises:
     # ------------------------------------------------------------------
     # Atomic Rename ke Output Destination
     # ------------------------------------------------------------------
-    var final_dest = String(output_dir, "/quant_model.bin")
+    var final_dest = String(output_dir, "/model_quant.bin")
     var ren_res = c_rename(tmp_filename, final_dest)
     if ren_res != 0:
         fail_m6(

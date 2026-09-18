@@ -3,7 +3,8 @@
 # See LICENSE for details.
 """Unit Test Suite untuk M7-W2: LRU Cache Expert Engine (Budget, State Machine, Pinning, F9)."""
 
-from format.quant_format import QuantTensorMetadata, u16_to_float16
+from format.half_float import u16_to_float16
+from format.quant_reader import BlockTensorMeta
 from io.odirect import ODirectReader
 from io.lru_cache import (
     STATE_ABSENT,
@@ -418,7 +419,7 @@ def test_real_model_odirect_lru_integration() raises:
         | (Int(meta_len_raw[3]) << 24)
     )
     var meta_json = reader.read_logical_payload(260, meta_len)
-    var meta = QuantTensorMetadata.from_json_bytes(meta_json)
+    var meta = BlockTensorMeta.from_json_bytes(meta_json)
     var payload_offset = 260 + meta_len
     var total_payload_bytes = meta.scales_bytes() + meta.weights_bytes()
 

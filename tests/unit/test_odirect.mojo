@@ -4,7 +4,8 @@
 """Unit test suite untuk O_DIRECT Reader, Triple Alignment, dan Staging Buffer (M7-W1)."""
 
 from cli.m7_errors import m7_error_json
-from format.quant_format import QuantHeader, QuantTensorMetadata, u16_to_float16
+from format.half_float import u16_to_float16
+from format.quant_reader import BlockTensorMeta
 from io.odirect import ODirectReader, ReadToken
 
 from quant.dequant_kernel import dequant_kernel_simd
@@ -191,7 +192,7 @@ def test_streaming_dequant_single_layer_step() raises:
 
     # Baca JSON metadata tensor 0
     var meta_json = reader.read_logical_payload(260, meta_len)
-    var meta = QuantTensorMetadata.from_json_bytes(meta_json)
+    var meta = BlockTensorMeta.from_json_bytes(meta_json)
 
     var s_bytes = meta.scales_bytes()
     var w_bytes = meta.weights_bytes()

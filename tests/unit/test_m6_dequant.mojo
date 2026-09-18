@@ -3,23 +3,23 @@
 # See LICENSE for details.
 """Unit test suite untuk Dequant Kernel SIMD, SEC-4 Parser Hardening, dan G-M6-K (M6-W4)."""
 
-from format.quant_format import (
-    CONFIGURED_MAX_NAME,
-    CONFIGURED_MAX_NDIM,
-    CONFIGURED_MAX_TENSORS,
-    QuantHeader,
-    QuantTensorMetadata,
+from format.half_float import (
     float16_to_u16,
     pack_4bit_pair,
     safe_multiply_int,
     u16_to_float16,
-    validate_quant_header,
-    validate_tensor_meta,
 )
 from format.quant_reader import (
+    CONFIGURED_MAX_NAME,
+    CONFIGURED_MAX_NDIM,
+    CONFIGURED_MAX_TENSORS,
+    BlockHeader,
+    BlockTensorMeta,
     QuantModelIndex,
     QuantTensorEntry,
     scan_quant_file,
+    validate_block_header,
+    validate_block_tensor_meta,
 )
 from quant.dequant_kernel import (
     audit_kernel_domain_bound,
@@ -181,7 +181,7 @@ def test_dequant_kernel_domain_property_bound() raises:
 def test_sec4_parser_hardening_caps_and_overflow() raises:
     """Memverifikasi penegakan caps dan pencegahan overflow aritmetika SEC-4."""
     # 1. Header num_tensors > 100.000 ditolak
-    var hdr_overflow = QuantHeader(
+    var hdr_overflow = BlockHeader(
         model="test",
         num_tensors=100001,
         total_bytes=1000,
@@ -190,7 +190,7 @@ def test_sec4_parser_hardening_caps_and_overflow() raises:
     )
     var rej_tensors = False
     try:
-        validate_quant_header(hdr_overflow, file_size=1000)
+        validate_block_header(hdr_overflow, file_size=1000)
     except:
         rej_tensors = True
     assert_true(rej_tensors, "Header num_tensors > 100000 harus ditolak")
@@ -201,12 +201,12 @@ def test_sec4_parser_hardening_caps_and_overflow() raises:
         long_name += "a"
     var shape = List[Int]()
     shape.append(128)
-    var meta_long_name = QuantTensorMetadata(
+    var meta_long_name = BlockTensorMeta(
         name=long_name, shape=shape, dtype="BF16", group_size=128
     )
     var rej_name = False
     try:
-        validate_tensor_meta(meta_long_name)
+        validate_block_tensor_meta(meta_long_name)
     except:
         rej_name = True
     assert_true(rej_name, "Tensor name > 512 byte harus ditolak")
@@ -215,12 +215,12 @@ def test_sec4_parser_hardening_caps_and_overflow() raises:
     var shape_9d = List[Int]()
     for _ in range(9):
         shape_9d.append(2)
-    var meta_9d = QuantTensorMetadata(
+    var meta_9d = BlockTensorMeta(
         name="test", shape=shape_9d, dtype="BF16", group_size=128
     )
     var rej_ndim = False
     try:
-        validate_tensor_meta(meta_9d)
+        validate_block_tensor_meta(meta_9d)
     except:
         rej_ndim = True
     assert_true(rej_ndim, "Tensor ndim > 8 harus ditolak")

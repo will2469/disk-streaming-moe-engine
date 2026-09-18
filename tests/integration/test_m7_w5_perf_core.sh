@@ -72,6 +72,12 @@ echo "   PASS: Binary kimo dan io_benchmark siap dijalankan."
 # -----------------------------------------------------------------------------
 # 3. Pengujian Direct Decode CLI dengan Flag --cache-stats
 # -----------------------------------------------------------------------------
+QWEN15_MODEL_DIR="$HOME/models/qwen1.5-moe-a2.7b-chat-4bit"
+if [ ! -d "$QWEN15_MODEL_DIR" ]; then
+    echo ">> [3/6] SKIP: Model Qwen 1.5 4-bit tidak ditemukan di $QWEN15_MODEL_DIR (dibersihkan pada M10). Uji fisik dilewati secara eksplisit."
+    exit 0
+fi
+
 echo ">> [3/6] Menguji kimo decode dengan telemetri LRU cache (--cache-stats)..."
 STDOUT_DECODE="$WORKDIR/stdout_dec.json"
 ./kimo decode \

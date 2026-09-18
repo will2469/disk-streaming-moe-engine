@@ -889,11 +889,9 @@ def cmd_decode(args: List[String]) raises:
     var mount_opts = fs_info[1]
     var fs_bsize = get_fs_block_size(model_dir)
 
-    var target_probe_file = String(model_dir, "/quant_model.bin")
-    if not c_access_r(target_probe_file):
-        target_probe_file = String(
-            model_dir, "/model-00001-of-00028.safetensors"
-        )
+    var target_probe_file = String(
+        model_dir, "/model-00001-of-00028.safetensors"
+    )
     if not c_access_r(target_probe_file):
         target_probe_file = String(model_dir, "/model.safetensors.index.json")
     if not c_access_r(target_probe_file):
@@ -1463,12 +1461,11 @@ def cmd_decode(args: List[String]) raises:
 
     # Real decode path: model checkpoint loading
     var index_path = String(model_dir, "/model.safetensors.index.json")
-    var quant_path = String(model_dir, "/quant_model.bin")
-    if get_file_size(index_path) < 0 and get_file_size(quant_path) < 0:
+    if get_file_size(index_path) < 0:
         fail_m5(
             "M5_ERR_PREFILL",
             "prefill",
-            "model index or quant_model.bin not found: " + index_path,
+            "model index not found: " + index_path,
             run_dir=run_dir,
             tmp_files=tmp_files,
         )

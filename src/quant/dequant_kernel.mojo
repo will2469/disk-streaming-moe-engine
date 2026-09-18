@@ -12,7 +12,7 @@ Spesifikasi (docs/milestones/M6-quantizer.md § Dequant Kernel Specification):
 - Vektor SIMD 8-lane (AVX2/NEON friendly), cache-friendly, overhead <= 10% decode.
 """
 
-from format.quant_format import float16_to_u16, is_allowed_group_size
+from format.half_float import float16_to_u16, is_allowed_group_size
 from std.builtin.dtype import DType
 from std.collections import List
 from std.math import isinf, isnan

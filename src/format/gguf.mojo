@@ -11,7 +11,7 @@ Memenuhi invarian ketat DoD M9:
 """
 
 from format.file_io import _open_shard
-from format.quant_format import float16_to_u16, u16_to_float16
+from format.half_float import float16_to_u16, u16_to_float16
 from std.collections import Dict, List
 from std.os import SEEK_END, SEEK_SET
 

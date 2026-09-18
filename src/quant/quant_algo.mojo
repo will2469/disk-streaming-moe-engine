@@ -15,7 +15,7 @@ Komponen C5 & C2 dari disk-streaming-moe-engine:
 - Perhitungan epsilon_rel & jalur absolut variansi nol.
 """
 
-from format.quant_format import (
+from format.half_float import (
     QUANT_DEFAULT_GROUP_SIZE,
     compute_fp16_scale_ceil,
     is_allowed_group_size,

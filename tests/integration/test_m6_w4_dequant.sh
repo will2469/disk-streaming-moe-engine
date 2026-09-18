@@ -37,7 +37,7 @@ FORMAT_OUTPUT=$(pixi run mojo format \
     src/quant/dequant_kernel.mojo \
     src/quant/__init__.mojo \
     src/format/quant_reader.mojo \
-    src/format/quant_format.mojo \
+    src/format/half_float.mojo \
     src/format/__init__.mojo \
     src/layers/quant_loader.mojo \
     tests/unit/test_m6_dequant.mojo \
@@ -116,16 +116,16 @@ EOF
     --group-size 128 \
     --workdir "$WORKDIR" > "$WORKDIR/quant_stdout.json"
 
-QUANT_MODEL_BIN="$QUANT_OUT_DIR/quant_model.bin"
+QUANT_MODEL_BIN="$QUANT_OUT_DIR/model_quant.bin"
 if [ ! -f "$QUANT_MODEL_BIN" ]; then
-    echo "FAIL: quant_model.bin tidak ditemukan setelah kuantisasi"
+    echo "FAIL: model_quant.bin tidak ditemukan setelah kuantisasi"
     exit 1
 fi
 
 # Verifikasi file-level dengan oracle python
 PYTHONPATH=. uv run --python .venv python tools/oracle/oracle_dequant.py \
     --verify-file "$QUANT_MODEL_BIN" > "$WORKDIR/file_conformance.json"
-echo "   PASS: Konformansi file-level G-M6-K terverifikasi pada quant_model.bin."
+echo "   PASS: Konformansi file-level G-M6-K terverifikasi pada model_quant.bin."
 
 # ----------------------------------------------------------------------
 # 6. Integrasi Layer Forward On-the-Fly & SEC-4 Fault Injection

@@ -35,7 +35,7 @@ echo ">> [1/5] Memeriksa kepatuhan formatting (Mojo & Python)..."
 
 # Mojo format check
 FORMAT_OUTPUT=$(pixi run mojo format \
-    src/format/quant_format.mojo \
+    src/format/half_float.mojo \
     src/format/__init__.mojo \
     tests/unit/test_m6_quant_format.mojo 2>&1)
 if echo "$FORMAT_OUTPUT" | grep -q "reformatted"; then
