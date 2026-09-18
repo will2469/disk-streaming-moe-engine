@@ -82,7 +82,7 @@ cat <<EOF > "$SCORECARD_FILE"
 > **Tanggal Sertifikasi**: ${TODAY_STR} (${TIMESTAMP_UTC})
 > **Git Commit**: \`${GIT_COMMIT}\`
 > **Target Arsitektur**: \`Qwen3.6-35B-A3B\` (40 Blocks: 30 GDN + 10 GatedAttn + MoE 256/8+1)
-> **Model Repository**: \`/home/will/models/qwen3.6-35b-a3b\` (68.12 GiB BF16, 26 Shards)
+> **Model Repository**: \`~/models/qwen3.6-35b-a3b\` (68.12 GiB BF16, 26 Shards)
 > **Status Sertifikasi**: **[PASS] (Seluruh Gate G-M10-1 s.d. G-M10-4 HIJAU 100%)**
 
 ---
@@ -116,7 +116,7 @@ Milestone M10 berhasil menyelesaikan unifikasi dan konsolidasi penuh engine infe
 
 ## 3. Matriks Integritas Aset Model & Checkpoint Asli
 
-- **Path Checkpoint**: \`/home/will/models/qwen3.6-35b-a3b\`
+- **Path Checkpoint**: \`~/models/qwen3.6-35b-a3b\`
 - **Total Shards Safetensors**: 26 file (\`model-00001-of-00026.safetensors\` s/d \`00026\`)
 - **Total Ukuran Bobot**: 68.12 GiB (71,903,776,776 Bytes)
 - **Production Lockfile**: \`models.lock.json\` (7 field lengkap, 26 SHA-256 ter-pin)
@@ -131,7 +131,6 @@ Fase Konsolidasi DISMOEN (M10) telah memenuhi 100% kriteria Definition of Done (
 - Seluruh artefak legacy dan format non-standar telah dibersihkan secara tuntas.
 - Kode inferensi hybrid 40-layer (30 GDN + 10 Gated Attention + MoE 256/8+1) kini berada dalam status produksi yang stabil dan terverifikasi bit-exact.
 - **Milestone M10 resmi DITUTUP — Milestone M11 (CPU Core-Scaling & Amdahl F16) UNBLOCKED.**
-
 EOF
 
 if [ ! -f "$SCORECARD_FILE" ]; then

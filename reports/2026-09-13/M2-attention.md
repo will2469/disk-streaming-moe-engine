@@ -1,7 +1,7 @@
 # M2 — Laporan Verifikasi Attention Layer & Benchmark (Run-ID: M2-20260913-001)
 
 > Dokumen penutup Milestone M2 (`../../../docs/milestones/M2-attention.md`).
-> Model dir: `/home/will/models/qwen1.5-moe-a2.7b-chat` (8 shard safetensors, 28,63 GB di disk).
+> Model dir: `~/models/qwen1.5-moe-a2.7b-chat` (8 shard safetensors, 28,63 GB di disk).
 > Revision pin K1: `ec052fda178e241c7c443468d2fa1db6618996be`.
 > Environment: Linux x86_64, cgroup `MemoryMax=6G` (`systemd-run --user --scope`), sequence length $L=16$.
 > Timestamp: 2026-09-13.

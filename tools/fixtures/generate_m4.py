@@ -74,7 +74,9 @@ def main():
     )
     parser.add_argument(
         "--model-dir",
-        default="/home/will/models/qwen1.5-moe-a2.7b-chat",
+        default=os.environ.get(
+            "MODEL_DIR", os.path.expanduser("~/models/qwen3.6-35b-a3b")
+        ),
         help="Path to model directory containing tokenizer.json",
     )
     parser.add_argument(

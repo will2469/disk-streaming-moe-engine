@@ -18,7 +18,7 @@ cd "$ROOT_DIR"
 
 DISMOEN="${DISMOEN:-./dismoen}"
 COMPARE_BIN="${COMPARE_BIN:-target/debug/dismoen-tools}"
-MODEL_DIR="${MODEL_DIR:-/home/will/models/qwen1.5-moe-a2.7b-chat}"
+MODEL_DIR="${MODEL_DIR:-$HOME/models/qwen3.6-35b-a3b}"
 FIXTURE_DIR="tools/fixtures"
 
 PYTHON_BIN="python3"

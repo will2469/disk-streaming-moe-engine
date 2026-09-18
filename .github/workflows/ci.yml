@@ -26,6 +26,8 @@ jobs:
       # Atribut allow/supresi dilarang (perbaiki kode, jangan bungkam linter)
       - run: "! grep -rn '#\\[allow(' --include='*.rs' ."
       - run: "! grep -rn 'noqa' --include='*.py' ."
+      # User home absolute path dilarang di repo (kebersihan OSS & portabilitas)
+      - run: "! git grep -n '/home/will' -- ':!.github/workflows/ci.yml'"
 
   rust:
     runs-on: ubuntu-latest

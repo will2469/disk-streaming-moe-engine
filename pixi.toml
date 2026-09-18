@@ -1,7 +1,7 @@
 [workspace]
 name = "disk-streaming-moe-engine"
 version = "0.1.0"
-description = "MoE streaming inference engine (Mojo 1.0.0) — trial Qwen1.5-MoE-A2.7B-Chat"
+description = "MoE streaming inference engine (Mojo 1.0.0) — Qwen3.6-35B-A3B"
 authors = ["will2469 <will.i.is.ega@gmail.com>"]
 channels = ["https://conda.modular.com/max/", "conda-forge"]
 platforms = ["linux-64"]

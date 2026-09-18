@@ -21,7 +21,7 @@ if [ ! -f "$DISMOEN_TOOLS" ]; then
     DISMOEN_TOOLS="target/release/dismoen-tools"
 fi
 
-MODEL_DIR="${MODEL_DIR:-/home/will/models/qwen1.5-moe-a2.7b-chat}"
+MODEL_DIR="${MODEL_DIR:-$HOME/models/qwen3.6-35b-a3b}"
 TEST_DIR="/tmp/test_m3_w4_compare_$$"
 WORKDIR="$TEST_DIR/workdir"
 ACT_BIN="fixtures/m3/activation.bin"

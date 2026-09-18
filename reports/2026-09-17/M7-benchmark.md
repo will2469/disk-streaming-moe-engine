@@ -1,7 +1,7 @@
 # M7 — Laporan Benchmark 4-bit, I/O & F16 Core Scaling
 
 > Dokumen penutup Milestone M7 Wave 5 (`docs/milestones/M7-odirect-lru.md`).
-> Model File: `/home/will/models/qwen1.5-moe-a2.7b-chat-4bit/quant_model.bin` (7.38 GB).
+> Model File: `~/models/qwen1.5-moe-a2.7b-chat-4bit/quant_model.bin` (7.38 GB).
 > Hardware: 12th Gen Intel(R) Core(TM) i3-1215U, Governor: `powersave`.
 > Tanggal: 2026-09-17.
 

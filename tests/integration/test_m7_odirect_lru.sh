@@ -69,7 +69,7 @@ if echo "$FORMAT_OUTPUT" | grep -q "reformatted"; then
 fi
 
 # Verifikasi Python Ruff & hygiene (tanpa supresi noqa)
-/home/will/.vscode/extensions/charliermarsh.ruff-2026.82.0-linux-x64/bundled/libs/bin/ruff check tools/
+uvx ruff@0.8.4 check tools/
 if git ls-files "*.py" | xargs grep -rn "noqa" 2>/dev/null; then
     echo "FAIL: Supresi noqa dilarang keras di berkas Python!"
     exit 1

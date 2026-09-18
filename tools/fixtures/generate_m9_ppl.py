@@ -363,7 +363,9 @@ def main():
     parser.add_argument(
         "--model-dir",
         type=str,
-        default="/home/will/models/qwen3.6-35b-a3b",
+        default=os.environ.get(
+            "MODEL_DIR", os.path.expanduser("~/models/qwen3.6-35b-a3b")
+        ),
         help="Path model dir untuk tokenizer (opsional)",
     )
     parser.add_argument(

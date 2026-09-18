@@ -10,7 +10,7 @@ from std.builtin.dtype import DType
 from std.collections import List
 from std.math import isinf, isnan
 
-# Asumsi Terkunci Arsitektur Qwen1.5-MoE-A2.7B (F2 / M5 DoD)
+# Parameter Dimensi Layer Attention (F2 / M5 DoD)
 comptime NUM_KV_HEADS: Int = 16
 comptime HEAD_DIM: Int = 128
 comptime NUM_LAYERS: Int = 24
@@ -422,7 +422,7 @@ struct LayerKVCache(Movable):
 
 
 struct FullKVCache(Movable):
-    """KV Cache lengkap untuk seluruh 24 layer model Qwen1.5-MoE."""
+    """KV Cache lengkap untuk seluruh layer attention model."""
 
     var layers: List[LayerKVCache]
     var capacity: Int

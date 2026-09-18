@@ -19,11 +19,14 @@ import argparse
 import json
 import os
 import sys
-import numpy as np
-from safetensors import safe_open
-import torch
 
-DEFAULT_MODEL_DIR = "/home/will/models/qwen1.5-moe-a2.7b-chat"
+import numpy as np
+import torch
+from safetensors import safe_open
+
+DEFAULT_MODEL_DIR = os.environ.get(
+    "MODEL_DIR", os.path.expanduser("~/models/qwen3.6-35b-a3b")
+)
 DEFAULT_OUT_JSON = os.path.abspath(
     os.path.join(
         os.path.dirname(__file__),

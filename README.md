@@ -4,8 +4,8 @@ Engine inferensi MoE streaming dari nol di **Mojo 1.0.0** (CPU, RAM 8 GB, NVMe S
 pola `kimi-k3-in-c`: checkpoint = index tensor, bobot di-stream dari disk per layer,
 setiap komponen divalidasi layer-per-layer terhadap oracle PyTorch fp32.
 
-- **Trial:** Qwen1.5-MoE-A2.7B-Chat (M0–M7) → **GDN** (M8) → **Port** Qwen3.6-35B-A3B (M9).
-- Status: implementasi M0 berjalan (wave notes di `scratch/wave/`, catatan kerja gitignored).
+- **Target Model:** Qwen3.6-35B-A3B (40 Blocks: 30 GDN + 10 GatedAttn + MoE 256/8+1).
+- Status: Engine DISMOEN (M10) terverifikasi konsisten dengan single lockfile `models.lock.json`.
 
 ## Prasyarat
 

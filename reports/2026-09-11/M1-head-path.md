@@ -1,7 +1,7 @@
 # M1 — Laporan Verifikasi Head Path & Benchmark (Run-ID: M1-20260911-001)
 
 > Dokumen penutup Milestone M1 (`../../../docs/milestones/M1-head-path.md`).
-> Model dir: `/home/will/models/qwen1.5-moe-a2.7b-chat` (8 shard safetensors, 28,63 GB di disk).
+> Model dir: `~/models/qwen1.5-moe-a2.7b-chat` (8 shard safetensors, 28,63 GB di disk).
 > Revision pin K1: `ec052fda178e241c7c443468d2fa1db6618996be`.
 > Environment: Linux x86_64, cgroup `MemoryMax=6G` (`systemd-run --user --scope`), single-threaded (`threads=1`).
 > Timestamp: 2026-09-11.

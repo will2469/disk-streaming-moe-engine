@@ -1,7 +1,7 @@
 # M4 — Laporan Prefill 24-Layer Streaming, Benchmark & Kalibrasi F4/F5 (Run-ID: M4-20260916-001)
 
 > Dokumen penutup Milestone M4: Full Forward 24 Layer Streaming (`../../../docs/milestones/M4-full-forward.md`).
-> Model directory: `/home/will/models/qwen1.5-moe-a2.7b-chat` (8 shard safetensors, 28,63 GB di disk).
+> Model directory: `~/models/qwen1.5-moe-a2.7b-chat` (8 shard safetensors, 28,63 GB di disk).
 > Revision pin K1: `ec052fda178e241c7c443468d2fa1db6618996be`.
 > Hardware: 12th Gen Intel(R) Core(TM) i3-1215U (6 core / 8 thread), CPU Governor: `powersave`.
 > Environment: Linux x86_64, cgroup `MemoryMax=6G` (`systemd-run --user --scope`), sequence length $s=16$, threads=1.

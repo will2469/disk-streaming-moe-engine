@@ -413,7 +413,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--model-dir",
-        default="/home/will/models/qwen1.5-moe-a2.7b-chat",
+        default=os.environ.get(
+            "MODEL_DIR", os.path.expanduser("~/models/qwen3.6-35b-a3b")
+        ),
         help="Path to Qwen model directory containing tokenizer.json",
     )
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))

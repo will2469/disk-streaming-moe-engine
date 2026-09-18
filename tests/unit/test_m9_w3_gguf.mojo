@@ -36,9 +36,7 @@ def test_format_detection_gguf_and_safetensors() raises:
     assert_equal(fmt_gguf, FORMAT_GGUF)
     assert_equal(format_to_string(fmt_gguf), "gguf")
 
-    var st_path = (
-        "/home/will/models/qwen3.6-35b-a3b/model-00001-of-00026.safetensors"
-    )
+    var st_path = "fixtures/m9_port_weights.safetensors"
     var fmt_st = detect_file_format(st_path)
     assert_equal(fmt_st, FORMAT_SAFETENSORS)
     assert_equal(format_to_string(fmt_st), "safetensors")

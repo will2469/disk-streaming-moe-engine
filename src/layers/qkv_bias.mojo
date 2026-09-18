@@ -1,7 +1,7 @@
 # Copyright 2026 will2469
 # Licensed under the Apache License, Version 2.0 (the "License");
 # See LICENSE for details.
-"""Validasi tensor bias attention untuk Qwen2MoE (M2-W1, Invariant P-2)."""
+"""Validasi tensor bias attention untuk arsitektur Qwen MoE (M2-W1, Invariant P-2)."""
 
 from format.types import json_escape
 from std.collections import Dict, List

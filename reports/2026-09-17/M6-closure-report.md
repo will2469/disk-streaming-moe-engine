@@ -1,7 +1,7 @@
 # Milestone M6 — Laporan Penutupan & Sertifikasi Gate (M6-W6)
 
 > Dokumen penutup resmi Milestone M6: Quantizer & Compressed Storage (`../../../docs/milestones/M6-quantizer.md`).
-> Model directory: `/home/will/models/qwen1.5-moe-a2.7b-chat` (8 shard safetensors, 28,63 GB di disk).
+> Model directory: `~/models/qwen1.5-moe-a2.7b-chat` (8 shard safetensors, 28,63 GB di disk).
 > Run ID: `M6-20260917-001`.
 > Tanggal: 2026-09-17.
 > Status Milestone: **CLOSED — 100% GREEN (ALL GATES PASSED)**.
@@ -23,7 +23,7 @@ Seluruh empat gate normatif Milestone M6 telah dievaluasi, diverifikasi secara m
 
 ## 2. Matriks Integration Tests (IT-M6-1 .. IT-M6-16)
 
-Suite integrasi menyeluruh diotomatisasi pada [`tests/integration/test_m6_quantize.sh`](file:///home/will/Monorepo/disk-streaming-moe-engine/tests/integration/test_m6_quantize.sh) dan dijalankan via task `pixi run test-m6` (Run-ID `M6-20260917-001`):
+Suite integrasi menyeluruh diotomatisasi pada [`tests/integration/test_m6_quantize.sh`](tests/integration/test_m6_quantize.sh) dan dijalankan via task `pixi run test-m6` (Run-ID `M6-20260917-001`):
 
 | Test ID      | Skenario Pengujian                                                                    | Perilaku yang Diharapkan                                                       | Hasil Observasi                                                    | Verdict  |
 | :----------- | :------------------------------------------------------------------------------------ | :----------------------------------------------------------------------------- | :----------------------------------------------------------------- | :------: |

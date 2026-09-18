@@ -8,7 +8,7 @@
     "threads_pinned": 1
   },
   "model": {
-    "path": "/home/will/models/qwen1.5-moe-a2.7b-chat",
+    "path": "~/models/qwen1.5-moe-a2.7b-chat",
     "num_tokens": 16,
     "num_layers": 24,
     "hidden_size": 2048

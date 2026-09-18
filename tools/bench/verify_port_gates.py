@@ -17,6 +17,7 @@ Generates: reports/YYYY-MM-DD/M9-gates-scorecard.md
 import datetime
 import json
 import math
+import os
 import struct
 import subprocess
 import sys
@@ -66,7 +67,9 @@ def evaluate_gate_g_m9_1(python_bin: str) -> dict[str, Any]:
     """Evaluasi Gate G-M9-1: Layer-by-layer verification & fault localization."""
     tokens_file = REPO_ROOT / "fixtures/m9_port_tokens.json"
     weights_file = REPO_ROOT / "fixtures/m9_port_weights.safetensors"
-    real_model_dir = Path("/home/will/models/qwen3.6-35b-a3b")
+    real_model_dir = Path(
+        os.environ.get("MODEL_DIR", Path.home() / "models/qwen3.6-35b-a3b")
+    )
 
     with tempfile.TemporaryDirectory(prefix="g_m9_1_") as tmp:
         tmp_dir = Path(tmp)
@@ -494,7 +497,7 @@ def write_m9_scorecard(
 > **Milestone**: M9 — Porting ke Arsitektur Qwen3.6-35B-A3B
 > **Tanggal Sertifikasi**: {today_str}
 > **Target Arsitektur**: `Qwen3.6-35B-A3B` (40 Blocks: 30 GDN + 10 GatedAttn + MoE)
-> **Model Repository**: `/home/will/models/qwen3.6-35b-a3b` (68,12 GB BF16, 26 Shards)
+> **Model Repository**: `~/models/qwen3.6-35b-a3b` (68,12 GB BF16, 26 Shards)
 > **Status Sertifikasi**: **[{final_verdict}] (Seluruh Gate M9 HIJAU)**
 
 ---
@@ -533,7 +536,7 @@ Milestone M9 berhasil menyelesaikan porting engine dari model trial
 
 ## 3. Matriks Integritas Aset Model & Checkpoint Asli
 
-- **Path Checkpoint**: `/home/will/models/qwen3.6-35b-a3b`
+- **Path Checkpoint**: `~/models/qwen3.6-35b-a3b`
 - **Total Shards Safetensors**: 26 file (`model-00001-of-00026` s/d `00026`)
 - **Total Ukuran Bobot**: 68,12 GB
 - **Index Tensor**: `model.safetensors.index.json` (40 layer, 256 router experts)

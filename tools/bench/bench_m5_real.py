@@ -28,7 +28,9 @@ from pathlib import Path
 
 from bench_bw_stream import get_cpu_governor, get_cpu_model, run_stream_copy
 
-DEFAULT_MODEL_DIR = Path("/home/will/models/qwen1.5-moe-a2.7b-chat")
+DEFAULT_MODEL_DIR = Path(
+    os.environ.get("MODEL_DIR", Path.home() / "models/qwen3.6-35b-a3b")
+)
 DEFAULT_OUTPUT_JSON = Path("reports/2026-09-17/m5_benchmark_raw.json")
 DEFAULT_PROMPT = "What is the capital of France?"
 

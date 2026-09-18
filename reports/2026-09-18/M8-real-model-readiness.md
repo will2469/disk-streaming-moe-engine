@@ -8,15 +8,15 @@
 
 | Aset Model | Lokasi File | Ukuran | Status Disk |
 |:---|:---|:---:|:---:|
-| `qwen_moe_safetensors` | `/home/will/models/qwen1.5-moe-a2.7b-chat` | 0.00 GB | **Belum Diunduh** |
-| `qwen_moe_quant` | `/home/will/models/qwen1.5-moe-a2.7b-chat-4bit/quant_model.bin` | 0.00 GB | **Belum Diunduh** |
-| `qwen36_target_m9` | `/home/will/models/qwen3.6-35b-a3b` | 68.12 GB | **Tersedia** |
+| `qwen_moe_safetensors` | `~/models/qwen3.6-35b-a3b` | 68.12 GB | **Tersedia** |
+| `qwen_moe_quant` | `~/models/qwen3.6-35b-a3b` | 68.12 GB | **Tersedia** |
+| `qwen36_target_m9` | `~/models/qwen3.6-35b-a3b` | 68.12 GB | **Tersedia** |
 
 ## 2. Hasil Verifikasi Integrasi M7 + M8
 
 - **O_DIRECT Reader**: Terverifikasi pada block size 4096 B
 - **LRU Cache**: Terverifikasi dengan kapasitas budget memori dan pin ratio 25%
-- **Peak Memory VmHWM**: 10498048 bytes (0.0098 GB) $\le 6.0\text{ GB}$ (PASS SEC-4)
+- **Peak Memory VmHWM**: 10530816 bytes (0.0098 GB) $\le 6.0\text{ GB}$ (PASS SEC-4)
 - **State Serialization**: Format GDNS v1 valid dengan trailing SHA-256 digest
 
 ## 3. Hasil Verifikasi Kesiapan Arsitektur M9

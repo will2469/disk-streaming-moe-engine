@@ -35,7 +35,7 @@ def test_quant_header_roundtrip_and_padding() raises:
     """Verifikasi header tepat 256 byte, padding spasi, dan parse JSON roundtrip.
     """
     var hdr = BlockHeader(
-        model="qwen1.5-moe-a2.7b-chat",
+        model="qwen3.6-35b-a3b",
         num_tensors=4659,
         total_bytes=7934542592,
         group_size=128,
@@ -52,7 +52,7 @@ def test_quant_header_roundtrip_and_padding() raises:
     # Parse kembali dari bytes
     var parsed = BlockHeader.from_bytes(bytes)
     assert_equal(parsed.version, 1)
-    assert_equal(parsed.model, "qwen1.5-moe-a2.7b-chat")
+    assert_equal(parsed.model, "qwen3.6-35b-a3b")
     assert_equal(parsed.format, QUANT_FORMAT_NAME)
     assert_equal(parsed.group_size, 128)
     assert_equal(parsed.scale_dtype, QUANT_SCALE_DTYPE)

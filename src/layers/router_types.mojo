@@ -10,10 +10,10 @@ from std.collections import List
 struct RouterConfig(Copyable, Movable):
     """Konfigurasi MoE Router (F8a, F8b).
 
-    Default parameter diturunkan dari Qwen1.5-MoE-A2.7B:
-    - num_experts: 60
-    - num_experts_per_tok: 4 (top-4)
-    - norm_topk_prob: False (tanpa renormalisasi)
+    Parameter konfigurasi router MoE:
+    - num_experts: total pakar ter-route (misal 256 pada Qwen3.6)
+    - num_experts_per_tok: pakar terpilih per token (top-k, misal 8 pada Qwen3.6)
+    - norm_topk_prob: normalisasi probabilitas top-k (default False)
     """
 
     var num_experts: Int

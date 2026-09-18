@@ -1,7 +1,7 @@
 # Milestone M5 — Laporan Penutupan & Sertifikasi Gate (M5-W6)
 
 > Dokumen penutup resmi Milestone M5: KV Cache & Autoregressive Decode (`../../../docs/milestones/M5-kv-decode.md`).
-> Model directory: `/home/will/models/qwen1.5-moe-a2.7b-chat` (8 shard safetensors, 28,63 GB di disk).
+> Model directory: `~/models/qwen1.5-moe-a2.7b-chat` (8 shard safetensors, 28,63 GB di disk).
 > Environment: Linux x86_64, cgroup `MemoryMax=6G` (`systemd-run --user --scope`).
 > Tanggal: 2026-09-17.
 > Status Milestone: **CLOSED — 100% GREEN (ALL GATES PASSED)**.
@@ -25,7 +25,7 @@ Seluruh enam gate normatif Milestone M5 telah dievaluasi dan dinyatakan **PASS**
 
 ## 2. Matriks Integration Tests (IT-M5-1 .. IT-M5-11)
 
-Suite integrasi menyeluruh diotomatisasi pada [`tests/integration/test_m5_kv_decode.sh`](file:///home/will/Monorepo/disk-streaming-moe-engine/tests/integration/test_m5_kv_decode.sh) dan dijalankan via task `pixi run test-m5`:
+Suite integrasi menyeluruh diotomatisasi pada [`tests/integration/test_m5_kv_decode.sh`](tests/integration/test_m5_kv_decode.sh) dan dijalankan via task `pixi run test-m5`:
 
 | Test ID      | Skenario Pengujian                             | Perilaku yang Diharapkan                                                       | Hasil Observasi                                           | Verdict  |
 | :----------- | :--------------------------------------------- | :----------------------------------------------------------------------------- | :-------------------------------------------------------- | :------: |

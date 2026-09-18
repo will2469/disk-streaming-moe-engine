@@ -128,8 +128,8 @@ MOCK_MODEL_DIR="${TEST_DIR}/mock_qwen36"
 mkdir -p "${MOCK_MODEL_DIR}"
 
 # Mock config.json dengan vocab port 248320 dan text_config
-if [[ -f "/home/will/models/qwen3.6-35b-a3b/config.json" ]]; then
-    cp "/home/will/models/qwen3.6-35b-a3b/config.json" "${MOCK_MODEL_DIR}/config.json"
+if [[ -f "${HOME}/models/qwen3.6-35b-a3b/config.json" ]]; then
+    cp "${HOME}/models/qwen3.6-35b-a3b/config.json" "${MOCK_MODEL_DIR}/config.json"
 else
     cat <<EOF > "${MOCK_MODEL_DIR}/config.json"
 {
@@ -303,7 +303,7 @@ echo "   PASS: Happy path manifest equality lulus 100%."
 # -----------------------------------------------------------------------------
 # Stage 5: Verifikasi Terhadap Model Riil Host (Bila Ada)
 # -----------------------------------------------------------------------------
-REAL_MODEL_DIR="/home/will/models/qwen3.6-35b-a3b"
+REAL_MODEL_DIR="${MODEL_DIR:-$HOME/models/qwen3.6-35b-a3b}"
 if [[ -d "$REAL_MODEL_DIR" ]] && [[ -f "${REAL_MODEL_DIR}/config.json" ]]; then
     echo ">> [5/5] Memverifikasi model riil di ${REAL_MODEL_DIR} terhadap models.lock.json..."
     OUT_REAL=$("$DISMOEN" forward --check-config-only --model-dir "$REAL_MODEL_DIR" 2>&1)

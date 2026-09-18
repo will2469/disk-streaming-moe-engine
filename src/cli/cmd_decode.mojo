@@ -1354,7 +1354,7 @@ def cmd_decode(args: List[String]) raises:
         var out_json = String(
             '{\n  "status": "success",\n  "run_id": "',
             run_id,
-            '",\n  "model": "qwen1.5-moe-a2.7b-chat",\n  "prompt": "',
+            '",\n  "model": "qwen3.6-35b-a3b",\n  "prompt": "',
             json_escape(prompt_text),
             '",\n  "prompt_tokens": ',
             String(s_prompt),
@@ -1549,7 +1549,7 @@ def cmd_decode(args: List[String]) raises:
     var out_json = String(
         '{\n  "status": "success",\n  "run_id": "',
         run_id,
-        '",\n  "model": "qwen1.5-moe-a2.7b-chat",\n  "prompt": "',
+        '",\n  "model": "qwen3.6-35b-a3b",\n  "prompt": "',
         json_escape(prompt_text),
         '",\n  "prompt_tokens": ',
         String(s_prompt),

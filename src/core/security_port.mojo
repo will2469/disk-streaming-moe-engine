@@ -23,7 +23,7 @@ comptime KV_CACHE_LIMIT_BYTES: Int = 524288000  # 500 MiB
 comptime SCRATCHPAD_LIMIT_BYTES: Int = 268435456  # 256 MiB
 
 comptime DISK_FREE_GGUF_BYTES: Int = 21474836480  # 20 GB
-comptime DISK_FREE_BF16_BYTES: Int = 107374182400  # 100 GB
+comptime DISK_FREE_BF16_BYTES: Int = 53687091200  # 50 GB
 
 
 def get_disk_free_space_bytes(path: String) -> Int:

@@ -5,7 +5,7 @@
 
 """
 Benchmark runner for M1-C: Real-checkpoint head-path benchmark.
-Executes N=5 runs of `./dismoen head` on `/home/will/models/qwen1.5-moe-a2.7b-chat`
+Executes N=5 runs of `./dismoen head` on `~/models/qwen3.6-35b-a3b`
 under `systemd-run --user --scope -p MemoryMax=6G`.
 """
 
@@ -21,7 +21,9 @@ from pathlib import Path
 def main():
     root = Path(__file__).resolve().parent.parent.parent
     dismoen_bin = root / "dismoen"
-    model_dir = Path("/home/will/models/qwen1.5-moe-a2.7b-chat")
+    model_dir = Path(
+        os.environ.get("MODEL_DIR", Path.home() / "models/qwen3.6-35b-a3b")
+    )
     tokens_file = root / "fixtures/m1/tokens.json"
 
     if not dismoen_bin.exists():

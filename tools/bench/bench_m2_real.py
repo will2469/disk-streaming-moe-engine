@@ -5,19 +5,22 @@
 
 """Benchmark runner for M2: Real-checkpoint attention layer benchmark.
 
-Executes N=5 runs of `./dismoen layer` on `/home/will/models/qwen1.5-moe-a2.7b-chat`
+Executes N=5 runs of `./dismoen layer` on `~/models/qwen3.6-35b-a3b`
 for layers 0, 12, and 23 under `systemd-run --user --scope -p MemoryMax=6G`.
 Measures parse time, compute time, total time, VmHWM, and I/O reads.
 """
 
 import json
+import os
 import statistics
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-DEFAULT_MODEL_DIR = Path("/home/will/models/qwen1.5-moe-a2.7b-chat")
+DEFAULT_MODEL_DIR = Path(
+    os.environ.get("MODEL_DIR", Path.home() / "models/qwen3.6-35b-a3b")
+)
 LAYERS = [0, 12, 23]
 RUNS = 5
 

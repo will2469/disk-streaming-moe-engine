@@ -1,7 +1,7 @@
 # M3 — Laporan Baseline Distribusi Routing F9 & Rekomendasi Pinning M7
 
 > Dokumen analisis load-balance & baseline distribusi routing Milestone M3 (`scratch/wave/m3/m3-w5-f9.md`, `docs/milestones/M3-moe.md` § F9 Diagnostics).
-> Model: `/home/will/models/qwen1.5-moe-a2.7b-chat` (8 shard safetensors, revision pin `ec052fda178e241c7c443468d2fa1db6618996be`).
+> Model: `~/models/qwen1.5-moe-a2.7b-chat` (8 shard safetensors, revision pin `ec052fda178e241c7c443468d2fa1db6618996be`).
 > Tool: `tools/bench/f9_diagnostics.py` (256 random inputs, seed 42, hidden_dim 2048, fp32).
 > Timestamp: 2026-09-16.
 
@@ -117,5 +117,5 @@ Dengan adanya routing skew empiris:
 - Script generator: `tools/bench/f9_diagnostics.py`
 - Verifikasi reproduktifitas:
   ```bash
-  uv run python tools/bench/f9_diagnostics.py --samples 256 --seed 42 --model-dir /home/will/models/qwen1.5-moe-a2.7b-chat
+  uv run python tools/bench/f9_diagnostics.py --samples 256 --seed 42 --model-dir ~/models/qwen1.5-moe-a2.7b-chat
   ```

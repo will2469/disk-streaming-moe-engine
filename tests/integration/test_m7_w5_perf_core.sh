@@ -72,16 +72,16 @@ echo "   PASS: Binary dismoen dan io_benchmark siap dijalankan."
 # -----------------------------------------------------------------------------
 # 3. Pengujian Direct Decode CLI dengan Flag --cache-stats
 # -----------------------------------------------------------------------------
-QWEN15_MODEL_DIR="$HOME/models/qwen1.5-moe-a2.7b-chat-4bit"
-if [ ! -d "$QWEN15_MODEL_DIR" ]; then
-    echo ">> [3/6] SKIP: Model Qwen 1.5 4-bit tidak ditemukan di $QWEN15_MODEL_DIR (dibersihkan pada M10). Uji fisik dilewati secara eksplisit."
+REAL_MODEL_DIR="${MODEL_DIR:-$HOME/models/qwen3.6-35b-a3b}"
+if [ ! -d "$REAL_MODEL_DIR" ]; then
+    echo ">> [3/6] SKIP: Model tidak ditemukan di $REAL_MODEL_DIR."
     exit 0
 fi
 
 echo ">> [3/6] Menguji dismoen decode dengan telemetri LRU cache (--cache-stats)..."
 STDOUT_DECODE="$WORKDIR/stdout_dec.json"
 ./dismoen decode \
-  --model-dir "$HOME/models/qwen1.5-moe-a2.7b-chat-4bit" \
+  --model-dir "$REAL_MODEL_DIR" \
   --tokens tools/fixtures/m4_prompt1_tokens.json \
   --max-tokens 64 \
   --context-size 2048 \
@@ -125,7 +125,7 @@ print(f'   PASS: Telemetri decode 4-bit valid: throughput={d[\"metrics\"][\"toke
 # -----------------------------------------------------------------------------
 echo ">> [4/6] Menjalankan runner benchmark bench_m7_real.py..."
 "$PYTHON_BIN" tools/bench/bench_m7_real.py \
-  --model-dir "$HOME/models/qwen1.5-moe-a2.7b-chat-4bit" \
+  --model-dir "$REAL_MODEL_DIR" \
   --tokens tools/fixtures/m4_prompt1_tokens.json \
   --io-fixture tools/fixtures/m7_io_patterns.json \
   --max-tokens 64 \

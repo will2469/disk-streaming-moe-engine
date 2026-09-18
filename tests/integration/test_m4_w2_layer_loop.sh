@@ -18,7 +18,7 @@
 set -u
 
 DISMOEN="${DISMOEN:-./dismoen}"
-MODEL_DIR="${MODEL_DIR:-/home/will/models/qwen1.5-moe-a2.7b-chat}"
+MODEL_DIR="${MODEL_DIR:-$HOME/models/qwen3.6-35b-a3b}"
 
 if [ ! -d "$MODEL_DIR" ] || [ ! -f "$MODEL_DIR/model.safetensors.index.json" ]; then
     echo "SKIP: model directory not found: $MODEL_DIR"
@@ -90,9 +90,9 @@ with open('$STDOUT_JSON') as f:
 
 assert d['status'] == 'success', f'status not success: {d}'
 assert re.match(r'^M4-\d{8}-\d{3}$', d['run_id']), f'invalid run_id: {d[\"run_id\"]}'
-assert d['model'] == 'qwen1.5-moe-a2.7b-chat'
+assert d['model'] in ('qwen3.6-35b-a3b', 'qwen1.5-moe-a2.7b-chat')
 assert d['num_tokens'] == 16, f'num_tokens mismatch: {d[\"num_tokens\"]}'
-assert d['num_layers'] == 24, f'num_layers mismatch: {d[\"num_layers\"]}'
+assert d['num_layers'] in (24, 40), f'num_layers mismatch: {d[\"num_layers\"]}'
 assert d['logits_path'] == '$OUT_LOGITS'
 
 m = d['metrics']

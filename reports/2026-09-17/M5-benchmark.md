@@ -1,7 +1,7 @@
 # M5 — Laporan Benchmark Decode Autoregressif, Kurva F16 & Floor Bandwidth (Run-ID: M5-20260917-001)
 
 > Dokumen penutup Milestone M5: KV Cache & Autoregressive Decode (`../../../docs/milestones/M5-kv-decode.md`).
-> Model directory: `/home/will/models/qwen1.5-moe-a2.7b-chat` (8 shard safetensors, 28,63 GB di disk).
+> Model directory: `~/models/qwen1.5-moe-a2.7b-chat` (8 shard safetensors, 28,63 GB di disk).
 > Hardware: 12th Gen Intel(R) Core(TM) i3-1215U, CPU Governor: `powersave`.
 > Environment: Linux x86_64, cgroup `MemoryMax=6G` (`systemd-run --user --scope`), sequence length $s=64$, context-size 2048 & 4096.
 > Tanggal: 2026-09-17.

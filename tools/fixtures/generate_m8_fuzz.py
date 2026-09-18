@@ -11,26 +11,30 @@ dan file integrity untuk memverifikasi ketahanan fail-closed tanpa crash/hang/OO
 import json
 from pathlib import Path
 
-OUT_DIR = Path(__file__).resolve().parent.parent.parent / "fixtures" / "m8-fuzz"
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+TARGET_DIR = REPO_ROOT / "fixtures" / "m8-fuzz"
+OUT_DIR = Path("fixtures/m8-fuzz")
 
 
 def main() -> None:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    TARGET_DIR.mkdir(parents=True, exist_ok=True)
 
     # 1. Bangkitkan file-file mutasi token JSON
-    (OUT_DIR / "tokens_empty.json").write_text(json.dumps({"tokens": [], "seq_len": 0}))
-    (OUT_DIR / "tokens_negative.json").write_text(
+    (TARGET_DIR / "tokens_empty.json").write_text(
+        json.dumps({"tokens": [], "seq_len": 0})
+    )
+    (TARGET_DIR / "tokens_negative.json").write_text(
         json.dumps({"tokens": [-5, 12], "seq_len": 2})
     )
-    (OUT_DIR / "tokens_oov.json").write_text(
+    (TARGET_DIR / "tokens_oov.json").write_text(
         json.dumps({"tokens": [999999], "seq_len": 1})
     )
-    (OUT_DIR / "tokens_corrupt.json").write_text('{"tokens": [1, 2, 3')
-    (OUT_DIR / "tokens_no_array.json").write_text(json.dumps({"seq_len": 3}))
-    (OUT_DIR / "tokens_string.json").write_text(
+    (TARGET_DIR / "tokens_corrupt.json").write_text('{"tokens": [1, 2, 3')
+    (TARGET_DIR / "tokens_no_array.json").write_text(json.dumps({"seq_len": 3}))
+    (TARGET_DIR / "tokens_string.json").write_text(
         json.dumps({"tokens": "invalid_string_array"})
     )
-    (OUT_DIR / "tokens_valid.json").write_text(
+    (TARGET_DIR / "tokens_valid.json").write_text(
         json.dumps({"tokens": [1, 23, 45, 67], "seq_len": 4})
     )
 
@@ -226,8 +230,8 @@ def main() -> None:
         "cases": cases,
     }
 
-    manifest_path = OUT_DIR / "manifest.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2))
+    manifest_path = TARGET_DIR / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
     print(f"Generated {len(cases)} fuzz cases -> {manifest_path}")
 
 

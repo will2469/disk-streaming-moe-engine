@@ -559,7 +559,7 @@ wajib tercatat di log kanselasi agar dapat diaudit.
 
 ```bash
 # Menjalankan sesi chat interaktif langsung
-dismoen chat --model-dir /home/will/models/qwen3.6-35b-a3b --auto
+dismoen chat --model-dir ~/models/qwen3.6-35b-a3b --auto
 
 # Dengan instruksi sistem kustom
 dismoen chat --system-prompt "Kamu adalah asisten pemrograman ahli Linux kernel dan sistem terdistribusi."
@@ -575,7 +575,7 @@ Fitur Terminal:
 
 ```bash
 # Menjalankan micro-server lokal di port 8000 (default bind loopback)
-dismoen serve --host 127.0.0.1 --port 8000 --model-dir /home/will/models/qwen3.6-35b-a3b --auto
+dismoen serve --host 127.0.0.1 --port 8000 --model-dir ~/models/qwen3.6-35b-a3b --auto
 ```
 
 > **Kebijakan bind/auth (P1).** Default `--host 127.0.0.1` (loopback):

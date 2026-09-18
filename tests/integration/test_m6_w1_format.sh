@@ -114,7 +114,7 @@ weights2 = [-7, 6, -5, 4, -3, 2, -1, 0] * ((128 * 256) // 8)
 rec2 = make_tensor_record('model.layers.0.self_attn.k_proj.weight', shape2, scales2, weights2)
 
 total_file_bytes = QUANT_HEADER_SIZE + len(rec1) + len(rec2)
-hdr = make_quant_header('qwen1.5-moe-a2.7b-chat', 2, total_file_bytes)
+hdr = make_quant_header('qwen3.6-35b-a3b', 2, total_file_bytes)
 
 with open('$QUANT_BIN', 'wb') as f:
     f.write(hdr)

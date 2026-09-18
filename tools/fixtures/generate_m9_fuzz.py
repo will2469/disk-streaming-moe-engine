@@ -16,10 +16,11 @@ def main():
     repo_root = os.path.dirname(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
-    fuzz_dir = os.path.join(repo_root, "fixtures", "m9-fuzz")
+    os.chdir(repo_root)
+    fuzz_dir = os.path.join("fixtures", "m9-fuzz")
     os.makedirs(fuzz_dir, exist_ok=True)
 
-    base_gguf = os.path.join(repo_root, "fixtures", "m9_port_mini.gguf")
+    base_gguf = os.path.join("fixtures", "m9_port_mini.gguf")
     with open(base_gguf, "rb") as f:
         valid_gguf_data = bytearray(f.read())
 

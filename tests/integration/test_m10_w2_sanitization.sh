@@ -238,12 +238,18 @@ print(f"   PASS: Pre-write margin satisfied: B_free_after - B_required >= B_rese
 # ---------------------------------------------------------------------------
 print("--> Stage 6: Structured Scorecard Emission")
 
+def sanitize_path(p):
+    home = os.path.expanduser("~")
+    if p.startswith(home):
+        return "~" + p[len(home):]
+    return p
+
 scorecard = {
     "gate": "G-M10-2",
     "status": "PASS",
     "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-    "model_root": model_root,
-    "legacy_paths_deleted": [p1_path, p2_path],
+    "model_root": sanitize_path(model_root),
+    "legacy_paths_deleted": [sanitize_path(p1_path), sanitize_path(p2_path)],
     "invariants": {
         "l_paths": l_paths,
         "l_logical_bytes": l_logical,

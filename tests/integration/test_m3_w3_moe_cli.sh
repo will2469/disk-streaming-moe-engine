@@ -359,7 +359,7 @@ else
 fi
 
 echo "=== 8. Real Qwen Checkpoint (Sanity Check) ==="
-REAL_MODEL="/home/will/models/qwen1.5-moe-a2.7b-chat"
+REAL_MODEL="${MODEL_DIR:-$HOME/models/qwen3.6-35b-a3b}"
 if [ -d "$REAL_MODEL" ]; then
     echo "Testing real model at $REAL_MODEL..."
     REAL_ACT="$TEST_DIR/real_act.bin"

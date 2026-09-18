@@ -6,7 +6,7 @@
 """Benchmark runner for Milestone M4: Real-checkpoint Full Forward 24-Layer Prefill.
 
 Executes warm-up and measurement runs of `./dismoen forward` on
-`/home/will/models/qwen1.5-moe-a2.7b-chat` under
+`~/models/qwen3.6-35b-a3b` under
 `systemd-run --user --scope -p MemoryMax=6G`.
 Measures walltime, VmHWM, cgroup peak/OOM, logical/physical bytes read,
 phase breakdown, effective sustained bandwidth, and computes F4/F5
@@ -16,6 +16,7 @@ roofline calibration.
 import argparse
 import glob
 import json
+import os
 import statistics
 import subprocess
 import sys
@@ -23,7 +24,9 @@ import tempfile
 import time
 from pathlib import Path
 
-DEFAULT_MODEL_DIR = Path("/home/will/models/qwen1.5-moe-a2.7b-chat")
+DEFAULT_MODEL_DIR = Path(
+    os.environ.get("MODEL_DIR", Path.home() / "models/qwen3.6-35b-a3b")
+)
 DEFAULT_TOKENS = Path("tools/fixtures/m4_prompt1_tokens.json")
 DEFAULT_OUTPUT_JSON = Path("reports/2026-09-16/m4_benchmark_raw.json")
 

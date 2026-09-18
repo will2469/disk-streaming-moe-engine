@@ -31,7 +31,7 @@ fi
 MINI_CONFIG="fixtures/m9_port_config_mini.json"
 TOKENS_FIXTURE="fixtures/m9_port_tokens.json"
 GGUF_FIXTURE="fixtures/m9_port_mini.gguf"
-REAL_MODEL_DIR="/home/will/models/qwen3.6-35b-a3b"
+REAL_MODEL_DIR="${MODEL_DIR:-$HOME/models/qwen3.6-35b-a3b}"
 
 TEST_DIR="/tmp/test_m9_w6_$$"
 mkdir -p "$TEST_DIR"

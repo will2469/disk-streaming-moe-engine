@@ -22,7 +22,7 @@ Milestone M10 meresmikan transformasi dari fase riset multi-model (Trial model Q
 ### Main Goal (Sasaran Kritis):
 
 1. **Pembersihan Total Bobot Fisik Qwen 1.5 di Disk**:
-   - Menghapus bobot legacy Safetensors `/home/will/models/qwen1.5-moe-a2.7b-chat` ($26{,}68\text{ GiB}$) dan custom quant `/home/will/models/qwen1.5-moe-a2.7b-chat-4bit` ($6{,}88\text{ GiB}$).
+   - Menghapus bobot legacy Safetensors `~/models/qwen1.5-moe-a2.7b-chat` ($26{,}68\text{ GiB}$) dan custom quant `~/models/qwen1.5-moe-a2.7b-chat-4bit` ($6{,}88\text{ GiB}$).
    - Membebaskan $\approx \mathbf{33{,}55\text{ GiB}}$ kapasitas disk pada partisi host, menaikkan ketersediaan storage dari $\sim 54\text{ GiB}$ menjadi **$\sim 87{,}55\text{ GiB}$**.
    - Menjamin kapasitas storage maksimal dan aman untuk menampung bobot asli Qwen 3.6-35B ($68{,}12\text{ GiB}$) beserta berkas kuantisasi runtime GGUF target ($13{,}5 - 16{,}8\text{ GiB}$), dengan margin operasional $B_{reserved}$ sesuai §4.2 sehingga operasi M10 diizinkan hanya jika safety margin tetap terpenuhi.
 2. **Rebranding Resmi Menjadi `dismoen`**:
@@ -44,10 +44,10 @@ Milestone M10 meresmikan transformasi dari fase riset multi-model (Trial model Q
 
 ### 2.1 Berkas Penyimpanan (Storage Sanitization)
 
-> Lokasi root model diatur via variabel lingkungan `${DISMOEN_MODEL_ROOT:-/home/will/models}` atau flag CLI `--model-dir`.
+> Lokasi root model diatur via variabel lingkungan `${DISMOEN_MODEL_ROOT:-~/models}` atau flag CLI `--model-dir`.
 >
 > **Precedence (mengikat, bukan implementation-dependent):**
-> `--model-dir` > `DISMOEN_MODEL_ROOT` > `/home/will/models`.
+> `--model-dir` > `DISMOEN_MODEL_ROOT` > `~/models`.
 > Contoh CLI di milestone ini memakai bentuk portable
 > `--model-dir "$DISMOEN_MODEL_ROOT/qwen3.6-35b-a3b"`.
 
@@ -81,7 +81,7 @@ KODE LEGACY TRIAL (M0-M7)                    KONSOLIDASI DISMOEN (M10)
 
 ### 2.3 Dekopling Pengujian Unit & Integrasi
 
-Berkas pengujian berikut yang sebelumnya menyentuh path fisik `/home/will/models/qwen1.5-moe-a2.7b-chat*` diperbarui agar membaca berkas fixture sintetis mini port (`fixtures/m9_port_mini.gguf`, `fixtures/m9_port_weights.safetensors`) atau shard riil Qwen 3.6:
+Berkas pengujian berikut yang sebelumnya menyentuh path fisik `~/models/qwen1.5-moe-a2.7b-chat*` diperbarui agar membaca berkas fixture sintetis mini port (`fixtures/m9_port_mini.gguf`, `fixtures/m9_port_weights.safetensors`) atau shard riil Qwen 3.6:
 
 - `tests/unit/test_odirect.mojo`: Target probe dialihkan ke fixture mini GGUF atau shard model 3.6.
 - `tests/unit/test_lru_cache.mojo`: Integrasi probe dialihkan ke pembacaan payload terkompresi GGUF.

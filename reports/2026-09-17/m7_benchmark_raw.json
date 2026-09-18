@@ -8,7 +8,7 @@
     "logical_cores": 8,
     "ram_stream_copy_gb_s": 13.128182359595318,
     "cgroup_memory_limit": "6G",
-    "model_path": "/home/will/models/qwen1.5-moe-a2.7b-chat-4bit/quant_model.bin",
+    "model_path": "~/models/qwen1.5-moe-a2.7b-chat-4bit/quant_model.bin",
     "model_size_bytes": 7382480468
   },
   "storage_io": {

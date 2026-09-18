@@ -24,7 +24,9 @@ import struct
 import subprocess
 import sys
 
-DEFAULT_MODEL_DIR = "/home/will/models/qwen1.5-moe-a2.7b-chat"
+DEFAULT_MODEL_DIR = os.environ.get(
+    "MODEL_DIR", os.path.expanduser("~/models/qwen3.6-35b-a3b")
+)
 DEFAULT_OUT_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "../../fixtures/m2")
 )

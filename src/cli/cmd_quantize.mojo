@@ -658,7 +658,7 @@ def cmd_quantize(args: List[String]) raises:
     # Tulis Header Final 256 Byte
     # ------------------------------------------------------------------
     var total_output_bytes = 256 + total_records_bytes
-    var model_name = "qwen1.5-moe-a2.7b-chat"
+    var model_name = "qwen3.6-35b-a3b"
     var final_hdr = BlockHeader(
         model=model_name,
         num_tensors=len(discovered),

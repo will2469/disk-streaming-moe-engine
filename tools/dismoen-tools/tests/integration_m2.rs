@@ -88,18 +88,13 @@ fn get_root_dir() -> PathBuf {
 }
 
 fn get_model_dir() -> Option<PathBuf> {
-    if let Ok(p) = std::env::var("MODEL_DIR") {
+    if let Ok(p) = std::env::var("TRIAL_MODEL_DIR").or_else(|_| std::env::var("MODEL_DIR")) {
         let pb = PathBuf::from(p);
         if pb.join("model.safetensors.index.json").exists() {
             return Some(pb);
         }
     }
-    let default_path = PathBuf::from("/home/will/models/qwen1.5-moe-a2.7b-chat");
-    if default_path.join("model.safetensors.index.json").exists() {
-        Some(default_path)
-    } else {
-        None
-    }
+    None
 }
 
 // 1. Happy path: layers 0, 12, 23 pass Gate G-M2-1

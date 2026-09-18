@@ -9,7 +9,7 @@ comptime CHUNK_MAX_BYTES = 16 * 1024 * 1024  # 16 MiB
 
 
 struct ModelConfig(Copyable, Movable):
-    """Dimensi arsitektur Qwen2 MoE dari config.json."""
+    """Dimensi arsitektur MoE (Qwen3.6 hybrid / MoE) dari config.json."""
 
     var hidden_size: Int
     var num_hidden_layers: Int

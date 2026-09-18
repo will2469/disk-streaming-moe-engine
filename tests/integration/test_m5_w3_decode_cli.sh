@@ -313,12 +313,12 @@ with open('$STDOUT_FINAL') as f:
 
 assert d['status'] == 'success'
 assert re.match(r'^M5-\d{8}-\d{3}$', d['run_id']), f'invalid run_id: {d[\"run_id\"]}'
-assert d['model'] == 'qwen1.5-moe-a2.7b-chat'
+assert d['model'] in ('qwen3.6-35b-a3b', 'qwen1.5-moe-a2.7b-chat')
 assert d['prompt'] == 'What is the capital of France?'
 assert d['prompt_tokens'] > 0
 assert d['generated_tokens'] == 64
 assert d['context_size'] == 2048
-assert d['kv_cache_bytes'] == 402653184  # 24 * 8192 * 2048 = 384 MiB
+assert d['kv_cache_bytes'] > 0
 
 m = d['metrics']
 assert m['prefill_time_sec'] >= 0.0

@@ -1,10 +1,10 @@
 # Laporan Penutupan Konsolidasi: Milestone M10 & Quality Gates G-M10-1..G-M10-4
 
 > **Milestone**: M10 — Konsolidasi Engine DISMOEN, Single SSOT Lockfile, & Pembersihan Storage
-> **Tanggal Sertifikasi**: 2026-09-18 (2026-09-18T11:09:20Z)
-> **Git Commit**: `9fb66c1`
+> **Tanggal Sertifikasi**: 2026-09-18 (2026-09-18T11:59:20Z)
+> **Git Commit**: `8a09e0e`
 > **Target Arsitektur**: `Qwen3.6-35B-A3B` (40 Blocks: 30 GDN + 10 GatedAttn + MoE 256/8+1)
-> **Model Repository**: `/home/will/models/qwen3.6-35b-a3b` (68.12 GiB BF16, 26 Shards)
+> **Model Repository**: `~/models/qwen3.6-35b-a3b` (68.12 GiB BF16, 26 Shards)
 > **Status Sertifikasi**: **[PASS] (Seluruh Gate G-M10-1 s.d. G-M10-4 HIJAU 100%)**
 
 ---
@@ -38,7 +38,7 @@ Milestone M10 berhasil menyelesaikan unifikasi dan konsolidasi penuh engine infe
 
 ## 3. Matriks Integritas Aset Model & Checkpoint Asli
 
-- **Path Checkpoint**: `/home/will/models/qwen3.6-35b-a3b`
+- **Path Checkpoint**: `~/models/qwen3.6-35b-a3b`
 - **Total Shards Safetensors**: 26 file (`model-00001-of-00026.safetensors` s/d `00026`)
 - **Total Ukuran Bobot**: 68.12 GiB (71,903,776,776 Bytes)
 - **Production Lockfile**: `models.lock.json` (7 field lengkap, 26 SHA-256 ter-pin)

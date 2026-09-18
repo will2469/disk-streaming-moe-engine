@@ -41,7 +41,7 @@ from std.testing import (
 
 
 def _make_dummy_cfg() raises -> ModelConfig:
-    """Konfigurasi ringkas dengan dimensi standar Qwen1.5-MoE (hidden=2048, heads=16, dim=128).
+    """Konfigurasi ringkas dengan dimensi standar (hidden=2048, heads=16, dim=128).
     """
     return ModelConfig(2048, 16, 16, 24)
 

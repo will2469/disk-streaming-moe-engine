@@ -9,7 +9,7 @@
     "ram_stream_copy_bw_gb_s": 12.789866137724264
   },
   "model": {
-    "path": "/home/will/models/qwen1.5-moe-a2.7b-chat",
+    "path": "~/models/qwen1.5-moe-a2.7b-chat",
     "max_tokens": 64,
     "context_size": 2048
   },

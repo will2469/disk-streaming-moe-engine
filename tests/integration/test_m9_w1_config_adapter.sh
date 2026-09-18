@@ -24,8 +24,7 @@ cd "$ROOT_DIR"
 
 DISMOEN="${DISMOEN:-./dismoen}"
 TEST_DIR="/tmp/test_m9_w1_$$"
-TRIAL_MODEL_DIR="${HOME}/models/qwen1.5-moe-a2.7b-chat"
-QWEN36_MODEL_DIR="${HOME}/models/qwen3.6-35b-a3b"
+QWEN36_MODEL_DIR="${MODEL_DIR:-$HOME/models/qwen3.6-35b-a3b}"
 
 cleanup() {
     rm -rf "$TEST_DIR"
@@ -258,21 +257,28 @@ if [[ -d "$QWEN36_MODEL_DIR" ]]; then
     }
 fi
 
-# Test 7.2: Architecture mismatch - flag qwen3.6 pada model Trial -> Exit 2
-if [[ -d "$TRIAL_MODEL_DIR" ]]; then
-    set +e
-    ERR_OUT=$("$DISMOEN" forward-port --model-dir "$TRIAL_MODEL_DIR" --architecture qwen3.6 --check-config-only 2>&1)
-    CODE=$?
-    set -e
-    if [[ $CODE -ne 2 ]]; then
-        echo "FAIL: Architecture mismatch (qwen3.6 on Trial) harus exit 2, dapat: $CODE"
-        exit 1
-    fi
-    echo "$ERR_OUT" | grep -q "ARCHITECTURE_MISMATCH" || {
-        echo "FAIL: Error output tidak mengandung ARCHITECTURE_MISMATCH!"
-        exit 1
-    }
+# Test 7.2: Architecture mismatch - flag qwen3.6 pada model legacy -> Exit 2
+MOCK_LEGACY_DIR="${TEST_DIR}/mock_legacy_qwen15"
+mkdir -p "$MOCK_LEGACY_DIR"
+cat <<EOF > "${MOCK_LEGACY_DIR}/config.json"
+{
+  "model_type": "qwen2_moe",
+  "num_experts": 60,
+  "vocab_size": 151936
+}
+EOF
+set +e
+ERR_OUT=$("$DISMOEN" forward-port --model-dir "$MOCK_LEGACY_DIR" --architecture qwen3.6 --check-config-only 2>&1)
+CODE=$?
+set -e
+if [[ $CODE -ne 2 ]]; then
+    echo "FAIL: Architecture mismatch (qwen3.6 on legacy config) harus exit 2, dapat: $CODE"
+    exit 1
 fi
+echo "$ERR_OUT" | grep -q "ARCHITECTURE_MISMATCH" || {
+    echo "FAIL: Error output tidak mengandung ARCHITECTURE_MISMATCH!"
+    exit 1
+}
 
 # Test 7.3: Config mismatch - tampered vocab size -> Exit 3
 set +e

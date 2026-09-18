@@ -5,7 +5,7 @@
 r"""Integration Readiness Verification: Real Model & M9 Hybrid Architecture.
 
 Memverifikasi kesiapan integrasi GDN pada model asli dan arsitektur M9:
-1. Akses O_DIRECT dan LRU Cache pada model riil di disk (/home/will/models/).
+1. Akses O_DIRECT dan LRU Cache pada model riil di disk (~/models/).
 2. Eksekusi CLI dismoen gdn dengan I/O configuration (O_DIRECT + LRU)
    di bawah SEC-4 (<6G).
 3. Integritas format GDNS v1 dan trailing SHA-256 checksum.
@@ -34,11 +34,15 @@ def test_real_model_readiness() -> int:
 
     # 1. Pengecekan Keberadaan Aset Model Nyata di Disk
     real_models = {
-        "qwen_moe_safetensors": Path("/home/will/models/qwen1.5-moe-a2.7b-chat"),
-        "qwen_moe_quant": Path(
-            "/home/will/models/qwen1.5-moe-a2.7b-chat-4bit/quant_model.bin"
+        "qwen_moe_safetensors": Path(
+            os.environ.get("MODEL_DIR", Path.home() / "models/qwen3.6-35b-a3b")
         ),
-        "qwen36_target_m9": Path("/home/will/models/qwen3.6-35b-a3b"),
+        "qwen_moe_quant": Path(
+            os.environ.get("MODEL_DIR", str(Path.home() / "models/qwen3.6-35b-a3b"))
+        ),
+        "qwen36_target_m9": Path(
+            os.environ.get("MODEL_DIR", Path.home() / "models/qwen3.6-35b-a3b")
+        ),
     }
 
     print(">> [1/4] Memeriksa keberadaan aset model nyata di storage...")
@@ -167,7 +171,8 @@ def test_real_model_readiness() -> int:
         f.write("|:---|:---|:---:|:---:|\n")
         for k, (exists, sz, p) in status_models.items():
             st = "Tersedia" if exists else "Belum Diunduh"
-            f.write(f"| `{k}` | `{p}` | {sz:.2f} GB | **{st}** |\n")
+            clean_p = str(p).replace(str(Path.home()), "~")
+            f.write(f"| `{k}` | `{clean_p}` | {sz:.2f} GB | **{st}** |\n")
 
         f.write("\n## 2. Hasil Verifikasi Integrasi M7 + M8\n\n")
         f.write("- **O_DIRECT Reader**: Terverifikasi pada block size 4096 B\n")
