@@ -15,7 +15,14 @@ from io.dio_probe import (
     round_up_dio,
     validate_dio_constraints,
 )
-from io.lru_cache import DynamicLRUCache
+from io.lru_cache import (
+    CacheEntry,
+    CacheKey,
+    LRUCache,
+    LRUCacheConfig,
+    LRUCacheStats,
+    MemoryBudget,
+)
 from io.odirect import ODirectReader, ReadToken
 from io.staging_ring import (
     RING_SLOT_COMPUTING,
@@ -28,6 +35,8 @@ from io.staging_ring import (
     ring_slot_state_name,
 )
 from io.telemetry import (
-    EnvironmentTelemetry,
-    collect_environment_telemetry,
+    get_fs_and_mounts,
+    get_fs_block_size,
+    get_ssd_temperature,
+    posix_fadvise_sequential,
 )
