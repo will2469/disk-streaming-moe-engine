@@ -1,0 +1,28 @@
+{
+  "version": "1.0",
+  "name": "M9 PPL Golden Reproducibility Pins",
+  "model": {
+    "name": "Qwen/Qwen3.6-35B-A3B",
+    "vocab_size": 248320
+  },
+  "tokenizer": {
+    "name": "qwen3.6-35b-a3b",
+    "vocab_size": 248320,
+    "sha256": "5f9e4d4901a92b997e463c1f46055088b6cca5ca61a6522d1b9f64c4bb81cb42"
+  },
+  "corpus": {
+    "filename": "m9_ppl_corpus.json",
+    "sha256": "374fe2e9fdd108a59bc7cd02af8f1d78e109fa981e41f8bd8032c106b185474a",
+    "num_documents": 100,
+    "tokens_per_doc": 256,
+    "n_pred_per_doc": 255,
+    "n_pred_total": 25500
+  },
+  "policy": {
+    "add_special_tokens": false,
+    "scoring_positions": "1..255",
+    "domain": "logprob_fp32",
+    "gate_delta_ppl_max": 1.0,
+    "gate_argmax_agreement_min": 0.95
+  }
+}

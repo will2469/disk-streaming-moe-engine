@@ -2055,9 +2055,9 @@ Mengambil ukuran KV cache dari agregasi memori proses (VmHWM / RSS) adalah metod
 
 ### Oracle & Fixture
 
-- [ ] `oracle_port.py` (BF16 baseline + GGUF baseline) + fixture synthetic mini + SHA ter-commit
+- [x] `oracle_port.py` (BF16 baseline + GGUF baseline) + fixture synthetic mini + SHA ter-commit
 - [x] Validasi kuantisasi spesifik format (F11-GGUF): decoder bit-exactness terhadap GGML ref ($\Delta_{\max} \le 10^{-7}$) + ambang distorsi multi-level vs BF16 Safetensors (per-tensor, per-block, global; Q3_K global $\le 6{,}0\%$, max tensor $\le 9{,}0\%$)
-- [ ] Corpus PPL port untuk ΔPPL bila quant port diuji (F12)
+- [x] Corpus PPL port untuk ΔPPL bila quant port diuji (F12)
 
 ### Pengukuran & Laporan
 

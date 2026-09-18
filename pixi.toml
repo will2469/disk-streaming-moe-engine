@@ -72,4 +72,5 @@ validate-m8 = "bash -c 'bash tests/integration/test_m8_w1_naive_oracle.sh && bas
 test-m9-w1 = "bash tests/integration/test_m9_w1_config_adapter.sh"
 test-m9-w2 = "bash tests/integration/test_m9_w2_scheduler.sh"
 test-m9-w3 = "bash tests/integration/test_m9_w3_loader.sh"
-validate-m9 = "bash -c 'bash tests/integration/test_m9_w1_config_adapter.sh && bash tests/integration/test_m9_w2_scheduler.sh && bash tests/integration/test_m9_w3_loader.sh'"
+test-m9-w4 = "bash tests/integration/test_m9_w4_oracle.sh"
+validate-m9 = "bash -c 'bash tests/integration/test_m9_w1_config_adapter.sh && bash tests/integration/test_m9_w2_scheduler.sh && bash tests/integration/test_m9_w3_loader.sh && bash tests/integration/test_m9_w4_oracle.sh'"
