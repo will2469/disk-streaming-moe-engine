@@ -3,6 +3,7 @@
 # See LICENSE for details.
 """DISMOEN CLI entry point."""
 
+from cli.cmd_chat import cmd_chat
 from cli.cmd_check_index import cmd_check_index
 from cli.cmd_compare import cmd_compare
 from cli.cmd_decode import cmd_decode
@@ -30,7 +31,7 @@ def main() raises:
             (
                 "DISMOEN: Disk-Streaming MoE Inference Engine\n"
                 "pakai: dismoen"
-                " (check-index|head|layer|forward|forward-port|decode|quantize|compare|gdn|tune)"
+                " (check-index|head|layer|forward|forward-port|decode|chat|quantize|compare|gdn|tune)"
                 " ..."
             ),
             "",
@@ -43,6 +44,7 @@ def main() raises:
         )
         print("Penggunaan: dismoen <subcommand> [flags]")
         print("Subcommand tersedia:")
+        print("  chat          Sesi obrolan interaktif terminal REPL (M12)")
         print(
             "  check-index   Validasi header dan integritas shard Safetensors"
         )
@@ -148,6 +150,16 @@ def main() raises:
                     )
                 )
             exit(5)
+    elif cmd == "chat":
+        var pass_args = List[String]()
+        for i in range(len(args)):
+            pass_args.append(String(args[i]))
+        try:
+            cmd_chat(pass_args^)
+        except e:
+            var err_s = String(e)
+            eprint_json('{"error":"M12_ERR_CHAT","message":"' + err_s + '"}')
+            exit(1)
     elif cmd == "quantize":
         var pass_args = List[String]()
         for i in range(len(args)):

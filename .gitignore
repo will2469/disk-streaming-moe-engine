@@ -5,6 +5,7 @@
 
 # Scratch — catatan kerja lokal
 /scratch/
+/work/chat_cache/
 
 # Rust (Cargo.lock WAJIB ter-commit: tooling biner, reproducibility per spec §4.6)
 target/
