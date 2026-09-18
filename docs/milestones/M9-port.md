@@ -2039,11 +2039,11 @@ Mengambil ukuran KV cache dari agregasi memori proses (VmHWM / RSS) adalah metod
 
 ### Gate Requirements
 
-- [ ] G-M9-1 oracle layer-by-layer hijau (proxy hybrid kecil → checkpoint asli)
-- [ ] G-M9-2 full forward hijau ($M_{peak} \le 7{,}5$ GiB)
-- [ ] G-M9-3 decode streaming ≥ 0,5 tok/s cold + KV reuse valid (`recompute_tokens == 0`, `kv_tokens_after == kv_before + N`, `gdn_state_reused == true`)
-- [ ] G-M9-4 $e_{KV} \le 5\%$ (F2 port)
-- [ ] Kalibrasi $e_T \le 20\%$ (lebih ketat dari trial)
+- [x] G-M9-1 oracle layer-by-layer hijau (proxy hybrid kecil → checkpoint asli)
+- [x] G-M9-2 full forward hijau ($M_{peak} \le 7{,}5$ GiB)
+- [x] G-M9-3 decode streaming ≥ 0,5 tok/s cold + KV reuse valid (`recompute_tokens == 0`, `kv_tokens_after == kv_before + N`, `gdn_state_reused == true`)
+- [x] G-M9-4 $e_{KV} \le 5\%$ (F2 port)
+- [x] Kalibrasi $e_T \le 20\%$ (lebih ketat dari trial)
 
 ### Migrasi & Loader
 
