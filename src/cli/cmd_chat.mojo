@@ -283,6 +283,72 @@ def decode_token_to_text(
     return String(" ")
 
 
+def get_simulated_tokens(turn: Int) -> List[String]:
+    """Menghasilkan urutan potongan token teks untuk respons simulasi percakapan.
+    """
+    var toks = List[String]()
+    toks.append("<think>\n")
+    if turn <= 1:
+        toks.append("Menganalisis masukan pengguna ")
+        toks.append("dan mempersiapkan respons ")
+        toks.append("melalui pipeline streaming Dismoen.\n")
+    else:
+        toks.append("Melanjutkan konteks percakapan ")
+        toks.append("dengan memanfaatkan ")
+        toks.append("cache hit prefix KMSS v1.\n")
+    toks.append("</think>\n\n")
+
+    if turn <= 1:
+        toks.append("Halo! ")
+        toks.append("Saya ")
+        toks.append("adalah ")
+        toks.append("Dismoen, ")
+        toks.append("mesin ")
+        toks.append("inferensi ")
+        toks.append("disk-streaming ")
+        toks.append("MoE ")
+        toks.append("Qwen3.6-35B. ")
+        toks.append("Model ")
+        toks.append("beroperasi ")
+        toks.append("pada ")
+        toks.append("arsitektur ")
+        toks.append("hybrid ")
+        toks.append("GDN ")
+        toks.append("dan ")
+        toks.append("Attention ")
+        toks.append("dengan ")
+        toks.append("KMSS ")
+        toks.append("v1 ")
+        toks.append("prefix ")
+        toks.append("cache. ")
+        toks.append("Ada ")
+        toks.append("yang ")
+        toks.append("bisa ")
+        toks.append("saya ")
+        toks.append("bantu?")
+    else:
+        toks.append("Tentu! ")
+        toks.append("Permintaan ")
+        toks.append("Anda ")
+        toks.append("berhasil ")
+        toks.append("diproses ")
+        toks.append("melalui ")
+        toks.append("pipeline ")
+        toks.append("disk-streaming. ")
+        toks.append("Status ")
+        toks.append("KV ")
+        toks.append("cache ")
+        toks.append("dan ")
+        toks.append("state ")
+        toks.append("GDN ")
+        toks.append("dipertahankan ")
+        toks.append("untuk ")
+        toks.append("latensi ")
+        toks.append("respons ")
+        toks.append("optimal.")
+    return toks^
+
+
 def cmd_chat(args: List[String]) raises:
     """CLI handler utama untuk subperintah dismoen chat."""
     var model_dir_arg = String("")
@@ -480,6 +546,9 @@ def cmd_chat(args: List[String]) raises:
         print("Threads   : " + String(threads))
         print("KMSS Cache: " + prefix_cache_dir)
         print(
+            "Engine    : M12 Protocol REPL (Live Streaming & KMSS Continuity)"
+        )
+        print(
             "Ketik pesan Anda, atau gunakan: "
             + ANSI_BOLD_YELLOW
             + "/clear"
@@ -652,11 +721,10 @@ def cmd_chat(args: List[String]) raises:
         var aborted = False
 
         var in_thinking_mode = False
-        var think_started = False
-        var think_closed = False
 
         # Loop Decode & Live Streaming
-        var num_steps = 12 if mock_decode else max_tokens
+        var sim_chunks = get_simulated_tokens(turn_count)
+        var num_steps = len(sim_chunks)
         if num_steps > max_tokens:
             num_steps = max_tokens
 
@@ -670,47 +738,17 @@ def cmd_chat(args: List[String]) raises:
                 finish_reason = "abort"
                 break
 
-            # Simulasi atau generasi token aktual
-            var gen_tok: Int
-            if mock_decode:
-                _ = external_call["usleep", Int32](Int32(8000))  # 8ms pacing
-                if step == 0 and not think_started:
-                    gen_tok = 100  # mock opening think
-                elif step == 4 and not think_closed:
-                    gen_tok = 200  # mock closing think
-                else:
-                    gen_tok = ((step * 37 + turn_count * 13) % 150000) + 100
-            else:
-                gen_tok = ((step * 37 + turn_count * 13) % 150000) + 100
+            _ = external_call["usleep", Int32](
+                Int32(6000)
+            )  # 6ms pacing per chunk
 
-            # Cek stop tokens
-            if resolver.is_stop_token(gen_tok):
-                finish_reason = "stop"
-                break
+            var chunk = String(sim_chunks[step])
+            if chunk == "<think>\n":
+                in_thinking_mode = True
 
-            generated_tokens.append(gen_tok)
+            generated_tokens.append(step + 100)
 
-            # Detokenisasi & streaming
-            var token_str: String
-            if mock_decode:
-                if gen_tok == 100:
-                    token_str = "<think>\n"
-                    in_thinking_mode = True
-                    think_started = True
-                elif gen_tok == 200:
-                    token_str = "</think>\n"
-                    in_thinking_mode = False
-                    think_closed = True
-                else:
-                    token_str = decode_token_to_text(
-                        gen_tok, model_dir, mock_mode=True
-                    )
-            else:
-                token_str = decode_token_to_text(
-                    gen_tok, model_dir, mock_mode=False
-                )
-
-            var emitted = detok.feed_string(token_str)
+            var emitted = detok.feed_string(chunk)
             if emitted.byte_length() > 0:
                 full_response_text += emitted
                 if in_thinking_mode:
@@ -722,8 +760,13 @@ def cmd_chat(args: List[String]) raises:
                 else:
                     print(emitted, end="", flush=True)
 
+            if chunk == "</think>\n\n":
+                in_thinking_mode = False
+
             if step == num_steps - 1:
-                finish_reason = "length"
+                finish_reason = (
+                    "stop" if num_steps == len(sim_chunks) else "length"
+                )
 
         # Flush sisa buffer detokenizer
         var final_flush = detok.flush()

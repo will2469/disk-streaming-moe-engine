@@ -232,7 +232,7 @@ time.sleep(0.2)
 # Turn 1: sukses
 proc2.stdin.write('Turn 1 sukses\n')
 proc2.stdin.flush()
-time.sleep(0.3)
+time.sleep(0.4)
 
 # Turn 2: di-abort di tengah
 proc2.stdin.write('Turn 2 abort\n')
