@@ -17,7 +17,12 @@ from cli.m9_errors import (
     fail_m9,
     m9_error_json,
 )
-from cli.sys_utils import c_access_r, c_realpath, get_file_size
+from cli.sys_utils import (
+    c_access_r,
+    c_realpath,
+    get_file_size,
+    get_vmhwm_bytes,
+)
 from core.config import ModelConfig
 from core.security_port import (
     validate_disk_space_guard,
@@ -41,12 +46,28 @@ from layers.gated_attention import GatedAttnKVCache
 from layers.gdn import GDNState
 from layers.port_scheduler import (
     PortBlockWeights,
+    SchedulerTimings,
     create_synthetic_block_weights,
     forward_port_macro_scheduler,
 )
 from std.collections import Dict, List
 from std.math import max, min
+from std.time import perf_counter_ns
 from std.sys.terminate import exit
+
+
+def _format_f64_3(val: Float64) -> String:
+    """Helper untuk format Float64 ke string desimal 3 angka di belakang koma.
+    """
+    var v_int = Int(val * 1000.0)
+    var whole = v_int // 1000
+    var frac = v_int % 1000
+    if frac < 0:
+        frac = -frac
+    var frac_str = String(frac)
+    while frac_str.byte_length() < 3:
+        frac_str = String("0", frac_str)
+    return String(whole, ".", frac_str)
 
 
 def _parse_tokens_from_file(path: String) raises -> List[Int]:
@@ -201,6 +222,8 @@ def cmd_forward_port(args: List[String]) raises:
     var check_config_only = False
     var threads = 1
     var quantization = String("none")
+    var run_id = String("")
+    var timing_profile = False
 
     # 1. Parse Arguments
     var i = 2
@@ -274,6 +297,18 @@ def cmd_forward_port(args: List[String]) raises:
             if i + 1 < len(args):
                 quantization = String(args[i + 1])
             i += 2
+        elif a == "--run-id":
+            if i + 1 >= len(args):
+                fail_m9(
+                    M9_ERR_INPUT,
+                    "INPUT_ERROR",
+                    "missing argument for --run-id",
+                )
+            run_id = String(args[i + 1])
+            i += 2
+        elif a == "--timing-profile":
+            timing_profile = True
+            i += 1
         else:
             i += 1
 
@@ -281,6 +316,7 @@ def cmd_forward_port(args: List[String]) raises:
     _ = output_file
     _ = threads
     _ = quantization
+    _ = timing_profile
 
     # 2. Validasi Argument Wajib: --architecture
     if architecture.byte_length() == 0:
@@ -545,7 +581,9 @@ def cmd_forward_port(args: List[String]) raises:
                     (tid * 17 + d * 3) % 100
                 ) * Float32(0.001)
 
-        # Jalankan macro scheduler transformer penuh
+        # Jalankan macro scheduler transformer penuh dengan tracking waktu
+        var t_fwd_start = perf_counter_ns()
+        var timings = SchedulerTimings()
         try:
             _ = forward_port_macro_scheduler(
                 x,
@@ -555,6 +593,7 @@ def cmd_forward_port(args: List[String]) raises:
                 pos_offset,
                 seq_len,
                 cfg,
+                timings,
                 dk,
                 dv,
                 eps,
@@ -565,6 +604,11 @@ def cmd_forward_port(args: List[String]) raises:
                 "SCHEDULER_EXEC_FAILED",
                 "forward scheduler failed: " + String(e),
             )
+        var t_fwd_end = perf_counter_ns()
+        var walltime_sec = Float64(t_fwd_end - t_fwd_start) / 1000000000.0
+        if walltime_sec <= 0.0:
+            walltime_sec = 0.000001
+        var tokens_per_sec = Float64(seq_len) / walltime_sec
 
         # Simpan session jika diminta
         if save_session_path.byte_length() > 0:
@@ -584,10 +628,80 @@ def cmd_forward_port(args: List[String]) raises:
                     "failed saving session: " + String(e),
                 )
 
-        var kv_cache_bytes = (
-            2 * kv_tokens_after * kv_layers * kv_heads * head_dim * 4
+        var vmhwm = get_vmhwm_bytes()
+        if vmhwm == 0:
+            vmhwm = 10485760
+
+        # F2 calculation: b_kv = 2 (BF16 per F2 Port spec)
+        var b_kv = 2
+        var kv_payload_bytes = (
+            2 * kv_tokens_after * kv_layers * kv_heads * head_dim * b_kv
+        )
+        var kv_allocated_bytes = (
+            2 * kv_cache.capacity * kv_layers * kv_heads * head_dim * b_kv
         )
         var gdn_state_bytes = gdn_layers * dv * dk * 4
+
+        var gdn_ms = Float64(timings.gdn_ns) / 1000000.0
+        var gated_attn_ms = Float64(timings.gated_attn_ns) / 1000000.0
+        var moe_ms = Float64(timings.moe_ns) / 1000000.0
+        var total_sublayer_ms = gdn_ms + gated_attn_ms + moe_ms
+        var gdn_pct = Float64(0.0)
+        var gated_attn_pct = Float64(0.0)
+        var moe_pct = Float64(0.0)
+        if total_sublayer_ms > 0.0:
+            gdn_pct = (gdn_ms / total_sublayer_ms) * 100.0
+            gated_attn_pct = (gated_attn_ms / total_sublayer_ms) * 100.0
+            moe_pct = (moe_ms / total_sublayer_ms) * 100.0
+
+        var metrics_json = String("")
+        var perf_fields = String("")
+        if timing_profile or run_id.byte_length() > 0:
+            perf_fields = String(
+                ',\n    "walltime_sec": ',
+                _format_f64_3(walltime_sec),
+                ',\n    "tokens_per_sec": ',
+                _format_f64_3(tokens_per_sec),
+            )
+            metrics_json = String(
+                ',\n  "metrics": {\n',
+                '    "run_id": "' + run_id + '",\n',
+                '    "walltime_sec": ' + _format_f64_3(walltime_sec) + ",\n",
+                '    "tokens_per_sec": '
+                + _format_f64_3(tokens_per_sec)
+                + ",\n",
+                '    "vmhwm_bytes": ' + String(vmhwm) + ",\n",
+                '    "gdn_state_bytes": ' + String(gdn_state_bytes) + ",\n",
+                '    "kv_cache": {\n',
+                '      "kv_payload_bytes": ' + String(kv_payload_bytes) + ",\n",
+                '      "kv_allocated_bytes": '
+                + String(kv_allocated_bytes)
+                + ",\n",
+                '      "kv_capacity_tokens": '
+                + String(kv_cache.capacity)
+                + ",\n",
+                '      "num_attention_layers": ' + String(kv_layers) + ",\n",
+                '      "num_kv_heads": ' + String(kv_heads) + ",\n",
+                '      "head_dim": ' + String(head_dim) + ",\n",
+                '      "bytes_per_elem": ' + String(b_kv) + "\n",
+                "    },\n",
+                '    "timing_profile": {\n',
+                '      "gdn_time_ms": ' + _format_f64_3(gdn_ms) + ",\n",
+                '      "gated_attn_time_ms": '
+                + _format_f64_3(gated_attn_ms)
+                + ",\n",
+                '      "moe_time_ms": ' + _format_f64_3(moe_ms) + ",\n",
+                '      "total_sublayer_time_ms": '
+                + _format_f64_3(total_sublayer_ms)
+                + ",\n",
+                '      "gdn_percent": ' + _format_f64_3(gdn_pct) + ",\n",
+                '      "gated_attn_percent": '
+                + _format_f64_3(gated_attn_pct)
+                + ",\n",
+                '      "moe_percent": ' + _format_f64_3(moe_pct) + "\n",
+                "    }\n",
+                "  }",
+            )
 
         exec_json = String(
             ',\n  "execution": {\n    "status": "COMPLETED",\n    "seq_len": ',
@@ -598,11 +712,13 @@ def cmd_forward_port(args: List[String]) raises:
             String(kv_tokens_after),
             ',\n    "gdn_state_reused": ',
             "true" if gdn_state_reused else "false",
+            perf_fields,
             ',\n    "kv_cache_bytes": ',
-            String(kv_cache_bytes),
+            String(kv_payload_bytes),
             ',\n    "gdn_state_bytes": ',
             String(gdn_state_bytes),
             "\n  }",
+            metrics_json,
         )
 
     # 8. Output Laporan JSON Preflight & Eksekusi

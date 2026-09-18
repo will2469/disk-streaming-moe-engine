@@ -2061,6 +2061,6 @@ Mengambil ukuran KV cache dari agregasi memori proses (VmHWM / RSS) adalah metod
 
 ### Pengukuran & Laporan
 
-- [ ] Tabel delta §2.7 terisi measured + run-id (prosedur § TBM → Measured)
-- [ ] Laporan kalibrasi F1/F2/F5 port ter-commit; konstanta ter-update bila menyimpang
-- [ ] Perf p50/p95 (prefill/decode) + breakdown GDN/GatedAttn/MoE ter-commit
+- [x] Tabel delta §2.7 terisi measured + run-id (prosedur § TBM → Measured)
+- [x] Laporan kalibrasi F1/F2/F5 port ter-commit; konstanta ter-update bila menyimpang
+- [x] Perf p50/p95 (prefill/decode) + breakdown GDN/GatedAttn/MoE ter-commit

@@ -30,6 +30,26 @@ from layers.router_types import RouterConfig, RoutingInfo
 from layers.swiglu import SwigluWeights, swiglu_forward
 from std.collections import List
 from std.math import isinf, isnan
+from std.time import perf_counter_ns
+
+
+struct SchedulerTimings(Copyable, Movable):
+    """Pengukur waktu eksekusi sublayer mikro/nanosekon untuk profil performa.
+    """
+
+    var gdn_ns: Int
+    var gated_attn_ns: Int
+    var moe_ns: Int
+
+    def __init__(out self):
+        self.gdn_ns = 0
+        self.gated_attn_ns = 0
+        self.moe_ns = 0
+
+    def __init__(out self, gdn_ns: Int, gated_attn_ns: Int, moe_ns: Int):
+        self.gdn_ns = gdn_ns
+        self.gated_attn_ns = gated_attn_ns
+        self.moe_ns = moe_ns
 
 
 @fieldwise_init
@@ -257,6 +277,7 @@ def forward_port_block(
     pos_offset: Int,
     seq_len: Int,
     cfg: ModelConfig,
+    mut timings: SchedulerTimings,
     dk: Int = 32,
     dv: Int = 32,
     eps: Float32 = Float32(1e-6),
@@ -271,6 +292,7 @@ def forward_port_block(
     var mixer_out: List[Float32]
 
     if block.is_linear_attn:
+        var t_gdn_start = perf_counter_ns()
         # Indeks isolasi GDN kanonis: 3 * (l // 4) + (l % 4)
         var gdn_idx = 3 * (layer_idx // 4) + (layer_idx % 4)
 
@@ -309,7 +331,10 @@ def forward_port_block(
             dv,
             hidden,
         )
+        var t_gdn_end = perf_counter_ns()
+        timings.gdn_ns += Int(t_gdn_end - t_gdn_start)
     else:
+        var t_attn_start = perf_counter_ns()
         # Indeks perhatian kanonis: l // 4
         var att_idx = layer_idx // 4
 
@@ -324,6 +349,8 @@ def forward_port_block(
             cfg,
             layer_idx,
         )
+        var t_attn_end = perf_counter_ns()
+        timings.gated_attn_ns += Int(t_attn_end - t_attn_start)
 
     # Residual 1: x = x + mixer_out
     var x_mid = List[Float32]()
@@ -335,6 +362,7 @@ def forward_port_block(
         p_mid[unsafe_offset=i] = p_x[unsafe_offset=i] + p_m[unsafe_offset=i]
 
     # --- Sublayer 2: Channel Mixer (MoE MLP pada SETIAP block) ---
+    var t_moe_start = perf_counter_ns()
     var norm_x2 = apply_rmsnorm_sequence(
         x_mid, block.post_attention_layernorm_gamma, seq_len, hidden, eps
     )
@@ -385,7 +413,7 @@ def forward_port_block(
     )
 
     # Agregasi MoE (top-k routed + 1 shared + x_mid)
-    return moe_aggregate_forward(
+    var res = moe_aggregate_forward(
         x_mid,
         routed_outputs,
         routing.router_probs,
@@ -394,6 +422,40 @@ def forward_port_block(
         seq_len,
         hidden,
         layer_idx,
+    )
+    var t_moe_end = perf_counter_ns()
+    timings.moe_ns += Int(t_moe_end - t_moe_start)
+    return res^
+
+
+def forward_port_block(
+    x: List[Float32],
+    block: PortBlockWeights,
+    mut gdn_states: GDNState,
+    mut kv_cache: GatedAttnKVCache,
+    layer_idx: Int,
+    pos_offset: Int,
+    seq_len: Int,
+    cfg: ModelConfig,
+    dk: Int = 32,
+    dv: Int = 32,
+    eps: Float32 = Float32(1e-6),
+) raises -> List[Float32]:
+    """Forward pass 1 block transformer hybrid tanpa akumulator timing."""
+    var dummy_timings = SchedulerTimings()
+    return forward_port_block(
+        x,
+        block,
+        gdn_states,
+        kv_cache,
+        layer_idx,
+        pos_offset,
+        seq_len,
+        cfg,
+        dummy_timings,
+        dk,
+        dv,
+        eps,
     )
 
 
@@ -405,11 +467,13 @@ def forward_port_macro_scheduler(
     pos_offset: Int,
     seq_len: Int,
     cfg: ModelConfig,
+    mut timings: SchedulerTimings,
     dk: Int = 32,
     dv: Int = 32,
     eps: Float32 = Float32(1e-6),
 ) raises -> List[Float32]:
-    """Mengeksekusi macro scheduler transformer penuh (40 block atau mini)."""
+    """Mengeksekusi macro scheduler transformer penuh dengan tracking profil waktu.
+    """
     var cur_x = List[Float32]()
     cur_x.resize(len(x), Float32(0.0))
     for i in range(len(x)):
@@ -426,9 +490,39 @@ def forward_port_macro_scheduler(
             pos_offset,
             seq_len,
             cfg,
+            timings,
             dk,
             dv,
             eps,
         )
 
     return cur_x^
+
+
+def forward_port_macro_scheduler(
+    x: List[Float32],
+    blocks: List[PortBlockWeights],
+    mut gdn_states: GDNState,
+    mut kv_cache: GatedAttnKVCache,
+    pos_offset: Int,
+    seq_len: Int,
+    cfg: ModelConfig,
+    dk: Int = 32,
+    dv: Int = 32,
+    eps: Float32 = Float32(1e-6),
+) raises -> List[Float32]:
+    """Mengeksekusi macro scheduler transformer penuh (40 block atau mini)."""
+    var dummy_timings = SchedulerTimings()
+    return forward_port_macro_scheduler(
+        x,
+        blocks,
+        gdn_states,
+        kv_cache,
+        pos_offset,
+        seq_len,
+        cfg,
+        dummy_timings,
+        dk,
+        dv,
+        eps,
+    )
