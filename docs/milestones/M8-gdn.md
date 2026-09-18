@@ -1,7 +1,6 @@
 # M8 — DeltaNet/GDN Recurrence Kernel Baseline (Chunked Scan vs Naive Loop)
 
 > Proyek: `disk-streaming-moe-engine`. Fase: **GDN**. Index: `../README.md`.
-> Implementasi dipecah menjadi waves: `../../scratch/wave/m8/README.md` (W1 naive-oracle → W6 gates, catatan kerja gitignored).
 
 | Field       | Nilai                                                                                                                |
 | ----------- | -------------------------------------------------------------------------------------------------------------------- |

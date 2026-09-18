@@ -1,20 +1,21 @@
 # M0 — Reader Safetensors Multi-Shard
 
-> Proyek: `disk-streaming-moe-engine`. Fase: **Trial**. Index: `../README.md`.
+> Proyek: `disk-streaming-moe-engine`. Fase: **Production Engine (Unified Qwen3.6-35B-A3B)**. Index: `../README.md`.
 > Common: `../00-overview.md` · `../01-architecture.md` · `../02-math-models.md` · `../03-testing.md` · `../04-quality.md` · `../05-security.md`.
-> Implementasi dipecah menjadi waves: `../../scratch/wave/m0/README.md` (W0 preparation → W4 gates, catatan kerja gitignored).
 
-| Field       | Nilai                                                           |
-| ----------- | --------------------------------------------------------------- |
-| Deliverable | Reader safetensors multi-shard (index → 4.659 tensor)           |
-| Komponen    | C3 `safetensors.mojo`, C7 `tools/` (Rust + Python), C8 fixtures |
-| Prasyarat   | Tidak ada (milestone pertama)                                   |
-| Next        | `M1-head-path.md`                                               |
-| Gate        | G-M0-1, G-M0-2, G-M0-3                                          |
+| Field       | Nilai                                                                  |
+| ----------- | ---------------------------------------------------------------------- |
+| Deliverable | Reader safetensors multi-shard (index → 1.045 tensor across 26 shards) |
+| Komponen    | C3 `safetensors.mojo`, C7 `tools/` (Rust + Python), C8 fixtures        |
+| Prasyarat   | Tidak ada (milestone pertama)                                          |
+| Next        | `M1-head-path.md`                                                      |
+| Gate        | G-M0-1, G-M0-2, G-M0-3                                                 |
 
 ## Tujuan
 
-Membuktikan engine bisa mem-parsing dan meng-index 8 shard BF16 (28,63 GB, 4.659 tensor) secara benar dan aman, tanpa pernah membaca byte payload tensor. Ini fondasi "model = index, bukan blob".
+Membuktikan engine bisa mem-parsing dan meng-index 26 shard BF16 (71,90 GB, 1.045 tensor) secara benar dan aman, tanpa pernah membaca byte payload tensor. Ini fondasi "model = index, bukan blob".
+
+Catatan arsitektur Qwen3.6-35B-A3B: berbeda dari model trial lama (4.659 tensor akibat 60 expert disimpan sebagai matriks 2D terpisah), checkpoint resmi Qwen3.6-35B-A3B mengemas 256 routed expert ke dalam tensor 3D (`gate_up_proj` shape `[256, 1024, 2048]` dan `down_proj` shape `[256, 2048, 512]`). Oleh karena itu, total tensor terdaftar pada `model.safetensors.index.json` adalah tepat **1.045 tensor**.
 
 **Kontrak I/O (normatif, testable):** `check-index` hanya boleh membaca rentang `[0, data_base)` per shard (8 byte panjang + N byte JSON header). Offset ≥ `data_base` (payload) DILARANG dibaca — bukan sekadar "tidak dimuat ke RAM" (page cache kernel tetap menghitung sebagai I/O). **Gate keras:** semua `pread` tercatat dalam `[0, data_base)` (pelanggaran = FAIL). **`read_bytes` (`/proc/<pid>/io`) hanya observasional** (benchmark, bukan kriteria): perilaku kernel/cache membuat anggaran byte eksak tidak reliabel, dan kontrak safetensors hanya menuntut payload tidak dibaca — tanpa tunjangan readahead universal.
 
@@ -25,29 +26,29 @@ Membuktikan engine bisa mem-parsing dan meng-index 8 shard BF16 (28,63 GB, 4.659
 - `check-index` CLI: validasi silang dua-sumber — shard aktual vs shard harapan (index), dengan dtype/shape/range dari header.
 - Tidak ada komputasi model di M0.
 
-Ground truth: `model_config.json` + `model.safetensors.index.json` (`../01-architecture.md` §2.3).
+Ground truth: `config.json` + `model.safetensors.index.json` (`../01-architecture.md` §2.3) dipin via `models.lock.json`.
 
 ## Implementasi check-index CLI
 
 **Input:**
 
-- N path shard safetensors, N ≥ 1 (8 pada checkpoint trial, 3 pada fixture synthetic); keanggotaan harapan dari `weight_map` (command line args)
+- N path shard safetensors, N ≥ 1 (26 pada checkpoint Qwen3.6-35B-A3B, 3 pada fixture synthetic); keanggotaan harapan dari `weight_map` (command line args)
 - `model.safetensors.index.json` (auto-discovered di directory yang sama)
 
 **Output:**
 
 - stdout: JSON report dengan struktur (`total_tensors` = `len(weight_map)` dari index.json —
-  4659 pada revision pin, bukan konstanta kode; `scope`/`supplied_shards` mencatat mode penilaian):
+  1045 pada revision pin, bukan konstanta kode; `scope`/`supplied_shards` mencatat mode penilaian):
   ```json
   {
     "status": "match" | "mismatch",
     "scope": "full" | "subset",
-    "supplied_shards": ["model-00001-of-00008.safetensors"],
-    "total_tensors": 4659,
-    "assessed_tensors": 4659,
-    "matched_tensors": 4659,
+    "supplied_shards": ["model-00001-of-00026.safetensors"],
+    "total_tensors": 1045,
+    "assessed_tensors": 1045,
+    "matched_tensors": 1045,
     "mismatches": [],
-    "parse_time_ms": 123.45
+    "parse_time_ms": 39.20
   }
   ```
   `total_tensors` = `len(weight_map)` SELALU; `assessed_tensors` = yang dinilai
@@ -63,22 +64,24 @@ Ground truth: `model_config.json` + `model.safetensors.index.json` (`../01-archi
 **Contoh penggunaan:**
 
 ```bash
-# contoh fixture synthetic (3 shard); checkpoint asli 8 shard: model-00001-of-00008 s/d 00008
+# Contoh fixture synthetic (3 shard)
 dismoen check-index shard-00001-of-00003.safetensors shard-00002-of-00003.safetensors shard-00003-of-00003.safetensors
 ```
 
-Contoh checkpoint asli (8 shard, N penuh):
+Contoh checkpoint asli Qwen3.6-35B-A3B (26 shard, N penuh):
+
+```bash
+dismoen check-index /home/will/models/qwen3.6-35b-a3b/model-*.safetensors
+```
+
+atau eksplisit 26 shard:
 
 ```bash
 dismoen check-index \
-  model-00001-of-00008.safetensors \
-  model-00002-of-00008.safetensors \
-  model-00003-of-00008.safetensors \
-  model-00004-of-00008.safetensors \
-  model-00005-of-00008.safetensors \
-  model-00006-of-00008.safetensors \
-  model-00007-of-00008.safetensors \
-  model-00008-of-00008.safetensors
+  model-00001-of-00026.safetensors \
+  model-00002-of-00026.safetensors \
+  ... \
+  model-00026-of-00026.safetensors
 ```
 
 **Contoh output (success):**
@@ -87,12 +90,17 @@ dismoen check-index \
 {
   "status": "match",
   "scope": "full",
-  "supplied_shards": ["model-00001-of-00008.safetensors", "model-00002-of-00008.safetensors", "model-00003-of-00008.safetensors", "model-00004-of-00008.safetensors", "model-00005-of-00008.safetensors", "model-00006-of-00008.safetensors", "model-00007-of-00008.safetensors", "model-00008-of-00008.safetensors"],
-  "total_tensors": 4659,
-  "assessed_tensors": 4659,
-  "matched_tensors": 4659,
+  "supplied_shards": [
+    "model-00001-of-00026.safetensors",
+    "model-00002-of-00026.safetensors",
+    "...",
+    "model-00026-of-00026.safetensors"
+  ],
+  "total_tensors": 1045,
+  "assessed_tensors": 1045,
+  "matched_tensors": 1045,
   "mismatches": [],
-  "parse_time_ms": 892.34
+  "parse_time_ms": 39.2
 }
 ```
 
@@ -101,17 +109,17 @@ dismoen check-index \
 ```json
 {
   "status": "mismatch",
-  "total_tensors": 4659,
-  "matched_tensors": 4658,
+  "total_tensors": 1045,
+  "matched_tensors": 1044,
   "mismatches": [
     {
-      "tensor_name": "model.layers.0.self_attn.q_proj.bias",
+      "tensor_name": "model.language_model.layers.0.input_layernorm.weight",
       "kind": "WRONG_SHARD",
-      "expected_shard": "shard-00001-of-00003.safetensors",
-      "found": { "shard": "shard-00002-of-00003.safetensors", "dtype": "BF16", "shape": [2048] }
+      "expected_shard": "model-00002-of-00026.safetensors",
+      "found": { "shard": "model-00003-of-00026.safetensors", "dtype": "BF16", "shape": [2048] }
     }
   ],
-  "parse_time_ms": 892.34
+  "parse_time_ms": 39.2
 }
 ```
 
@@ -183,7 +191,7 @@ flowchart TB
 2. Auto-discover `model.safetensors.index.json` di directory yang sama
 3. Parse header JSON masing-masing shard secara sequential
 4. Validasi F15 untuk setiap shard sebelum membaca data
-5. Merge dua sumber menjadi satu pandangan (8 shard pada checkpoint trial): harapan dari `weight_map`, aktual dari header tiap shard
+5. Merge dua sumber menjadi satu pandangan (26 shard pada checkpoint Qwen3.6-35B-A3B): harapan dari `weight_map`, aktual dari header tiap shard
 6. Compare per mode (definisi eksplisit):
    - `WRONG_SHARD`: tensor ada di file X yang dipasok, padahal `weight_map[name]` = Y, X≠Y.
    - `MISSING_IN_SHARD`: `weight_map[name]` = Y, Y dipasok, header Y tak memuat nama.
@@ -215,24 +223,24 @@ $$+ \text{ validasi MERGE lintas shard (bukan F15): nama unik global + compare v
 
 ## Gate
 
-| Gate   | Kriteria                       | Threshold                               | Metode                        |
-| ------ | ------------------------------ | --------------------------------------- | ----------------------------- |
-| G-M0-1 | len(weight_map) nama == 4659 pada revision pin + header valid | 100% (tiap nama: file aktual == file index ∧ header lolos F15; ekspektasi dari index.json) | `check-index` dua-sumber |
-| G-M0-2 | predikat validitas F15         | 100% tensor lolos                       | unit U + property P           |
-| G-M0-3 | file korup → clean error       | 20/20 mutasi lolos, 0 crash/hang/OOM    | fuzz F (SEC-2)                |
+| Gate   | Kriteria                                                      | Threshold                                                                                  | Metode                   |
+| ------ | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------ |
+| G-M0-1 | len(weight_map) nama == 1045 pada revision pin + header valid | 100% (tiap nama: file aktual == file index ∧ header lolos F15; ekspektasi dari index.json) | `check-index` dua-sumber |
+| G-M0-2 | predikat validitas F15                                        | 100% tensor lolos                                                                          | unit U + property P      |
+| G-M0-3 | file korup → clean error                                      | 20/20 mutasi lolos, 0 crash/hang/OOM                                                       | fuzz F (SEC-2)           |
 
 ## Testing
 
 - U: merge index semua shard (generik N-shard), config loader — `cargo test`, 100% pass.
 - U: kontrak I/O — seluruh `pread` dalam `[0, data_base)` (gate keras); `read_bytes` dilaporkan observasional.
-- P: predikat F15 pada shape acak, config-vs-index (jebakan attention_bias) — hypothesis, nightly.
+- P: predikat F15 pada shape acak, config-vs-index — hypothesis, nightly.
 - F: 20+ mutasi (header liar, offset negatif/overflow, BEGIN>END, lubang/overlap buffer, dtype asing, layout mismatch, truncation, duplikat kunci JSON / nama lintas shard, JSON rusak).
 - U/P: tensor kosong valid (BEGIN==END, 0-size) WAJIB diterima — validator yang memakai `<` ketat adalah bug; uji terima + uji baca 0 byte tanpa OOB.
 - U: tiap error type (8) minimal 1 kasus; LAYOUT_MISMATCH dari shape/scale yang disengaja salah.
-- R: shape-fidelity test index asli 4.659 tensor tanpa download; golden hash stabil.
-- Perf: parse fixture < 1 s + 8 header asli < 1 s (kontrak C3, benchmark terkendali).
+- R: shape-fidelity test index asli 1.045 tensor tanpa download (via `fixtures/qwen3.6_35b_index.json`); golden hash stabil.
+- Perf: parse fixture < 1 s + 26 header asli < 1 s (kontrak C3, benchmark terkendali; diukur: ~39,2 ms).
 
-Fixture: synthetic mini-checkpoint (seed 42) agar CI jalan tanpa 28,6 GB.
+Fixture: synthetic mini-checkpoint (seed 42) agar CI jalan tanpa 71,9 GB.
 
 ## Fixture M0-Specific
 
@@ -253,7 +261,7 @@ Fixture: synthetic mini-checkpoint (seed 42) agar CI jalan tanpa 28,6 GB.
 
 **Tujuan:**
 
-- Testing parser F15 tanpa download 28,6 GB
+- Testing parser F15 tanpa download 71,9 GB
 - Testing merge index 3 shard
 - Testing `check-index` CLI
 - Support CI di mesin 8 GB
@@ -273,7 +281,7 @@ maupun warm. Angka di bawah murni benchmark, bukan gate.
 **Target:**
 
 - Parse header fixture synthetic < 1 s (kontrak C3, CI)
-- Parse 8 header asli (hanya header, tanpa download penuh bila belum ada) < 1 s (diukur saat shard tersedia)
+- Parse 26 header asli (hanya header, tanpa download penuh bila belum ada) < 1 s (diukur: ~39,2 ms)
 
 **Metric:**
 
@@ -282,7 +290,7 @@ maupun warm. Angka di bawah murni benchmark, bukan gate.
 
 **Method (lingkungan terkendali, bukan gate):**
 
-- Run `check-index` pada fixture synthetic M0 (CI) + 8 header asli (bila shard ada)
+- Run `check-index` pada fixture synthetic M0 (CI) + 26 header asli (bila shard ada)
 - Cold opsional khusus Linux ber-privilege: `sync && echo 3 | sudo tee /proc/sys/vm/drop_caches` — tidak pernah syarat kebenaran
 - N=5 run, ambil median
 - Environment: CPU governor `performance`, aplikasi lain ditutup
@@ -309,7 +317,7 @@ maupun warm. Angka di bawah murni benchmark, bukan gate.
 - [ ] `check-index` CLI implementasi lengkap (input/output/exit code sesuai spec)
 - [ ] Fixture synthetic M0 ter-commit (3 shard + index + config)
 - [ ] Error handling spec terimplementasi (format JSON, error types)
-- [ ] Performance baseline C3 terukur dan terdokumentasi (fixture < 1 s; 8 header asli < 1 s bila shard ada)
+- [ ] Performance baseline C3 terukur dan terdokumentasi (fixture < 1 s; 26 header asli < 1 s bila shard ada)
 - [ ] Parser header JSON safetensors implementasi lengkap (C3)
 - [ ] Merge weight_map semua shard implementasi lengkap (generik N-shard)
 - [ ] Validasi F15 implementasi lengkap (unit + property tests)
@@ -317,7 +325,7 @@ maupun warm. Angka di bawah murni benchmark, bukan gate.
 - [ ] SHA-256 verification implementasi (SEC-1)
 - [ ] Cgroup memory.max=6G integration testing (SEC-4)
 - [ ] 20+ fuzz corpus mutasi terimplementasi dan ter-commit
-- [ ] Shape-fidelity test 4.659 tensor implementasi (level R)
+- [ ] Shape-fidelity test 1.045 tensor implementasi (level R)
 - [ ] Unit tests coverage ≥ 85% untuk utility parser
 - [ ] Property tests F15 dengan hypothesis implementasi
 - [ ] Integration test end-to-end check-index implementasi

@@ -41,6 +41,7 @@ import json
 import math
 import os
 import sys
+
 import torch
 from safetensors import safe_open
 
@@ -75,6 +76,23 @@ def parse_model_config(config_path: str, layer: int) -> dict:
             layer=layer,
         )
 
+    # Unwrap text_config if present (Qwen3.6-35B-A3B)
+    if "text_config" in cfg and isinstance(cfg["text_config"], dict):
+        text_cfg = cfg["text_config"]
+        for k, v in text_cfg.items():
+            if k not in cfg or k in [
+                "hidden_size",
+                "num_attention_heads",
+                "num_hidden_layers",
+                "rms_norm_eps",
+                "rope_parameters",
+                "head_dim",
+                "num_key_value_heads",
+                "attn_output_gate",
+                "attention_bias",
+            ]:
+                cfg[k] = v
+
     for req in ["hidden_size", "num_attention_heads"]:
         if req not in cfg:
             fail(
@@ -91,7 +109,14 @@ def parse_model_config(config_path: str, layer: int) -> dict:
                 layer=layer,
             )
 
-    num_hidden_layers = cfg.get("num_hidden_layers", 24)
+    is_qwen36 = (
+        cfg.get("num_hidden_layers", 24) == 40
+        or cfg.get("model_type") in ["qwen3_5_moe", "qwen3_5_moe_text"]
+        or "full_attention_interval" in cfg
+    )
+    cfg["is_qwen36"] = is_qwen36
+
+    num_hidden_layers = cfg.get("num_hidden_layers", 40 if is_qwen36 else 24)
     cfg["num_hidden_layers"] = num_hidden_layers
 
     eps = float(cfg.get("rms_norm_eps", 1e-6))
@@ -104,15 +129,40 @@ def parse_model_config(config_path: str, layer: int) -> dict:
         )
     cfg["rms_norm_eps"] = eps
 
-    rope_theta = float(cfg.get("rope_theta", 1000000.0))
+    cfg["head_dim"] = int(
+        cfg.get("head_dim", cfg["hidden_size"] // cfg["num_attention_heads"])
+    )
+    cfg["num_key_value_heads"] = int(
+        cfg.get("num_key_value_heads", cfg["num_attention_heads"])
+    )
+    cfg["attn_output_gate"] = bool(cfg.get("attn_output_gate", is_qwen36))
+    cfg["attention_bias"] = bool(cfg.get("attention_bias", False))
+
+    default_theta = 10000000.0 if is_qwen36 else 1000000.0
+    rope_theta = float(
+        cfg.get("rope_parameters", {}).get(
+            "rope_theta", cfg.get("rope_theta", default_theta)
+        )
+    )
     cfg["rope_theta"] = rope_theta
+    default_rotary_factor = 0.25 if is_qwen36 else 1.0
+    cfg["partial_rotary_factor"] = float(
+        cfg.get("rope_parameters", {}).get(
+            "partial_rotary_factor",
+            cfg.get("partial_rotary_factor", default_rotary_factor),
+        )
+    )
 
     # MoE architecture fields (Qwen1.5-MoE defaults if absent)
-    cfg["num_experts"] = int(cfg.get("num_experts", 60))
-    cfg["num_experts_per_tok"] = int(cfg.get("num_experts_per_tok", 4))
-    cfg["moe_intermediate_size"] = int(cfg.get("moe_intermediate_size", 1408))
+    cfg["num_experts"] = int(cfg.get("num_experts", 256 if is_qwen36 else 60))
+    cfg["num_experts_per_tok"] = int(
+        cfg.get("num_experts_per_tok", 8 if is_qwen36 else 4)
+    )
+    cfg["moe_intermediate_size"] = int(
+        cfg.get("moe_intermediate_size", 512 if is_qwen36 else 1408)
+    )
     cfg["shared_expert_intermediate_size"] = int(
-        cfg.get("shared_expert_intermediate_size", 5632)
+        cfg.get("shared_expert_intermediate_size", 512 if is_qwen36 else 5632)
     )
     cfg["norm_topk_prob"] = bool(cfg.get("norm_topk_prob", False))
 
@@ -227,39 +277,76 @@ def _validate_weight_shapes(
     pfx: str,
     hidden_size: int,
     layer: int,
+    cfg: dict,
 ) -> None:
-    expected_shapes = [
-        (f"{pfx}input_layernorm.weight", torch.Size([hidden_size]), "norm"),
-        (
-            f"{pfx}self_attn.q_proj.weight",
-            torch.Size([hidden_size, hidden_size]),
-            "q_proj weight",
-        ),
-        (f"{pfx}self_attn.q_proj.bias", torch.Size([hidden_size]), "q_proj bias"),
-        (
-            f"{pfx}self_attn.k_proj.weight",
-            torch.Size([hidden_size, hidden_size]),
-            "k_proj weight",
-        ),
-        (f"{pfx}self_attn.k_proj.bias", torch.Size([hidden_size]), "k_proj bias"),
-        (
-            f"{pfx}self_attn.v_proj.weight",
-            torch.Size([hidden_size, hidden_size]),
-            "v_proj weight",
-        ),
-        (f"{pfx}self_attn.v_proj.bias", torch.Size([hidden_size]), "v_proj bias"),
-        (
-            f"{pfx}self_attn.o_proj.weight",
-            torch.Size([hidden_size, hidden_size]),
-            "o_proj weight",
-        ),
-    ]
+    if cfg.get("is_qwen36", False):
+        head_dim = cfg.get("head_dim", 256)
+        num_heads = cfg.get("num_attention_heads", 16)
+        num_kv_heads = cfg.get("num_key_value_heads", 2)
+        q_out_dim = (
+            num_heads * head_dim * 2
+            if cfg.get("attn_output_gate", True)
+            else num_heads * head_dim
+        )
+        kv_out_dim = num_kv_heads * head_dim
+        expected_shapes = [
+            (f"{pfx}input_layernorm.weight", torch.Size([hidden_size]), "norm"),
+            (
+                f"{pfx}self_attn.q_proj.weight",
+                torch.Size([q_out_dim, hidden_size]),
+                "q_proj weight",
+            ),
+            (
+                f"{pfx}self_attn.k_proj.weight",
+                torch.Size([kv_out_dim, hidden_size]),
+                "k_proj weight",
+            ),
+            (
+                f"{pfx}self_attn.v_proj.weight",
+                torch.Size([kv_out_dim, hidden_size]),
+                "v_proj weight",
+            ),
+            (f"{pfx}self_attn.q_norm.weight", torch.Size([head_dim]), "q_norm weight"),
+            (f"{pfx}self_attn.k_norm.weight", torch.Size([head_dim]), "k_norm weight"),
+            (
+                f"{pfx}self_attn.o_proj.weight",
+                torch.Size([hidden_size, num_heads * head_dim]),
+                "o_proj weight",
+            ),
+        ]
+    else:
+        expected_shapes = [
+            (f"{pfx}input_layernorm.weight", torch.Size([hidden_size]), "norm"),
+            (
+                f"{pfx}self_attn.q_proj.weight",
+                torch.Size([hidden_size, hidden_size]),
+                "q_proj weight",
+            ),
+            (f"{pfx}self_attn.q_proj.bias", torch.Size([hidden_size]), "q_proj bias"),
+            (
+                f"{pfx}self_attn.k_proj.weight",
+                torch.Size([hidden_size, hidden_size]),
+                "k_proj weight",
+            ),
+            (f"{pfx}self_attn.k_proj.bias", torch.Size([hidden_size]), "k_proj bias"),
+            (
+                f"{pfx}self_attn.v_proj.weight",
+                torch.Size([hidden_size, hidden_size]),
+                "v_proj weight",
+            ),
+            (f"{pfx}self_attn.v_proj.bias", torch.Size([hidden_size]), "v_proj bias"),
+            (
+                f"{pfx}self_attn.o_proj.weight",
+                torch.Size([hidden_size, hidden_size]),
+                "o_proj weight",
+            ),
+        ]
     for tensor_name, expected, desc in expected_shapes:
         actual = weights[tensor_name].shape
         if actual != expected:
             fail(
                 "WEIGHT_LOAD_FAILED",
-                f"{desc} shape mismatch: {actual}",
+                f"{desc} shape mismatch: {actual} vs expected {expected}",
                 stage="attention",
                 layer=layer,
             )
@@ -288,17 +375,38 @@ def load_layer_weights(
             layer=layer,
         )
 
-    pfx = f"model.layers.{layer}."
-    req_tensors = [
-        f"{pfx}input_layernorm.weight",
-        f"{pfx}self_attn.q_proj.weight",
-        f"{pfx}self_attn.q_proj.bias",
-        f"{pfx}self_attn.k_proj.weight",
-        f"{pfx}self_attn.k_proj.bias",
-        f"{pfx}self_attn.v_proj.weight",
-        f"{pfx}self_attn.v_proj.bias",
-        f"{pfx}self_attn.o_proj.weight",
-    ]
+    # Prefix resolution (Qwen3.6-35B-A3B vs legacy)
+    pfx = f"model.language_model.layers.{layer}."
+    if f"{pfx}input_layernorm.weight" not in weight_map:
+        pfx = f"model.layers.{layer}."
+
+    is_qwen36 = (
+        cfg.get("is_qwen36", False) or f"{pfx}self_attn.q_norm.weight" in weight_map
+    )
+    cfg["is_qwen36"] = is_qwen36
+    cfg["pfx"] = pfx
+
+    if is_qwen36:
+        req_tensors = [
+            f"{pfx}input_layernorm.weight",
+            f"{pfx}self_attn.q_proj.weight",
+            f"{pfx}self_attn.k_proj.weight",
+            f"{pfx}self_attn.v_proj.weight",
+            f"{pfx}self_attn.q_norm.weight",
+            f"{pfx}self_attn.k_norm.weight",
+            f"{pfx}self_attn.o_proj.weight",
+        ]
+    else:
+        req_tensors = [
+            f"{pfx}input_layernorm.weight",
+            f"{pfx}self_attn.q_proj.weight",
+            f"{pfx}self_attn.q_proj.bias",
+            f"{pfx}self_attn.k_proj.weight",
+            f"{pfx}self_attn.k_proj.bias",
+            f"{pfx}self_attn.v_proj.weight",
+            f"{pfx}self_attn.v_proj.bias",
+            f"{pfx}self_attn.o_proj.weight",
+        ]
 
     for req in req_tensors:
         if req not in weight_map:
@@ -322,7 +430,7 @@ def load_layer_weights(
             model_dir, weight_map, o_bias_name, shards_cache, layer, "attention"
         )
 
-    _validate_weight_shapes(weights, pfx, cfg["hidden_size"], layer)
+    _validate_weight_shapes(weights, pfx, cfg["hidden_size"], layer, cfg)
     return weights
 
 
@@ -338,81 +446,151 @@ def forward_layer_attention_oracle(
     layer: int,
     cfg: dict,
 ) -> torch.Tensor:
-    """Full 10-step reference attention block execution."""
-    pfx = f"model.layers.{layer}."
+    """Full reference attention block execution."""
+    pfx = cfg.get("pfx", f"model.layers.{layer}.")
     hidden_size = cfg["hidden_size"]
     num_heads = cfg["num_attention_heads"]
-    head_dim = hidden_size // num_heads
+    head_dim = cfg.get("head_dim", hidden_size // num_heads)
+    num_kv_heads = cfg.get("num_key_value_heads", num_heads)
     seq_len = x.shape[0]
     eps = cfg["rms_norm_eps"]
     base = cfg["rope_theta"]
+    is_qwen36 = cfg.get("is_qwen36", False)
 
-    # 1 & 2. RMSNorm F6
+    # 1. RMSNorm F6
     var = torch.mean(x**2, dim=-1, keepdim=True)
     norm_w = weights[f"{pfx}input_layernorm.weight"]
     x_norm = x * torch.rsqrt(var + eps) * norm_w
 
-    # 3 & 4. QKV Projection with bias
-    wq = weights[f"{pfx}self_attn.q_proj.weight"]
-    bq = weights[f"{pfx}self_attn.q_proj.bias"]
-    wk = weights[f"{pfx}self_attn.k_proj.weight"]
-    bk = weights[f"{pfx}self_attn.k_proj.bias"]
-    wv = weights[f"{pfx}self_attn.v_proj.weight"]
-    bv = weights[f"{pfx}self_attn.v_proj.bias"]
+    if is_qwen36:
+        wq = weights[f"{pfx}self_attn.q_proj.weight"]
+        wk = weights[f"{pfx}self_attn.k_proj.weight"]
+        wv = weights[f"{pfx}self_attn.v_proj.weight"]
+        q_norm = weights[f"{pfx}self_attn.q_norm.weight"]
+        k_norm = weights[f"{pfx}self_attn.k_norm.weight"]
+        wo = weights[f"{pfx}self_attn.o_proj.weight"]
 
-    q = torch.matmul(x_norm, wq.t()) + bq
-    k = torch.matmul(x_norm, wk.t()) + bk
-    v = torch.matmul(x_norm, wv.t()) + bv
+        q_proj_out = torch.matmul(x_norm, wq.t())
+        if cfg.get("attn_output_gate", True):
+            q, gate = torch.chunk(q_proj_out, 2, dim=-1)
+        else:
+            q = q_proj_out
+            gate = None
 
-    # 5. RoPE rotate_half F7
-    qh = q.view(seq_len, num_heads, head_dim)
-    kh = k.view(seq_len, num_heads, head_dim)
+        k = torch.matmul(x_norm, wk.t())
+        v = torch.matmul(x_norm, wv.t())
 
-    inv_freq = 1.0 / (
-        base ** (torch.arange(0, head_dim, 2, dtype=torch.float32) / head_dim)
-    )
-    t_pos = torch.arange(seq_len, dtype=torch.float32)
-    freqs = torch.outer(t_pos, inv_freq)
-    emb = torch.cat((freqs, freqs), dim=-1).unsqueeze(1)
-    cos_emb = emb.cos()
-    sin_emb = emb.sin()
+        qh = q.view(seq_len, num_heads, head_dim)
+        kh = k.view(seq_len, num_kv_heads, head_dim)
+        vh = v.view(seq_len, num_kv_heads, head_dim)
 
-    q_rot = (qh * cos_emb) + (rotate_half(qh) * sin_emb)
-    k_rot = (kh * cos_emb) + (rotate_half(kh) * sin_emb)
+        # QK-Norm
+        qh = qh * torch.rsqrt(torch.mean(qh**2, dim=-1, keepdim=True) + eps) * q_norm
+        kh = kh * torch.rsqrt(torch.mean(kh**2, dim=-1, keepdim=True) + eps) * k_norm
 
-    # 6 & 7. Causal MHA with stable softmax
-    qh = q_rot.permute(1, 0, 2)  # [num_heads, seq_len, head_dim]
-    kh = k_rot.permute(1, 0, 2)
-    vh = v.view(seq_len, num_heads, head_dim).permute(1, 0, 2)
+        # Partial RoPE (factor 0.25)
+        rotary_factor = cfg.get("partial_rotary_factor", 0.25)
+        rotary_dim = int(head_dim * rotary_factor)
+        qh_rot = qh[..., :rotary_dim]
+        qh_pass = qh[..., rotary_dim:]
+        kh_rot = kh[..., :rotary_dim]
+        kh_pass = kh[..., rotary_dim:]
 
-    scale = 1.0 / math.sqrt(head_dim)
-    scores = torch.matmul(qh, kh.transpose(-2, -1)) * scale
+        inv_freq = 1.0 / (
+            base ** (torch.arange(0, rotary_dim, 2, dtype=torch.float32) / rotary_dim)
+        )
+        t_pos = torch.arange(seq_len, dtype=torch.float32)
+        freqs = torch.outer(t_pos, inv_freq)
+        emb = torch.cat((freqs, freqs), dim=-1).unsqueeze(1)
+        cos_emb = emb.cos()
+        sin_emb = emb.sin()
 
-    # Triangular causal mask: 0 if i >= j, -inf if i < j
-    mask = torch.triu(
-        torch.full((seq_len, seq_len), float("-inf"), dtype=torch.float32),
-        diagonal=1,
-    )
-    scores = scores + mask
+        qh_rot = (qh_rot * cos_emb) + (rotate_half(qh_rot) * sin_emb)
+        kh_rot = (kh_rot * cos_emb) + (rotate_half(kh_rot) * sin_emb)
+        qh = torch.cat((qh_rot, qh_pass), dim=-1)
+        kh = torch.cat((kh_rot, kh_pass), dim=-1)
 
-    # Softmax stabil: max shift
-    max_s = torch.max(scores, dim=-1, keepdim=True)[0]
-    exp_s = torch.exp(scores - max_s)
-    attn_weights = exp_s / torch.sum(exp_s, dim=-1, keepdim=True)
+        # GQA
+        qh = qh.permute(1, 0, 2)
+        kh = kh.permute(1, 0, 2)
+        vh = vh.permute(1, 0, 2)
+        group_size = num_heads // num_kv_heads
+        if group_size > 1:
+            kh = kh.repeat_interleave(group_size, dim=0)
+            vh = vh.repeat_interleave(group_size, dim=0)
 
-    attn_out = torch.matmul(attn_weights, vh)
-    attn_out = attn_out.permute(1, 0, 2).contiguous().view(seq_len, hidden_size)
+        scale = 1.0 / math.sqrt(head_dim)
+        scores = torch.matmul(qh, kh.transpose(-2, -1)) * scale
+        mask = torch.triu(
+            torch.full((seq_len, seq_len), float("-inf"), dtype=torch.float32),
+            diagonal=1,
+        )
+        scores = scores + mask
+        max_s = torch.max(scores, dim=-1, keepdim=True)[0]
+        exp_s = torch.exp(scores - max_s)
+        attn_weights = exp_s / torch.sum(exp_s, dim=-1, keepdim=True)
 
-    # 8. o_proj + bias
-    wo = weights[f"{pfx}self_attn.o_proj.weight"]
-    y = torch.matmul(attn_out, wo.t())
-    o_bias_name = f"{pfx}self_attn.o_proj.bias"
-    if o_bias_name in weights:
-        y = y + weights[o_bias_name]
+        attn_out = torch.matmul(attn_weights, vh)
+        attn_out = attn_out.permute(1, 0, 2).contiguous()
+        attn_out = attn_out.view(seq_len, num_heads * head_dim)
 
-    # 9. Residual connection
+        if gate is not None:
+            attn_out = attn_out * torch.sigmoid(gate)
+
+        y = torch.matmul(attn_out, wo.t())
+    else:
+        # Legacy trial path
+        wq = weights[f"{pfx}self_attn.q_proj.weight"]
+        bq = weights[f"{pfx}self_attn.q_proj.bias"]
+        wk = weights[f"{pfx}self_attn.k_proj.weight"]
+        bk = weights[f"{pfx}self_attn.k_proj.bias"]
+        wv = weights[f"{pfx}self_attn.v_proj.weight"]
+        bv = weights[f"{pfx}self_attn.v_proj.bias"]
+
+        q = torch.matmul(x_norm, wq.t()) + bq
+        k = torch.matmul(x_norm, wk.t()) + bk
+        v = torch.matmul(x_norm, wv.t()) + bv
+
+        qh = q.view(seq_len, num_heads, head_dim)
+        kh = k.view(seq_len, num_heads, head_dim)
+
+        inv_freq = 1.0 / (
+            base ** (torch.arange(0, head_dim, 2, dtype=torch.float32) / head_dim)
+        )
+        t_pos = torch.arange(seq_len, dtype=torch.float32)
+        freqs = torch.outer(t_pos, inv_freq)
+        emb = torch.cat((freqs, freqs), dim=-1).unsqueeze(1)
+        cos_emb = emb.cos()
+        sin_emb = emb.sin()
+
+        q_rot = (qh * cos_emb) + (rotate_half(qh) * sin_emb)
+        k_rot = (kh * cos_emb) + (rotate_half(kh) * sin_emb)
+
+        qh = q_rot.permute(1, 0, 2)
+        kh = k_rot.permute(1, 0, 2)
+        vh = v.view(seq_len, num_heads, head_dim).permute(1, 0, 2)
+
+        scale = 1.0 / math.sqrt(head_dim)
+        scores = torch.matmul(qh, kh.transpose(-2, -1)) * scale
+        mask = torch.triu(
+            torch.full((seq_len, seq_len), float("-inf"), dtype=torch.float32),
+            diagonal=1,
+        )
+        scores = scores + mask
+        max_s = torch.max(scores, dim=-1, keepdim=True)[0]
+        exp_s = torch.exp(scores - max_s)
+        attn_weights = exp_s / torch.sum(exp_s, dim=-1, keepdim=True)
+
+        attn_out = torch.matmul(attn_weights, vh)
+        attn_out = attn_out.permute(1, 0, 2).contiguous().view(seq_len, hidden_size)
+
+        wo = weights[f"{pfx}self_attn.o_proj.weight"]
+        y = torch.matmul(attn_out, wo.t())
+        o_bias_name = f"{pfx}self_attn.o_proj.bias"
+        if o_bias_name in weights:
+            y = y + weights[o_bias_name]
+
     y_final = y + x
-
     if not torch.isfinite(y_final).all():
         fail(
             "ATTENTION_ERROR",
@@ -420,7 +598,6 @@ def forward_layer_attention_oracle(
             stage="attention",
             layer=layer,
         )
-
     return y_final
 
 
@@ -656,7 +833,10 @@ def main():
         help="Part name (attn|moe)",
     )
     parser.add_argument(
-        "--layer", required=True, type=int, help="Layer index (0, 12, or 23)"
+        "--layer",
+        required=True,
+        type=int,
+        help="Layer index (0, 3, 12, 23, or 39)",
     )
     parser.add_argument(
         "--activation", required=True, help="Path to input activation.bin"
@@ -680,10 +860,10 @@ def main():
             layer=args.layer,
         )
 
-    if args.layer not in [0, 12, 23]:
+    if args.layer not in [0, 3, 12, 23, 39]:
         fail(
             "LAYER_INVALID",
-            f"layer must be 0, 12, or 23, got {args.layer}",
+            f"layer must be 0, 3, 12, 23, or 39, got {args.layer}",
             stage="cli",
             layer=args.layer,
         )

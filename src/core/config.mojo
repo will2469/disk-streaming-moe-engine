@@ -25,6 +25,8 @@ struct ModelConfig(Copyable, Movable):
     var head_dim_override: Int
     var full_attention_interval: Int
     var attention_bias: Bool
+    var rope_theta: Float32
+    var partial_rotary_factor: Float32
 
     def __init__(
         out self,
@@ -42,6 +44,8 @@ struct ModelConfig(Copyable, Movable):
         head_dim_override: Int = 0,
         full_attention_interval: Int = 4,
         attention_bias: Bool = False,
+        rope_theta: Float32 = Float32(1000000.0),
+        partial_rotary_factor: Float32 = Float32(1.0),
     ) raises:
         # Invariant arsitektur: konstruktor menolak konfigurasi absurd
         # (fail hard, bukan default diam-diam). Default parameter hanya
@@ -139,6 +143,8 @@ struct ModelConfig(Copyable, Movable):
             full_attention_interval if full_attention_interval > 0 else 4
         )
         self.attention_bias = attention_bias
+        self.rope_theta = rope_theta
+        self.partial_rotary_factor = partial_rotary_factor
 
     def head_dim(self) -> Int:
         if self.head_dim_override > 0:

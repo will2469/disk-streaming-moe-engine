@@ -1,7 +1,6 @@
 # M9 — Port ke Qwen3.6-35B-A3B (GQA, Gated Attention, Vocab 248K)
 
 > Proyek: `disk-streaming-moe-engine`. Fase: **Port**. Index: `../README.md`.
-> Implementasi dipecah menjadi waves: `../../scratch/wave/m9/README.md` (W1 config-adapter → W6 gates, catatan kerja gitignored).
 > Fakta arsitektur port bukan lagi TBM (checkpoint resmi tersedia [R4][R5]); angka performa tetap TBM hingga diukur.
 
 | Field       | Nilai                                                              |

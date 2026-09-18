@@ -97,25 +97,40 @@ def run_layer_attn(
             layer_val,
         )
 
-    try:
-        validate_attention_bias_in_index(weight_map, cfg.num_hidden_layers)
-    except:
-        fail_layer(
-            "WEIGHT_LOAD_FAILED",
-            "attention bias count mismatch or missing in index",
-            "attention",
-            layer_val,
-        )
+    if cfg.attention_bias:
+        try:
+            validate_attention_bias_in_index(weight_map, cfg.num_hidden_layers)
+        except:
+            fail_layer(
+                "WEIGHT_LOAD_FAILED",
+                "attention bias count mismatch or missing in index",
+                "attention",
+                layer_val,
+            )
 
-    var prefix = "model.layers." + String(layer_val) + "."
+    var prefix = "model.language_model.layers." + String(layer_val) + "."
+    if (prefix + "input_layernorm.weight") not in weight_map:
+        prefix = "model.layers." + String(layer_val) + "."
+
+    var is_qwen36 = (
+        (prefix + "self_attn.q_norm.weight") in weight_map
+        or not cfg.attention_bias
+    )
+
     var req_list = List[String]()
     req_list.append(prefix + "input_layernorm.weight")
     req_list.append(prefix + "self_attn.q_proj.weight")
-    req_list.append(prefix + "self_attn.q_proj.bias")
+    if cfg.attention_bias:
+        req_list.append(prefix + "self_attn.q_proj.bias")
     req_list.append(prefix + "self_attn.k_proj.weight")
-    req_list.append(prefix + "self_attn.k_proj.bias")
+    if cfg.attention_bias:
+        req_list.append(prefix + "self_attn.k_proj.bias")
     req_list.append(prefix + "self_attn.v_proj.weight")
-    req_list.append(prefix + "self_attn.v_proj.bias")
+    if cfg.attention_bias:
+        req_list.append(prefix + "self_attn.v_proj.bias")
+    if is_qwen36 and (prefix + "self_attn.q_norm.weight") in weight_map:
+        req_list.append(prefix + "self_attn.q_norm.weight")
+        req_list.append(prefix + "self_attn.k_norm.weight")
     req_list.append(prefix + "self_attn.o_proj.weight")
 
     for ri in range(len(req_list)):
@@ -153,7 +168,7 @@ def run_layer_attn(
         cfg,
         eps,
         pos_offset=0,
-        base=Float32(1000000.0),
+        base=cfg.rope_theta,
         layer_idx=layer_val,
     )
     var compute_time_ms = Float64(perf_counter_ns() - t_comp0) / 1000000.0

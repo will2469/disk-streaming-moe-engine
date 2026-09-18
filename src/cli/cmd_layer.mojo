@@ -10,9 +10,15 @@ from std.collections import List
 
 
 def _is_m2_probe_layer(layer_val: Int) -> Bool:
-    # Kebijakan milestone: hanya layer terverifikasi oracle (0, 12, 23)
+    # Kebijakan milestone: layer terverifikasi oracle (0, 3, 12, 23, 39)
     # yang di-probe di level single-layer CLI.
-    return layer_val == 0 or layer_val == 12 or layer_val == 23
+    return (
+        layer_val == 0
+        or layer_val == 3
+        or layer_val == 12
+        or layer_val == 23
+        or layer_val == 39
+    )
 
 
 def _parse_layer_index(layer_str: String) raises -> Int:
@@ -52,7 +58,7 @@ def _parse_layer_index(layer_str: String) raises -> Int:
     if not _is_m2_probe_layer(layer_val):
         fail_layer(
             "LAYER_INVALID",
-            "layer number invalid (M2 probe set: 0, 12, or 23): "
+            "layer number invalid (M2 probe set: 0, 3, 12, 23, or 39): "
             + String(layer_val),
             "attention",
             layer_val,

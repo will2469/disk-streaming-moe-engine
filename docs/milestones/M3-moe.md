@@ -2,7 +2,6 @@
 
 > Proyek: `disk-streaming-moe-engine`. Fase: **Trial**. Index: `../README.md`.
 > **Milestone paling kritis.**
-> Implementasi dipecah menjadi waves: `../../scratch/wave/m3/README.md` (W1 router → W6 gates, catatan kerja gitignored).
 
 | Field       | Nilai                                                 |
 | ----------- | ----------------------------------------------------- |

@@ -1,7 +1,6 @@
 # M7 — O_DIRECT + LRU Cache Expert (Pola kimi-k3-in-c)
 
 > Proyek: `disk-streaming-moe-engine`. Fase: **Trial (rekayasa, puncak performa trial)**. Index: `../README.md`.
-> Implementasi dipecah menjadi waves: `../../scratch/wave/m7/README.md` (W1 o-direct-reader → W6 gates, catatan kerja gitignored).
 
 | Field       | Nilai                                                                                 |
 | ----------- | ------------------------------------------------------------------------------------- |

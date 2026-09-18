@@ -652,6 +652,9 @@ def parse_model_config(path: String) raises -> Tuple[ModelConfig, Float32]:
                 ' (4L/8E/1K) dimensions","stage":"config"}'
             )
 
+    var rope_theta = Float32(10000000.0) if is_qwen36 else Float32(1000000.0)
+    var partial_rotary_factor = Float32(0.25) if is_qwen36 else Float32(1.0)
+
     var cfg = ModelConfig(
         hidden_size,
         num_hidden_layers,
@@ -667,5 +670,7 @@ def parse_model_config(path: String) raises -> Tuple[ModelConfig, Float32]:
         head_dim_override=head_dim_override,
         full_attention_interval=full_attention_interval,
         attention_bias=attention_bias,
+        rope_theta=rope_theta,
+        partial_rotary_factor=partial_rotary_factor,
     )
     return (cfg^, eps)

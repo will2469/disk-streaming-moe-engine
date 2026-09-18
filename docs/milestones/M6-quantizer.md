@@ -1,7 +1,6 @@
 # M6 — Quantizer 4-bit Buatan Sendiri + Dequant Kernel
 
 > Proyek: `disk-streaming-moe-engine`. Fase: **Trial (rekayasa)**. Index: `../README.md`.
-> Implementasi dipecah menjadi waves: `../../scratch/wave/m6/README.md` (W1 quantize-cli → W6 gates, catatan kerja gitignored).
 
 | Field       | Nilai                                                         |
 | ----------- | ------------------------------------------------------------- |

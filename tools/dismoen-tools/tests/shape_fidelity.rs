@@ -253,3 +253,82 @@ fn property_moe_expert_weights_in_index() {
         );
     }
 }
+
+fn load_qwen36_index() -> Value {
+    let p = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/qwen3.6_35b_index.json"
+    );
+    let t = std::fs::read_to_string(p).expect("qwen36 index fixture hilang");
+    serde_json::from_str(&t).expect("qwen36 index fixture invalid")
+}
+
+#[test]
+fn tensor_count_1045_pada_pin_qwen36() {
+    let idx = load_qwen36_index();
+    let wm = idx["weight_map"].as_object().unwrap();
+    assert_eq!(
+        wm.len(),
+        1045,
+        "len(weight_map) wajib 1045 pada revision pin Qwen3.6-35B-A3B"
+    );
+}
+
+#[test]
+fn dua_puluh_enam_shard_40_layer_qwen36() {
+    let idx = load_qwen36_index();
+    let wm = idx["weight_map"].as_object().unwrap();
+    let mut files = BTreeSet::new();
+    let mut layers = BTreeSet::new();
+    let mut lm_bias_count = 0u32;
+    let mut visual_bias_count = 0u32;
+    let mut lm_tensor_count = 0u32;
+    let mut visual_tensor_count = 0u32;
+
+    for (name, f) in wm {
+        let f = f.as_str().unwrap().to_string();
+        files.insert(f);
+        if let Some(rest) = name.strip_prefix("model.language_model.layers.") {
+            let n: u32 = rest.split('.').next().unwrap().parse().unwrap();
+            layers.insert(n);
+        }
+        if name.starts_with("model.language_model.") {
+            lm_tensor_count += 1;
+            if name.ends_with(".bias") {
+                lm_bias_count += 1;
+            }
+        } else if name.starts_with("model.visual.") {
+            visual_tensor_count += 1;
+            if name.ends_with(".bias") {
+                visual_bias_count += 1;
+            }
+        }
+    }
+    assert_eq!(files.len(), 26, "wajib 26 shard pada Qwen3.6-35B-A3B");
+    assert_eq!(
+        layers.len(),
+        40,
+        "layer 0..39 wajib ada pada Qwen3.6-35B-A3B"
+    );
+    assert_eq!(*layers.iter().min().unwrap(), 0);
+    assert_eq!(*layers.iter().max().unwrap(), 39);
+    assert_eq!(
+        lm_tensor_count, 692,
+        "language model wajib tepat 692 tensor"
+    );
+    assert_eq!(
+        visual_tensor_count, 333,
+        "vision encoder wajib tepat 333 tensor"
+    );
+    // Di Qwen 3.6 language model, attention_bias = false (0 bias QKV/MLP)
+    assert_eq!(
+        lm_bias_count, 0,
+        "language model wajib 0 tensor .bias (attention_bias: false)"
+    );
+    assert_eq!(
+        visual_bias_count, 166,
+        "vision encoder memiliki 166 tensor .bias"
+    );
+    let total_sz = idx["metadata"]["total_size"].as_f64().unwrap() as u64;
+    assert_eq!(total_sz, 71903645408u64);
+}

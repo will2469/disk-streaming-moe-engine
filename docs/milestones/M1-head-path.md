@@ -1,16 +1,15 @@
 # M1 — Head Path (Embed → Final Norm → LM Head)
 
-> Proyek: `disk-streaming-moe-engine`. Fase: **Trial**. Index: `../README.md`.
-> Implementasi dipecah menjadi waves: `../../scratch/wave/m1/README.md` (W1 rmsnorm → W5 gates, catatan kerja gitignored).
+> Proyek: `disk-streaming-moe-engine`. Fase: **Production Engine (Unified Qwen3.6-35B-A3B)**. Index: `../README.md`.
 
-| Field       | Nilai                                                             |
-| ----------- | ----------------------------------------------------------------- |
-| Deliverable | Head path: embedding lookup → final RMSNorm → lm_head             |
-| Komponen    | C1 CLI (`head`), C2 `model.mojo` (rmsnorm), C3 reader, C7 compare |
-| Prasyarat   | M0 hijau                                                          |
-| Next        | `M2-attention.md`                                                 |
+| Field       | Nilai                                                                         |
+| ----------- | ----------------------------------------------------------------------------- |
+| Deliverable | Head path: embedding lookup → final RMSNorm → lm_head (Qwen3.6-35B-A3B)       |
+| Komponen    | C1 CLI (`head`), C2 `model.mojo` (rmsnorm), C3 reader, C7 compare             |
+| Prasyarat   | M0 hijau                                                                      |
+| Next        | `M2-attention.md`                                                             |
 | Gate        | G-M1-1 (M1-A correctness), G-M1-2 (M1-B resource); M1-C benchmark report-only |
-| Rumus       | F1 (memori), F6 (RMSNorm), F10 (verdict)                          |
+| Rumus       | F1 (memori), F6 (RMSNorm), F10 (verdict)                                      |
 
 ## Tujuan
 
@@ -24,53 +23,55 @@ Struktur milestone ini tiga kontrak yang dinilai terpisah:
 
 ## Scope
 
-- Embedding + lm_head dimuat resident F32: $2 \times 151.936 \times 2048 \times 4\,\text{B} = 2.489.319.424$ B = **2,318 GiB** (satu-satunya bobot non-streaming).
-- Final RMSNorm (F6): $y = x / \mathrm{RMS}(x) \odot \gamma$, $\varepsilon$ dan dtype fp32 identik oracle. Sumber $\varepsilon$ dikontrak di § Oracle Head Specification (field `rms_norm_eps`, tanpa default diam-diam).
+- Embedding + lm_head dimuat resident F32: $2 \times 248.320 \times 2048 \times 4\,\text{B} = 4.068.474.880$ B = **3,789 GiB** (satu-satunya bobot non-streaming).
+- Final RMSNorm (F6): $y = x / \mathrm{RMS}(x) \odot \gamma$, $\gamma \in \mathbb{R}^{2048}$, $\varepsilon$ dan dtype fp32 identik oracle. Sumber $\varepsilon$ dari `config.json` (`rms_norm_eps = 1e-06`).
 - `lm_head` **untied** (tensor terpisah dari embedding).
 - Output: `logits_mojo.bin` (default, dapat dioverride via `--output`) via atomic write (tmp + rename).
 - Oracle: `oracle_head.py` (PyTorch fp32) → `logits_ref.bin` → Rust `compare` verdict.
 
 ### Required tensors (normatif)
 
-M1 membutuhkan tepat tiga **model weight tensor** berikut. Frasa "tepat tiga" hanya menghitung weight tensor — dependency closure M1 = ketiga weight tensor ini **plus** artefak `model.safetensors.index.json` + `model_config.json` (keduanya dependency normatif, dikontrak di bawah; tidak ada implementasi yang boleh mengklaim "hanya butuh tiga tensor" untuk mengabaikan config/index). CLI wajib me-resolve ketiganya dari index sebelum komputasi — `N ≥ 1` pada command line hanya syarat sintaks, bukan syarat kelengkapan semantik:
+M1 membutuhkan tepat tiga **model weight tensor** berikut. Frasa "tepat tiga" hanya menghitung weight tensor — dependency closure M1 = ketiga weight tensor ini **plus** artefak `model.safetensors.index.json` + `config.json` (keduanya dependency normatif, dikontrak di bawah; tidak ada implementasi yang boleh mengklaim "hanya butuh tiga tensor" untuk mengabaikan config/index). CLI wajib me-resolve ketiganya dari index sebelum komputasi — `N ≥ 1` pada command line hanya syarat sintaks, bukan syarat kelengkapan semantik:
 
-| Simbol    | Nama tensor               | Shape file (trial) | Dtype file | Dipakai sebagai |
-| --------- | ------------------------- | ------------------ | ---------- | --------------- |
-| embedding | `model.embed_tokens.weight` | 151936 × 2048      | BF16       | lookup → F32    |
-| gamma     | `model.norm.weight`         | 2048               | BF16       | RMSNorm F6 → F32 |
-| head      | `lm_head.weight`            | 151936 × 2048      | BF16       | matmul → F32    |
+| Simbol    | Nama tensor (Qwen3.6-35B)                  | Shape file (Qwen3.6) | Dtype file | Shard sumber                       | Dipakai sebagai  |
+| --------- | ------------------------------------------ | -------------------- | ---------- | ---------------------------------- | ---------------- |
+| embedding | `model.language_model.embed_tokens.weight` | 248320 × 2048        | BF16       | `model-00001-of-00026.safetensors` | lookup → F32     |
+| gamma     | `model.language_model.norm.weight`         | 2048                 | BF16       | `model-00026-of-00026.safetensors` | RMSNorm F6 → F32 |
+| head      | `lm_head.weight`                           | 248320 × 2048        | BF16       | `model-00026-of-00026.safetensors` | matmul → F32     |
+
+_(Catatan: Resolver CLI otomatis mendukung nama warisan `model.embed_tokens.weight` dan `model.norm.weight` sebagai fallback untuk kompatibilitas fixture)._
 
 Aturan resolusi (normatif, satu resolver — tidak ada dua algoritma):
 
 1. Ada tepat satu `model_root`: mode `--model-dir <dir>` → `<dir>`; mode positional → directory bersama shard yang dipasok (semua path shard wajib berada di satu directory yang sama; tersebar di beberapa directory → error `FILE_NOT_FOUND`/`JSON_PARSE_ERROR` dengan detail, bukan resolve diam-diam per file).
-2. Resolver memuat dari `model_root`: `model.safetensors.index.json` → `weight_map`, dan `model_config.json` kanonis M1 (lihat § Fixture M1-Specific) → `rms_norm_eps`, `hidden_size`, `vocab_size`.
+2. Resolver memuat dari `model_root`: `model.safetensors.index.json` → `weight_map`, dan `config.json` / `model_config.json` kanonis M1 → `rms_norm_eps`, `hidden_size`, `vocab_size`.
 3. Untuk tiap required tensor, baca `weight_map[name]` → file harapan.
-4. Shard positional (bila dipakai) hanya berfungsi sebagai **allowlist file yang boleh dibaca** — bukan sumber index/config alternatif. Himpunan allowlist **wajib mencakup** ketiga file harapan; file harapan yang tidak ada di allowlist → `WEIGHT_LOAD_FAILED` semantik dengan `missing_tensors` + `expected_shards`. Path pasokan yang tidak ada di disk → `FILE_NOT_FOUND` (bedakan dari tensor yang tak tercakup: yang satu soal filesystem, yang satu soal cakupan semantik).
+4. Shard positional (bila dipakai) hanya berfungsi sebagai **allowlist file yang boleh dibaca** — bukan sumber index/config alternatif. Himpunan allowlist **wajib mencakup** ketiga file harapan (`model-00001` dan `model-00026` pada Qwen 3.6); file harapan yang tidak ada di allowlist → `WEIGHT_LOAD_FAILED` semantik dengan `missing_tensors` + `expected_shards`. Path pasokan yang tidak ada di disk → `FILE_NOT_FOUND`.
 5. Mode `--model-dir` = allowlist implisit = semua file yang dirujuk `weight_map` dan ada di `model_root` (tidak perlu menyebut shard satu per satu).
 6. Shape/dtype aktual dari header tiap required tensor wajib diassert terhadap config (`hidden_size`, `vocab_size`); pelanggaran → `WEIGHT_LOAD_FAILED` dengan `tensor_name` + expected/actual.
 7. Error struktural reader (header korup, offset overflow, dtype tak dikenal, layout mismatch) **dipropagasikan apa adanya** dengan taxonomy M0 — tidak boleh diflatten menjadi `WEIGHT_LOAD_FAILED` (lihat § Error Handling M1).
 
-Catatan fixture: pada fixture M0, embedding + `lm_head` berada di shard 1 sedangkan `model.norm.weight` di shard 2 — satu shard saja tidak pernah cukup untuk M1 trial/fixture. Contoh `dismoen head tokens.json shard-00001...` tunggal adalah INVALID secara semantik dan wajib gagal dengan `WEIGHT_LOAD_FAILED`, bukan dengan hasil parsial.
+Catatan shard Qwen3.6: embedding berada di shard 1 (`model-00001-of-00026.safetensors`) sedangkan final norm dan `lm_head` berada di shard 26 (`model-00026-of-00026.safetensors`). Keduanya wajib tercakup untuk eksekusi head path.
 
 ### Anggaran memori M1 (F1, normatif)
 
-$W_{res} \approx 2{,}318$ GiB adalah suku terbesar, **bukan** satu-satunya. Dekomposisi M1 (trial, $V=151936$, $d=2048$, 3 prompt × 16 token = 48 token):
+$W_{res} \approx 3{,}789$ GiB adalah suku terbesar, **bukan** satu-satunya. Dekomposisi M1 (Qwen3.6-35B-A3B, $V=248320$, $d=2048$, 3 prompt × 16 token = 48 token):
 
-| Suku | Isi | Ukuran trial |
-| ---- | --- | ------------ |
-| $W_{res}$ | embedding F32 + lm_head F32 resident | 2 × 151936 × 2048 × 4 B = **2.318 GiB** |
-| $M_{\gamma}$ | `model.norm.weight` F32 | 2048 × 4 B = 8 KiB |
-| $M_{act}$ | activation 48 × 2048 F32 | 393.216 B |
-| $M_{logits}$ | logits 48 × 151936 F32 | 29.171.712 B (≈ 27,8 MiB) |
-| $M_{conv}$ | chunk konversi BF16→F32 sementara | **≤ 64 MiB** (implementasi memilih ≤ 16–64 MiB) |
-| $M_{io}$ | buffer pread / I/O | ≤ 0,1 GB (arsitektur §2.5) |
-| overhead | input buffer, allocator, fragmentasi | tercakup dalam VmHWM |
+| Suku         | Isi                                    | Ukuran Qwen3.6-35B                      |
+| ------------ | -------------------------------------- | --------------------------------------- |
+| $W_{res}$    | embedding F32 + lm_head F32 resident   | 2 × 248320 × 2048 × 4 B = **3.789 GiB** |
+| $M_{\gamma}$ | `model.language_model.norm.weight` F32 | 2048 × 4 B = 8 KiB                      |
+| $M_{act}$    | activation 48 × 2048 F32               | 393.216 B                               |
+| $M_{logits}$ | logits 48 × 248320 F32                 | 47.677.440 B (≈ 45,47 MiB)              |
+| $M_{conv}$   | chunk konversi BF16→F32 sementara      | **≤ 64 MiB** (implementasi: 32 MiB)     |
+| $M_{io}$     | buffer pread / I/O                     | ≤ 0,1 GB (arsitektur §2.5)              |
+| overhead     | input buffer, allocator, fragmentasi   | tercakup dalam VmHWM                    |
 
-$$M_{peak}(M1) = W_{res} + M_{\gamma} + M_{act} + M_{logits} + M_{conv} + M_{io} + \text{overhead} \le 3{,}5\ \text{GiB (G-M1-2, F1 dengan } M_{KV}=0\text{)}$$
+$$M_{peak}(M1) = W_{res} + M_{\gamma} + M_{act} + M_{logits} + M_{conv} + M_{io} + \text{overhead} \le 5{,}0\ \text{GiB (G-M1-2, terukur: 3,87 GiB)}$$
 
-**Load strategy (normatif):** konversi BF16→F32 wajib **chunked** (streaming per potongan ≤ 64 MiB, konversi in-place per chunk ke buffer F32 resident). Duplikasi seluruh tensor (buffer BF16 penuh + salinan F32 penuh, transient ≈ +1,159 GiB per matriks) **DILARANG** — pelanggaran strategi ini gagal M1-B meski final resident state terlihat benar, karena VmHWM akan menangkap transient-nya.
+**Load strategy (normatif):** konversi BF16→F32 wajib **chunked** (streaming per potongan ≤ 64 MiB, konversi in-place per chunk ke buffer F32 resident). Duplikasi seluruh tensor (buffer BF16 penuh + salinan F32 penuh, transient ≈ +1,895 GiB per matriks) **DILARANG** — pelanggaran strategi ini gagal M1-B meski final resident state terlihat benar, karena VmHWM akan menangkap transient-nya.
 
-**Telemetri load-phase (normatif, enforcement kausal untuk larangan di atas):** VmHWM saja tidak cukup — spike kecil yang kebetulan lolos 3,5 GiB tidak membuktikan tidak adanya double-residency. Engine wajib menginstrumentasi fase load dan melaporkan tiga angka berikut di report (`memory.*`):
+**Telemetri load-phase (normatif, enforcement kausal untuk larangan di atas):** VmHWM saja tidak cukup — spike kecil yang kebetulan lolos tidak membuktikan tidak adanya double-residency. Engine wajib menginstrumentasi fase load dan melaporkan tiga angka berikut di report (`memory.*`):
 
 ```text
 resident_target_bytes   = byte F32 resident yang dialokasikan untuk embed+head (+ γ)
@@ -83,10 +84,10 @@ Aturan acceptance M1-B (ketiganya wajib lolos, bukan hanya VmHWM):
 ```text
 conversion_buffer_bytes ≤ 64 MiB
 source_buffer_bytes     ≤ 64 MiB        # chunk yang sama; bukan salinan tensor penuh
-VmHWM (vmhwm_bytes)     ≤ 3,5 GiB       # authoritative peak kernel
+VmHWM (vmhwm_bytes)     ≤ 5,0 GiB       # authoritative peak kernel (terukur: 3,87 GiB)
 ```
 
-`conversion_buffer_bytes` / `source_buffer_bytes` yang dilaporkan adalah peak selama fase load (bukan nilai akhir — nilai akhir keduanya boleh 0 setelah chunk dibebaskan; yang di-gate adalah peak-nya). VmHWM tetap otoritas tunggal untuk peak proses; telemetri menjelaskan *komposisi* peak sehingga klaim "tanpa double-residency" dapat diverifikasi secara kausal, bukan disimpulkan dari final state.
+`conversion_buffer_bytes` / `source_buffer_bytes` yang dilaporkan adalah peak selama fase load (bukan nilai akhir — nilai akhir keduanya boleh 0 setelah chunk dibebaskan; yang di-gate adalah peak-nya). VmHWM tetap otoritas tunggal untuk peak proses; telemetri menjelaskan _komposisi_ peak sehingga klaim "tanpa double-residency" dapat diverifikasi secara kausal, bukan disimpulkan dari final state.
 
 ## Implementasi head CLI
 
@@ -109,21 +110,21 @@ VmHWM (vmhwm_bytes)     ≤ 3,5 GiB       # authoritative peak kernel
     "num_prompts": 3,
     "tokens_per_prompt": 16,
     "num_tokens_total": 48,
-    "vocab_size": 151936,
+    "vocab_size": 248320,
     "output_file": "logits_mojo.bin",
     "workdir": "/abs/path/workdir",
     "parse_time_ms": 45.67,
     "compute_time_ms": 12.34,
     "memory": {
-      "resident_target_bytes": 2489319424,
-      "conversion_buffer_bytes": 16777216,
+      "resident_target_bytes": 4068483072,
+      "conversion_buffer_bytes": 33554432,
       "source_buffer_bytes": 16777216,
-      "vmhwm_bytes": 2700000000
+      "vmhwm_bytes": 4155000000
     }
   }
   ```
   Objek `memory` wajib ada pada `status=success` (telemetri fase load — lihat § Anggaran memori M1). `vmhwm_bytes` = VmHWM proses pada akhir run; tiga field pertama = accounting allocator/engine, bukan angka kernel.
-- File: output path (default `logits_mojo.bin`; binary fp32 logits, shape: **[num_prompts, tokens_per_prompt, vocab_size] = [3, 16, 151936]**, row-major; view flatten `[48, 151936]` adalah buffer yang sama — lihat § Logits File Format)
+- File: output path (default `logits_mojo.bin`; binary fp32 logits, shape: **[num_prompts, tokens_per_prompt, vocab_size] = [3, 16, 248320]**, row-major; view flatten `[48, 248320]` adalah buffer yang sama — lihat § Logits File Format)
 - stderr: error message (bila ada)
 
 **Aturan output path (normatif):** `--output` di-resolve terhadap workdir (definisi tunggal di atas); path relatif = relatif terhadap workdir, bukan terhadap lokasi shard atau binary. Path hasil resolve wajib berada di dalam workdir (cek setelah normalisasi + resolusi symlink pada komponen parent yang sudah ada; symlink escape = error `OUTPUT_WRITE_FAILED`); file tmp atomic dibuat di filesystem/directory yang sama dengan target; rename hanya setelah write selesai (lihat § Security). Run paralel/CI wajib memakai `--output` (dan bila perlu `--workdir`) berbeda per invocation — default `logits_mojo.bin` hanya untuk single-run.
@@ -138,13 +139,13 @@ VmHWM (vmhwm_bytes)     ≤ 3,5 GiB       # authoritative peak kernel
 
 ```bash
 # mode utama: resolusi otomatis dari model dir (tanpa seleksi shard manual)
-dismoen head tokens.json --model-dir ./models/qwen1.5-moe
+dismoen head tokens.json --model-dir ./models/qwen3.6-35b-a3b
 
 # mode positional: shard eksplisit, resolver tetap memeriksa kelengkapan 3 tensor
-dismoen head tokens.json shard-00001-of-00003.safetensors shard-00002-of-00003.safetensors shard-00003-of-00003.safetensors
+dismoen head tokens.json model-00001-of-00026.safetensors model-00026-of-00026.safetensors
 
 # output eksplisit (wajib untuk run paralel/CI agar tidak tabrakan)
-dismoen head tokens.json --model-dir ./models/qwen1.5-moe --output out/prompt-set-a.bin
+dismoen head tokens.json --model-dir ./models/qwen3.6-35b-a3b --output out/prompt-set-a.bin
 ```
 
 **Contoh output (success):**
@@ -155,16 +156,16 @@ dismoen head tokens.json --model-dir ./models/qwen1.5-moe --output out/prompt-se
   "num_prompts": 3,
   "tokens_per_prompt": 16,
   "num_tokens_total": 48,
-  "vocab_size": 151936,
+  "vocab_size": 248320,
   "output_file": "logits_mojo.bin",
   "workdir": "/abs/path/workdir",
   "parse_time_ms": 45.67,
   "compute_time_ms": 12.34,
   "memory": {
-    "resident_target_bytes": 2489319424,
-    "conversion_buffer_bytes": 16777216,
+    "resident_target_bytes": 4068483072,
+    "conversion_buffer_bytes": 33554432,
     "source_buffer_bytes": 16777216,
-    "vmhwm_bytes": 2700000000
+    "vmhwm_bytes": 4155000000
   }
 }
 ```
@@ -177,16 +178,16 @@ dismoen head tokens.json --model-dir ./models/qwen1.5-moe --output out/prompt-se
   "num_prompts": 3,
   "tokens_per_prompt": 16,
   "num_tokens_total": 48,
-  "vocab_size": 151936,
+  "vocab_size": 248320,
   "output_file": "logits_mojo.bin",
   "workdir": "/abs/path/workdir",
   "parse_time_ms": 45.67,
   "compute_time_ms": 12.34,
   "memory": {
-    "resident_target_bytes": 2489319424,
-    "conversion_buffer_bytes": 16777216,
+    "resident_target_bytes": 4068483072,
+    "conversion_buffer_bytes": 33554432,
     "source_buffer_bytes": 16777216,
-    "vmhwm_bytes": 2700000000
+    "vmhwm_bytes": 4155000000
   },
   "verdict": {
     "delta_max": 0.001234,
@@ -202,11 +203,11 @@ dismoen head tokens.json --model-dir ./models/qwen1.5-moe --output out/prompt-se
 ```json
 {
   "error_type": "TOKEN_INVALID",
-  "detail": "Token ID 200000 exceeds vocab size 151936",
+  "detail": "Token ID 300000 exceeds vocab size 248320",
   "stage": "embedding",
   "prompt_idx": 1,
   "token_pos": 7,
-  "token_id": 200000
+  "token_id": 300000
 }
 ```
 
@@ -217,8 +218,8 @@ dismoen head tokens.json --model-dir ./models/qwen1.5-moe --output out/prompt-se
   "error_type": "WEIGHT_LOAD_FAILED",
   "detail": "Required tensors not covered by supplied shards",
   "stage": "embedding",
-  "missing_tensors": ["model.norm.weight"],
-  "expected_shards": ["shard-00002-of-00003.safetensors"]
+  "missing_tensors": ["model.language_model.norm.weight"],
+  "expected_shards": ["model-00026-of-00026.safetensors"]
 }
 ```
 
@@ -235,9 +236,9 @@ dismoen head tokens.json --model-dir ./models/qwen1.5-moe --output out/prompt-se
 **Binding tensor (normatif, eksplisit):**
 
 ```text
-embedding = model.embed_tokens.weight   # shape [V, d], assert vs config
-gamma     = model.norm.weight           # shape [d], assert vs config
-head      = lm_head.weight              # shape [V, d], untied, assert vs config
+embedding = model.language_model.embed_tokens.weight   # shape [V, d], assert vs config (legacy fallback: model.embed_tokens.weight)
+gamma     = model.language_model.norm.weight           # shape [d], assert vs config (legacy fallback: model.norm.weight)
+head      = lm_head.weight                             # shape [V, d], untied, assert vs config
 ```
 
 Masing-masing diassert shape dan dtype sebelum komputasi; pelanggaran → error yang setara `WEIGHT_LOAD_FAILED` di sisi oracle/fixture (fixture salah, bukan engine salah).
@@ -250,9 +251,9 @@ Masing-masing diassert shape dan dtype sebelum komputasi; pelanggaran → error 
 
 **Process:**
 
-1. Load embedding weights (`model.embed_tokens.weight`, → F32)
+1. Load embedding weights (`model.language_model.embed_tokens.weight`, → F32)
 2. Token ID lookup → embedding vectors (48 × d untuk 3 prompt × 16 token)
-3. Final RMSNorm (F6): $y = x / \mathrm{RMS}(x) \odot \gamma$ dengan $\gamma$ = `model.norm.weight`
+3. Final RMSNorm (F6): $y = x / \mathrm{RMS}(x) \odot \gamma$ dengan $\gamma$ = `model.language_model.norm.weight`
 4. Load lm_head weights (untied, `lm_head.weight`, → F32)
 5. Matrix multiplication: activation → logits, shape [3, 16, V]
 6. Output: `logits_ref.bin` (binary fp32, shape: [3, 16, vocab_size])
@@ -281,7 +282,7 @@ Masing-masing diassert shape dan dtype sebelum komputasi; pelanggaran → error 
 - 3 prompt dari golden set (commit ke repo)
 - 16 token per prompt (total 48 token)
 - Token IDs precomputed di `tokens.json`
-- Format: `[ [token_id_1, ..., token_id_16], [...], [...] ]` — array 3 × 16. Validasi: outer len == 3, tiap inner len == 16, tiap id dalam `0..vocab_size` (vocab dari config: 151936 trial, 512 fixture synthetic). Pelanggaran → `TOKEN_INVALID` dengan `prompt_idx` + `token_pos`.
+- Format: `[ [token_id_1, ..., token_id_16], [...], [...] ]` — array 3 × 16. Validasi: outer len == 3, tiap inner len == 16, tiap id dalam `0..vocab_size` (vocab dari config: 248320 untuk Qwen3.6-35B-A3B, 512 fixture synthetic). Pelanggaran → `TOKEN_INVALID` dengan `prompt_idx` + `token_pos`.
 - Satu invocation memproses **ketiga prompt sekaligus**; tidak ada mode "satu prompt per invocation" — gate selalu menilai 48 token penuh.
 
 **Expected output:**
@@ -295,7 +296,7 @@ Masing-masing diassert shape dan dtype sebelum komputasi; pelanggaran → error 
 - Testing RMSNorm implementation (F6)
 - Testing lm_head untied implementation
 - Testing end-to-end head path (token IDs → logits)
-- Support CI tanpa download 28.6 GB (bila pakai fixture M0)
+- Support CI tanpa download 67 GB (bila pakai fixture synthetic)
 
 **Generasi:**
 
@@ -316,8 +317,8 @@ Masing-masing diassert shape dan dtype sebelum komputasi; pelanggaran → error 
   "token_id": 123,
   "prompt_idx": 1,
   "token_pos": 7,
-  "tensor_name": "model.norm.weight",
-  "missing_tensors": ["model.norm.weight"],
+  "tensor_name": "model.language_model.norm.weight",
+  "missing_tensors": ["model.language_model.norm.weight"],
   "expected_shards": ["shard-00002-of-00003.safetensors"]
 }
 ```
@@ -336,7 +337,7 @@ Lapisan semantik M1 (shard valid tetapi kebutuhan M1 tak terpenuhi):
 - `NORM_ERROR`: RMSNorm computation error (division by zero, NaN, Inf)
 - `OUTPUT_WRITE_FAILED`: gagal write output path (disk full, permission, symlink escape, path di luar workdir)
 
-Preseden: corrupt header → `INVALID_HEADER` (bukan `WEIGHT_LOAD_FAILED`); shard valid tapi `model.norm.weight` absen → `WEIGHT_LOAD_FAILED`. Urutan pemeriksaan: parse args/config → discover index → parse+validasi header (reader errors) → resolusi required tensors (semantic) → komputasi.
+Preseden: corrupt header → `INVALID_HEADER` (bukan `WEIGHT_LOAD_FAILED`); shard valid tapi `model.language_model.norm.weight` absen → `WEIGHT_LOAD_FAILED`. Urutan pemeriksaan: parse args/config → discover index → parse+validasi header (reader errors) → resolusi required tensors (semantic) → komputasi.
 
 **Atomic write failure:**
 
@@ -357,7 +358,7 @@ flowchart TB
     RESOLVE -->|Tak tercakup| ERRS[WEIGHT_LOAD_FAILED semantik, exit=2]
     RESOLVE --> LOADE[Load embedding weights chunked BF16-F32]
     LOADE --> LOOKUP[Token ID lookup 48 token]
-    LOOKUP --> NORM[Final RMSNorm F6 dengan gamma=model.norm.weight]
+    LOOKUP --> NORM[Final RMSNorm F6 dengan gamma=model.language_model.norm.weight]
     NORM --> LOADL[Load lm_head weights chunked BF16-F32]
     LOADL --> MATMUL[Matrix multiplication 48xV]
     MATMUL --> WRITE[Atomic write output path tmp+rename]
@@ -380,10 +381,10 @@ flowchart TB
 1. CLI menerima tokens.json (3 × 16) + shard eksplisit **atau** `--model-dir` + `model_config.json`
 2. Parse tokens.json → validasi schema 3×16 + range vocab dari config
 3. Discover index + config; parse dan validasi header tiap shard (error reader dipropagasi verbatim)
-4. Resolve `model.embed_tokens.weight` + `model.norm.weight` + `lm_head.weight` via `weight_map`; cakupan tak lengkap → `WEIGHT_LOAD_FAILED`
+4. Resolve `model.language_model.embed_tokens.weight` + `model.language_model.norm.weight` + `lm_head.weight` via `weight_map`; cakupan tak lengkap → `WEIGHT_LOAD_FAILED`
 5. Load embedding weights ke RAM resident F32 **secara chunked** (tanpa double-residency penuh)
 6. Token ID lookup → embedding vectors (48 × d)
-7. Final RMSNorm (F6): $y = x / \mathrm{RMS}(x) \odot \gamma$, $\gamma$ = `model.norm.weight`, $\varepsilon$ = `rms_norm_eps`
+7. Final RMSNorm (F6): $y = x / \mathrm{RMS}(x) \odot \gamma$, $\gamma$ = `model.language_model.norm.weight`, $\varepsilon$ = `rms_norm_eps`
 8. Load lm_head weights (untied) ke RAM resident F32 **secara chunked**
 9. Matrix multiplication: activation → logits [3, 16, V]
 10. Atomic write output path (tmp + rename, di dalam workdir)
@@ -403,7 +404,7 @@ flowchart TB
 
 ## Performance Baseline M1
 
-**Prinsip lapisan (mengikuti M0):** gate kebenaran (G-M1-1/G-M1-2) independen dari cache — lolos di cold maupun warm. Angka di bawah murni benchmark, bukan gate. Tidak ada latency gate absolut pada M1: memuat ~2,318 GiB resident dalam 100 ms membutuhkan ≈ 23,2 GB/s efektif, yang bukan target cold-read disk/NVMe yang masuk akal — angka `< 100 ms` sebagai gate universal **dihapus** dari spec ini.
+**Prinsip lapisan (mengikuti M0):** gate kebenaran (G-M1-1/G-M1-2) independen dari cache — lolos di cold maupun warm. Angka di bawah murni benchmark, bukan gate. Tidak ada latency gate absolut pada M1: memuat ~3,79 GiB resident dalam 100 ms membutuhkan throughput luar biasa yang bukan target cold-read disk/NVMe yang masuk akal — angka `< 100 ms` sebagai gate universal **dihapus** dari spec ini.
 
 **M1-A Correctness (fixture synthetic):**
 
@@ -414,7 +415,7 @@ flowchart TB
 
 **M1-C Real-checkpoint benchmark (report-only, bukan gate):**
 
-- Beban: checkpoint asli (8 shard, 28,63 GB; resident head ≈ 2,318 GiB).
+- Beban: checkpoint asli (26 shard, 71,90 GB; resident head ≈ 3,79 GiB).
 - Yang dilaporkan per run: load time (parse) + compute time terpisah, throughput, VmHWM, bytes I/O (`/proc/<pid>/io`), nilai $\varepsilon$ + revision/config yang dipakai.
 - Cold read: `sync && echo 3 | sudo tee /proc/sys/vm/drop_caches` — opsional khusus Linux ber-privilege, tidak pernah syarat kebenaran (pola M0).
 - N=5 run, ambil median; environment: CPU governor `performance`, aplikasi lain ditutup.
@@ -429,13 +430,13 @@ flowchart TB
 
 **Baseline:**
 
-- Mesin target: 8 GB RAM, NVMe SSD
+- Mesin target: 8–16 GB RAM, NVMe SSD
 - Hasil terukur dicatat di laporan benchmark
 - Kalibrasi F1: $M_{peak}^{meas}$ vs $M_{peak}^{pred}$ (toleransi ±5%)
 
 **Expectations (informatif, bukan gate):**
 
-- Parse time: dominasi oleh I/O load embedding + lm_head (2,318 GiB) pada checkpoint asli; pada fixture synthetic I/O jauh lebih kecil — keduanya tidak boleh dibandingkan langsung.
+- Parse time: dominasi oleh I/O load embedding + lm_head (3,79 GiB) pada checkpoint asli; pada fixture synthetic I/O jauh lebih kecil — keduanya tidak boleh dibandingkan langsung.
 - Compute time: RMSNorm + matmul orde puluhan ms untuk 48 token di mesin target (dilaporkan, tidak di-gate).
 
 ## Integration Test Specification
@@ -475,8 +476,8 @@ flowchart TB
 
 6. **Memory boundary:**
    - Input: 3 prompt × 16 token (48 token, normal case)
-   - Expected: $M_{peak} \le 3{,}5$ GiB (G-M1-2) **dan** caps telemetri load-phase lolos (`conversion_buffer_bytes ≤ 64 MiB`, `source_buffer_bytes ≤ 64 MiB` — strategi chunked § Anggaran memori M1 terbukti kausal, bukan disimpulkan)
-   - Verification: **VmHWM authoritative** untuk peak; `memory.*` di report wajib ada dan konsisten ($resident\_target\_bytes$ ≈ 2,318 GiB trial; inkonsistensi > 1% vs prediksi = FAIL instrumentasi); poller 100 ms hanya telemetri fase (load vs compute), bukan detektor peak — spike konversi singkat tidak boleh diklaim tertangkap poller.
+   - Expected: $M_{peak} \le 5{,}0$ GiB (G-M1-2, real terukur 3,87 GiB VmHWM) **dan** caps telemetri load-phase lolos (`conversion_buffer_bytes ≤ 64 MiB`, `source_buffer_bytes ≤ 64 MiB` — strategi chunked § Anggaran memori M1 terbukti kausal, bukan disimpulkan)
+   - Verification: **VmHWM authoritative** untuk peak; `memory.*` di report wajib ada dan konsisten ($resident\_target\_bytes$ ≈ 3,79 GiB (4.068.483.072 bytes) pada checkpoint asli; inkonsistensi > 1% vs prediksi = FAIL instrumentasi); poller 100 ms hanya telemetri fase (load vs compute), bukan detektor peak — spike konversi singkat tidak boleh diklaim tertangkap poller.
 
 7. **Config contract:**
    - Input: config tanpa `rms_norm_eps` (atau ≤ 0), atau fixture tanpa `fixtures/m1/model_config.json` kanonis
@@ -502,9 +503,9 @@ flowchart TB
 
 **Layout (normatif):**
 
-- Shape: [num_prompts, tokens_per_prompt, vocab_size] = [3, 16, 151936] (trial)
-- Total bytes trial: 3 × 16 × 151936 × 4 = 29.171.712 bytes (~27,82 MiB)
-- Row-major: prompt dimensi pertama, token kedua, vocab ketiga. View flatten [48, 151936] (token-major) adalah buffer byte yang sama dan boleh dipakai compare/analisis — kedua bentuk harus didokumentasikan di laporan bila dipakai.
+- Shape: [num_prompts, tokens_per_prompt, vocab_size] = [3, 16, 248320]
+- Total bytes model asli: 3 × 16 × 248320 × 4 = 47.677.440 bytes (~45,47 MiB)
+- Row-major: prompt dimensi pertama, token kedua, vocab ketiga. View flatten [48, 248320] (token-major) adalah buffer byte yang sama dan boleh dipakai compare/analisis — kedua bentuk harus didokumentasikan di laporan bila dipakai.
 - Fixture synthetic memakai `vocab_size` dari config-nya (512) dengan rumus byte yang sama: $3 \times 16 \times V \times 4$.
 
 **Access pattern:**
@@ -513,14 +514,14 @@ flowchart TB
 # Python (oracle)
 import numpy as np
 logits = np.fromfile('logits_mojo.bin', dtype=np.float32)
-logits = logits.reshape(3, 16, 151936)  # [num_prompts, tokens_per_prompt, vocab_size]
-flat = logits.reshape(48, 151936)       # view yang sama, token-major
+logits = logits.reshape(3, 16, 248320)  # [num_prompts, tokens_per_prompt, vocab_size]
+flat = logits.reshape(48, 248320)       # view yang sama, token-major
 ```
 
 ```rust
 // Rust (compare)
 let logits: Vec<f32> = read_bin_file("logits_mojo.bin")?;
-let logits = Array3::from_shape_vec((3, 16, 151936), logits)?;
+let logits = Array3::from_shape_vec((3, 16, 248320), logits)?;
 ```
 
 **Verification:**
@@ -531,11 +532,11 @@ let logits = Array3::from_shape_vec((3, 16, 151936), logits)?;
 
 ## Gate
 
-| Gate   | Kontrak | Kriteria            | Threshold                                                                               | Metode                |
-| ------ | ------- | ------------------- | --------------------------------------------------------------------------------------- | --------------------- |
-| G-M1-1 | M1-A    | MATCH strict logits | $\Delta_{max} \le 10^{-3} \wedge \varepsilon_{rel} \le 10^{-4} \wedge \mathbb{A}=100\%$ | 3 prompt × 16 token (48 token), threads=1 |
-| G-M1-2 | M1-B    | anggaran memori     | $M_{peak} \le 3{,}5$ GiB (F1, dekomposisi § Anggaran memori M1) + caps telemetri (`conversion_buffer_bytes` ≤ 64 MiB, `source_buffer_bytes` ≤ 64 MiB) | VmHWM authoritative + `memory.*` report + poller 100 ms sebagai telemetri fase |
-| M1-C   | M1-C    | benchmark real-checkpoint | **report-only, tanpa threshold** (load/compute/VmHWM/bytes)                   | 8 shard asli, N=5 median, cold/warm |
+| Gate   | Kontrak | Kriteria                  | Threshold                                                                                                                                             | Metode                                                                         |
+| ------ | ------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| G-M1-1 | M1-A    | MATCH strict logits       | $\Delta_{max} \le 10^{-3} \wedge \varepsilon_{rel} \le 10^{-4} \wedge \mathbb{A}=100\%$                                                               | 3 prompt × 16 token (48 token), threads=1                                      |
+| G-M1-2 | M1-B    | anggaran memori           | $M_{peak} \le 5{,}0$ GiB (F1, dekomposisi § Anggaran memori M1) + caps telemetri (`conversion_buffer_bytes` ≤ 64 MiB, `source_buffer_bytes` ≤ 64 MiB) | VmHWM authoritative + `memory.*` report + poller 100 ms sebagai telemetri fase |
+| M1-C   | M1-C    | benchmark real-checkpoint | **report-only, tanpa threshold** (load/compute/VmHWM/bytes)                                                                                           | 26 shard asli, N=5 median, cold/warm                                           |
 
 F1: $M_{peak} = W_{res} + M_{KV}(=0) + M_{ws} + M_{io}$ — pemetaan M1: $W_{res}$ = embed+head F32 (+ $\gamma$ 8 KiB), $M_{ws}$ = activation + logits + chunk konversi, $M_{io}$ = buffer pread.
 
@@ -562,7 +563,7 @@ F1: $M_{peak} = W_{res} + M_{KV}(=0) + M_{ws} + M_{io}$ — pemetaan M1: $W_{res
 - [x] G-M1-1, G-M1-2 hijau; laporan M1-C (real-checkpoint, report-only) ter-commit
 - [x] Laporan benchmark + run-id ter-commit
 - [x] Kalibrasi F1 awal tercatat
-- [x] Risiko R5 (Wres 2,318 GiB) dievaluasi: opsi BF16 resident + dequant on-the-fly bila workspace sempit
+- [x] Risiko R5 (Wres 3,79 GiB) dievaluasi: opsi BF16 resident + dequant on-the-fly bila workspace sempit
 - [x] head CLI implementasi lengkap (input/output/exit code sesuai spec, termasuk `--model-dir`, `--output`, `--workdir`, satu resolver + allowlist shard, resolusi 3 required weight tensor)
 - [x] Oracle head.py implementasi dan ter-commit (binding tensor eksplisit + kontrak `rms_norm_eps`, baca config kanonis yang sama)
 - [x] RMSNorm kernel implementasi (F6, $\varepsilon$ dari config tanpa default diam-diam)

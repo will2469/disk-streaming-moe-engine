@@ -1,7 +1,6 @@
 # M4 — Full Forward 24 Layer, Streaming
 
 > Proyek: `disk-streaming-moe-engine`. Fase: **Trial** (puncak correctness). Index: `../README.md`.
-> Implementasi dipecah menjadi waves: `../../scratch/wave/m4/README.md` (W1 forward-cli → W6 gates, catatan kerja gitignored).
 
 | Field       | Nilai                                           |
 | ----------- | ----------------------------------------------- |
@@ -248,8 +247,7 @@ Sketsa struktur (ID token ilustratif — BUKAN nilai golden; lihat aturan di ata
       "id": "prompt1",
       "text": "What is the capital of France?",
       "tokens": [
-        1234, 5678, 9012, 3456, 7890, 2345, 6789, 123, 4567, 8901, 2345, 6789, 123, 4567, 8901,
-        2345
+        1234, 5678, 9012, 3456, 7890, 2345, 6789, 123, 4567, 8901, 2345, 6789, 123, 4567, 8901, 2345
       ]
     },
     {
@@ -337,15 +335,15 @@ Untuk setiap prompt:
 
 ### Error Types
 
-| Error Code             | Stage         | Description                              | Exit Code |
-| ---------------------- | ------------- | ---------------------------------------- | --------- |
-| `M4_ERR_INPUT`         | input         | Input tidak valid: token out of vocab/kosong/melebihi `MAX_TOKENS`/`MAX_TOKENS_FILE_BYTES`, workdir tak writable, atau output escape dari workdir | 1 |
-| `M4_ERR_INDEX`         | index_load    | F15 validation gagal                     | 2         |
-| `M4_ERR_MEMORY`        | input / embedding / layer_forward / final_norm / output | Alokasi checked gagal di titik mana pun (lihat Situs alokasi) | 3 |
-| `M4_ERR_SHARD_IO`      | layer_forward | Shard corrupt / read gagal               | 4         |
-| `M4_ERR_LAYER_FORWARD` | layer_forward | NaN/INF/overflow di layer forward        | 5         |
-| `M4_ERR_OUTPUT`        | final_norm    | Gagal atomic write logits                | 6         |
-| `M4_ERR_COMPARE`       | compare       | Rust compare gagal (mis. file corrupt)   | 7         |
+| Error Code             | Stage                                                   | Description                                                                                                                                       | Exit Code |
+| ---------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| `M4_ERR_INPUT`         | input                                                   | Input tidak valid: token out of vocab/kosong/melebihi `MAX_TOKENS`/`MAX_TOKENS_FILE_BYTES`, workdir tak writable, atau output escape dari workdir | 1         |
+| `M4_ERR_INDEX`         | index_load                                              | F15 validation gagal                                                                                                                              | 2         |
+| `M4_ERR_MEMORY`        | input / embedding / layer_forward / final_norm / output | Alokasi checked gagal di titik mana pun (lihat Situs alokasi)                                                                                     | 3         |
+| `M4_ERR_SHARD_IO`      | layer_forward                                           | Shard corrupt / read gagal                                                                                                                        | 4         |
+| `M4_ERR_LAYER_FORWARD` | layer_forward                                           | NaN/INF/overflow di layer forward                                                                                                                 | 5         |
+| `M4_ERR_OUTPUT`        | final_norm                                              | Gagal atomic write logits                                                                                                                         | 6         |
+| `M4_ERR_COMPARE`       | compare                                                 | Rust compare gagal (mis. file corrupt)                                                                                                            | 7         |
 
 ### Stage Failure Behavior
 
@@ -360,7 +358,7 @@ Untuk setiap prompt:
 **Situs alokasi (semua wajib checked/fallible — kegagalan → exit 3, bukan crash):**
 buffer parse tokens, embedding lookup, pread buffer weights per layer, dequant chunk,
 scratch attention, scratch MoE, temporaries norm, buffer logits, temp atomic-write.
-Batas jujur: exit 3 hanya mencakup kegagalan *checked*; cgroup OOM-kill (SIGKILL kernel)
+Batas jujur: exit 3 hanya mencakup kegagalan _checked_; cgroup OOM-kill (SIGKILL kernel)
 berada di luar kontrak — pertahanannya adalah Batas input + bound memori § sehingga
 run dalam-kontrak tidak pernah menyentuh killer. VmHWM/cgroup adalah backstop
 pengukuran, bukan mekanisme error.
@@ -394,18 +392,18 @@ Gate: $s = 16$, $H = 2048$, MHA 16 head ($d_h = 128$), 60 routed top-4
 ($I = 1408$), shared ($I_{sh} = 5632$). Komputasi fp32 per ADR D3
 (scratch 4 B/elemen); bobot di disk/buffer BF16 (2 B/elemen).
 
-| Component                        | Size (s=16)                  | Lifetime        |
-| -------------------------------- | ---------------------------- | --------------- |
-| Embedding + lm_head resident F32 | 2 × 151936 × 2048 × 4 B = 2,318 GiB | Seluruh forward |
-| `model.norm.weight` F32          | 2048 × 4 B = 8 KiB           | Seluruh forward |
-| Hidden state [s, H] F32          | 16 × 2048 × 4 B = 128 KiB    | Seluruh forward |
-| Logits [s, V] F32                | 16 × 151936 × 4 B = 9,27 MiB | Ekor forward    |
-| Per-layer weights (BF16)         | 1.141.121.024 B ≈ 1,063 GiB  | 1 layer saja    |
-| Dequant scratch (chunked ≤64 MiB, strategi M1) | ≤ 64 MiB bound | 1 layer |
-| Attention scratch F32 (QKV/scores/out, § alokasi) | 802.816 B = 784 KiB | 1 layer, fase attn |
-| MoE scratch F32 (router/dispatch/SwiGLU/combine/shared, § alokasi) | 1.880.320 B ≈ 1,79 MiB | 1 layer, fase MoE |
-| I/O buffers                      | 1 MiB                        | 1 layer         |
-| **Total peak bound**             | **≈ 3,46 GiB**               | < 5 GiB gate (margin ≈ 1,5 GiB) |
+| Component                                                          | Size (s=16)                         | Lifetime                        |
+| ------------------------------------------------------------------ | ----------------------------------- | ------------------------------- |
+| Embedding + lm_head resident F32                                   | 2 × 151936 × 2048 × 4 B = 2,318 GiB | Seluruh forward                 |
+| `model.norm.weight` F32                                            | 2048 × 4 B = 8 KiB                  | Seluruh forward                 |
+| Hidden state [s, H] F32                                            | 16 × 2048 × 4 B = 128 KiB           | Seluruh forward                 |
+| Logits [s, V] F32                                                  | 16 × 151936 × 4 B = 9,27 MiB        | Ekor forward                    |
+| Per-layer weights (BF16)                                           | 1.141.121.024 B ≈ 1,063 GiB         | 1 layer saja                    |
+| Dequant scratch (chunked ≤64 MiB, strategi M1)                     | ≤ 64 MiB bound                      | 1 layer                         |
+| Attention scratch F32 (QKV/scores/out, § alokasi)                  | 802.816 B = 784 KiB                 | 1 layer, fase attn              |
+| MoE scratch F32 (router/dispatch/SwiGLU/combine/shared, § alokasi) | 1.880.320 B ≈ 1,79 MiB              | 1 layer, fase MoE               |
+| I/O buffers                                                        | 1 MiB                               | 1 layer                         |
+| **Total peak bound**                                               | **≈ 3,46 GiB**                      | < 5 GiB gate (margin ≈ 1,5 GiB) |
 
 Peak $= W_{res} + W_{layer} + \max(\text{attn}, \text{moe}) + \text{dequant} + \text{logits} + \text{io}$.
 Cross-check: $24 \times W_{layer} +$ resident BF16 embed/head $+ \gamma = 28.631.568.384$ B
@@ -520,10 +518,10 @@ Propagasi error: bila tiap layer ≤ δ, bound kasar $\varepsilon_{full} \lesssi
 
 ## Gate
 
-| Gate   | Kriteria              | Threshold                                                                                                                    | Metode            |
-| ------ | --------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------- |
-| G-M4-1 | MATCH loose           | $\Delta_{max} \le 10^{-2} \wedge \varepsilon_{rel} \le 10^{-4} \wedge \mathbb{A} \ge 99{,}9\% \wedge \Delta_{CE} \le 0{,}02$ | 5 prompt × 16 tok |
-| G-M4-2 | memori & waktu sanity | $M_{peak} \le 5$ GiB (VmHWM) $\wedge$ `oom_kill` $= 0$; selesai ≤ 5 mnt (NVMe) | VmHWM + memory.events + timer (memory.peak observability) |
+| Gate   | Kriteria              | Threshold                                                                                                                    | Metode                                                    |
+| ------ | --------------------- | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| G-M4-1 | MATCH loose           | $\Delta_{max} \le 10^{-2} \wedge \varepsilon_{rel} \le 10^{-4} \wedge \mathbb{A} \ge 99{,}9\% \wedge \Delta_{CE} \le 0{,}02$ | 5 prompt × 16 tok                                         |
+| G-M4-2 | memori & waktu sanity | $M_{peak} \le 5$ GiB (VmHWM) $\wedge$ `oom_kill` $= 0$; selesai ≤ 5 mnt (NVMe)                                               | VmHWM + memory.events + timer (memory.peak observability) |
 
 Loose diizinkan hanya di M4 (akumulasi urutan penjumlahan fp32). Kategori `numeric-order` (beda kecil merata) wajar; kategori `router-selection`/`rope-style`/`bias-placement` tetap FAIL keras.
 
@@ -548,22 +546,22 @@ wajib **A → N → S** dengan short-circuit: verdict awal yang FAIL menghentika
 penilaian (kategori hard-fail tidak pernah "tertutup" metrik agregat —
 operasionalisasi dari aturan keras `03-testing.md` §4.3).
 
-| Verdict | Nama | Input | Kriteria PASS | Sifat |
-|---|---|---|---|---|
-| F10-A | architecture | logits FP32 + routing dumps (bila ada) + pita Δ | Bebas kategori hard-fail (tabel di bawah) | short-circuit pertama |
-| F10-N | numeric | logits FP32 vs FP32 | 4 threshold loose G-M4-1 | hanya dinilai bila A PASS |
-| F10-S | serialization | round-trip FP32→BF16→FP32 | toleransi § Logits File Format (bukan F10) | hanya artifact, bukan gate |
+| Verdict | Nama          | Input                                           | Kriteria PASS                              | Sifat                      |
+| ------- | ------------- | ----------------------------------------------- | ------------------------------------------ | -------------------------- |
+| F10-A   | architecture  | logits FP32 + routing dumps (bila ada) + pita Δ | Bebas kategori hard-fail (tabel di bawah)  | short-circuit pertama      |
+| F10-N   | numeric       | logits FP32 vs FP32                             | 4 threshold loose G-M4-1                   | hanya dinilai bila A PASS  |
+| F10-S   | serialization | round-trip FP32→BF16→FP32                       | toleransi § Logits File Format (bukan F10) | hanya artifact, bukan gate |
 
 **Kategori hard-fail F10-A** (FAIL verdict A + keseluruhan, apapun nilai Δ/ε):
 
-| Kategori | Sinyal bukti | Mekanisme bukti |
-|---|---|---|
-| `router-selection` | SET top-4 per token per layer ≠ oracle | Tier-1 definitif: kesetaraan SET pada routing dumps (§ Fixture/CLI `--dump-routing`); compare flag `--oracle-routing`/`--cand-routing` (order-insensitive). Tanpa dump: Tier-2 screening via pita Δ + argmax (dugaan saja → wajib re-run dengan dump) |
-| `rope-style` | $0{,}05 \le \Delta_{max} \le 0{,}25$ stabil lintas prompt | pita Δ (M2) + diagnosis `rotate_half` vs interleaved |
-| `bias-placement` | $0{,}25 < \Delta_{max} \le 1{,}0$ acak | pita Δ (M2) + audit 72 bias q/k/v |
-| `dtype-layout` alias `tensor-mapping` | $\Delta_{max} > 1{,}0 \vee \cos\theta < 0{,}90$ | pita Δ + audit stride/transpos/mapping |
-| `argmax-mismatch` | $\mathbb{A} < 99{,}9\%$ | hitung langsung (bagian gate N, diklasifikasikan di sini agar terlihat) |
-| `numeric-order` | di bawah semua pita di atas | satu-satunya kategori yang boleh lolos via threshold loose |
+| Kategori                              | Sinyal bukti                                              | Mekanisme bukti                                                                                                                                                                                                                                       |
+| ------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `router-selection`                    | SET top-4 per token per layer ≠ oracle                    | Tier-1 definitif: kesetaraan SET pada routing dumps (§ Fixture/CLI `--dump-routing`); compare flag `--oracle-routing`/`--cand-routing` (order-insensitive). Tanpa dump: Tier-2 screening via pita Δ + argmax (dugaan saja → wajib re-run dengan dump) |
+| `rope-style`                          | $0{,}05 \le \Delta_{max} \le 0{,}25$ stabil lintas prompt | pita Δ (M2) + diagnosis `rotate_half` vs interleaved                                                                                                                                                                                                  |
+| `bias-placement`                      | $0{,}25 < \Delta_{max} \le 1{,}0$ acak                    | pita Δ (M2) + audit 72 bias q/k/v                                                                                                                                                                                                                     |
+| `dtype-layout` alias `tensor-mapping` | $\Delta_{max} > 1{,}0 \vee \cos\theta < 0{,}90$           | pita Δ + audit stride/transpos/mapping                                                                                                                                                                                                                |
+| `argmax-mismatch`                     | $\mathbb{A} < 99{,}9\%$                                   | hitung langsung (bagian gate N, diklasifikasikan di sini agar terlihat)                                                                                                                                                                               |
+| `numeric-order`                       | di bawah semua pita di atas                               | satu-satunya kategori yang boleh lolos via threshold loose                                                                                                                                                                                            |
 
 Pita Δ dihitung Rust `compare` untuk gate G-M4-1/G-M5-1 (bukan hanya M2/M3) —
 mekanisme pembuktian ini executable, bukan prosa.
@@ -579,21 +577,21 @@ mekanisme pembuktian ini executable, bukan prosa.
 
 ### Test Matrix
 
-| Test ID  | Scenario                         | Expected                      | Priority |
-| -------- | -------------------------------- | ----------------------------- | -------- |
-| IT-M4-1  | Happy path: 5 prompt × 16 token  | Exit 0, F10 PASS loose        | HIGH     |
-| IT-M4-2  | Missing shard file               | Exit 4, error M4_ERR_SHARD_IO | HIGH     |
-| IT-M4-3  | Corrupt shard header (F15 fail)  | Exit 2, error M4_ERR_INDEX    | HIGH     |
-| IT-M4-4  | Invalid tokens (out of vocab)    | Exit 1, error M4_ERR_INPUT    | HIGH     |
-| IT-M4-5  | Empty tokens array               | Exit 1, error M4_ERR_INPUT    | HIGH     |
-| IT-M4-6  | Cgroup memory.max=6G boundary    | Exit 0, cgroup.peak tercatat, oom_kill == 0, VmHWM ≤ 5 GiB | HIGH     |
-| IT-M4-7  | Deterministic output (threads=1) | SHA-256 match di 2 run        | MEDIUM   |
-| IT-M4-8  | Workdir not writable             | Exit 1, error M4_ERR_INPUT    | MEDIUM   |
-| IT-M4-9  | Model dir not readable           | Exit 1, error M4_ERR_INPUT    | MEDIUM   |
-| IT-M4-10 | Layer buffer release test        | VmHWM ≤ 5 GiB, oom_kill == 0, no leak | MEDIUM   |
-| IT-M4-11 | Output escape (`..`/absolut di luar workdir, termasuk via symlink) | Exit 1, error M4_ERR_INPUT, tidak ada file tertulis | HIGH |
-| IT-M4-12 | Tokens melebihi batas (count > 1024 atau file > 1 MiB) | Exit 1, error M4_ERR_INPUT, tidak ada output, sebelum alokasi besar | HIGH |
-| IT-M4-13 | Isolasi cleanup (2 run berbagi workdir, run-id beda) | Kedua output selamat, tidak ada orphan tmp milik run lain | MEDIUM |
+| Test ID  | Scenario                                                           | Expected                                                            | Priority |
+| -------- | ------------------------------------------------------------------ | ------------------------------------------------------------------- | -------- |
+| IT-M4-1  | Happy path: 5 prompt × 16 token                                    | Exit 0, F10 PASS loose                                              | HIGH     |
+| IT-M4-2  | Missing shard file                                                 | Exit 4, error M4_ERR_SHARD_IO                                       | HIGH     |
+| IT-M4-3  | Corrupt shard header (F15 fail)                                    | Exit 2, error M4_ERR_INDEX                                          | HIGH     |
+| IT-M4-4  | Invalid tokens (out of vocab)                                      | Exit 1, error M4_ERR_INPUT                                          | HIGH     |
+| IT-M4-5  | Empty tokens array                                                 | Exit 1, error M4_ERR_INPUT                                          | HIGH     |
+| IT-M4-6  | Cgroup memory.max=6G boundary                                      | Exit 0, cgroup.peak tercatat, oom_kill == 0, VmHWM ≤ 5 GiB          | HIGH     |
+| IT-M4-7  | Deterministic output (threads=1)                                   | SHA-256 match di 2 run                                              | MEDIUM   |
+| IT-M4-8  | Workdir not writable                                               | Exit 1, error M4_ERR_INPUT                                          | MEDIUM   |
+| IT-M4-9  | Model dir not readable                                             | Exit 1, error M4_ERR_INPUT                                          | MEDIUM   |
+| IT-M4-10 | Layer buffer release test                                          | VmHWM ≤ 5 GiB, oom_kill == 0, no leak                               | MEDIUM   |
+| IT-M4-11 | Output escape (`..`/absolut di luar workdir, termasuk via symlink) | Exit 1, error M4_ERR_INPUT, tidak ada file tertulis                 | HIGH     |
+| IT-M4-12 | Tokens melebihi batas (count > 1024 atau file > 1 MiB)             | Exit 1, error M4_ERR_INPUT, tidak ada output, sebelum alokasi besar | HIGH     |
+| IT-M4-13 | Isolasi cleanup (2 run berbagi workdir, run-id beda)               | Kedua output selamat, tidak ada orphan tmp milik run lain           | MEDIUM   |
 
 ### Test Automation
 
@@ -756,35 +754,35 @@ Gate $s = 16$. Bobot BF16 (buffer pread), scratch F32 (komputasi D3).
 
 **Bobot per layer (total 1.141.121.024 B ≈ 1,063 GiB):**
 
-| Buffer           | Shape            | Type | Bytes        | Lifetime     |
-| ---------------- | ---------------- | ---- | ------------ | ------------ |
+| Buffer           | Shape                                           | Type | Bytes             | Lifetime     |
+| ---------------- | ----------------------------------------------- | ---- | ----------------- | ------------ |
 | `weights_attn`   | [4×H×H] + [3×H] bias (q/k/v saja, tanpa o-bias) | BF16 | 32,0 MiB + 12 KiB | Layer l only |
-| `weights_router` | [E×H] + [1×H] shared gate | BF16 | 240 KiB + 4 KiB | Layer l only |
-| `weights_moe`    | [60×3×I×H]       | BF16 | 990,0 MiB    | Layer l only |
-| `weights_shared` | [3×I_sh×H]       | BF16 | 66,0 MiB     | Layer l only |
-| `weights_norm`   | [2×H]            | BF16 | 8 KiB        | Layer l only |
+| `weights_router` | [E×H] + [1×H] shared gate                       | BF16 | 240 KiB + 4 KiB   | Layer l only |
+| `weights_moe`    | [60×3×I×H]                                      | BF16 | 990,0 MiB         | Layer l only |
+| `weights_shared` | [3×I_sh×H]                                      | BF16 | 66,0 MiB          | Layer l only |
+| `weights_norm`   | [2×H]                                           | BF16 | 8 KiB             | Layer l only |
 
 **Scratch attention, fase M2 (total 802.816 B = 784 KiB):**
 
-| Buffer          | Shape              | Type | Bytes   | Catatan                              |
-| --------------- | ------------------ | ---- | ------- | ------------------------------------ |
-| `norm_hidden`   | [s, H]             | F32  | 128 KiB | output RMSNorm input                 |
-| `Q`, `K`, `V`   | 3 × [s, H]         | F32  | 384 KiB | QKV + bias; K/V dibuang (belum M5)   |
-| `scores`        | [h, s, s] = [16,16,16] | F32 | 16 KiB | softmax **in-place** (probs reuse) |
-| `attn_out`, `o_out` | 2 × [s, H]     | F32  | 256 KiB | concat head + o_proj (tanpa bias)          |
+| Buffer              | Shape                  | Type | Bytes   | Catatan                            |
+| ------------------- | ---------------------- | ---- | ------- | ---------------------------------- |
+| `norm_hidden`       | [s, H]                 | F32  | 128 KiB | output RMSNorm input               |
+| `Q`, `K`, `V`       | 3 × [s, H]             | F32  | 384 KiB | QKV + bias; K/V dibuang (belum M5) |
+| `scores`            | [h, s, s] = [16,16,16] | F32  | 16 KiB  | softmax **in-place** (probs reuse) |
+| `attn_out`, `o_out` | 2 × [s, H]             | F32  | 256 KiB | concat head + o_proj (tanpa bias)  |
 
 **Scratch MoE, fase M3 (total 1.880.320 B ≈ 1,79 MiB):**
 
-| Buffer              | Shape              | Type | Bytes    | Catatan                                |
-| ------------------- | ------------------ | ---- | -------- | -------------------------------------- |
-| `norm_hidden_moe`   | [s, H]             | F32  | 128 KiB  | reuse buffer `norm_hidden`             |
-| `router_logits`     | [s, E] = [16,60]   | F32  | 3,8 KiB  | softmax in-place (probs reuse)         |
-| `topk_idx`, `topk_w`| [s,4] + [s,4]     | I32+F32 | 0,5 KiB | indices + bobot top-4               |
-| `dispatch`          | [s, H]             | F32  | 128 KiB  | gather sekuensial per expert; bound = semua token → 1 expert |
-| `expert_gate/up/act`| 3 × [s, I]        | F32  | 264 KiB  | SwiGLU 1 expert dalam satu waktu       |
-| `expert_down`       | [s, H]             | F32  | 128 KiB  | output down-projection                 |
-| `moe_combine`       | [s, H]             | F32  | 128 KiB  | akumulasi combine top-4                |
-| `shared_gate/up/act`| 3 × [s, I_sh]     | F32  | 1056 KiB | SwiGLU shared expert                   |
+| Buffer               | Shape            | Type    | Bytes    | Catatan                                                      |
+| -------------------- | ---------------- | ------- | -------- | ------------------------------------------------------------ |
+| `norm_hidden_moe`    | [s, H]           | F32     | 128 KiB  | reuse buffer `norm_hidden`                                   |
+| `router_logits`      | [s, E] = [16,60] | F32     | 3,8 KiB  | softmax in-place (probs reuse)                               |
+| `topk_idx`, `topk_w` | [s,4] + [s,4]    | I32+F32 | 0,5 KiB  | indices + bobot top-4                                        |
+| `dispatch`           | [s, H]           | F32     | 128 KiB  | gather sekuensial per expert; bound = semua token → 1 expert |
+| `expert_gate/up/act` | 3 × [s, I]       | F32     | 264 KiB  | SwiGLU 1 expert dalam satu waktu                             |
+| `expert_down`        | [s, H]           | F32     | 128 KiB  | output down-projection                                       |
+| `moe_combine`        | [s, H]           | F32     | 128 KiB  | akumulasi combine top-4                                      |
+| `shared_gate/up/act` | 3 × [s, I_sh]    | F32     | 1056 KiB | SwiGLU shared expert                                         |
 
 Shared-down mengakumulasi langsung ke `moe_combine` (0 buffer tambahan).
 Koreksi terhadap versi lama: `4 × 1408 × 2 B = 11 KB` salah — hilang faktor
@@ -987,11 +985,11 @@ def read_bf16_logits(path: str, num_tokens: int, vocab_size: int = 151936):
     return (u16.astype(np.uint32) << 16).view(np.float32).reshape(num_tokens, vocab_size)
 ```
 
-  Prinsip bit: `[sign | exponent | 7-bit fraction]` → `[sign | exponent |
-  7-bit fraction + 16-bit zero padding]`. Untuk *encode* FP32→BF16 gunakan
-  `torch.bfloat16` / `ml_dtypes.bfloat16` (round-to-nearest-even), bukan truncasi
-  manual. Prosedur ini di luar Rust `compare` saat ini (hanya membaca f32);
-  gunakan skrip Python di atas hingga ada subcommand khusus.
+Prinsip bit: `[sign | exponent | 7-bit fraction]` → `[sign | exponent |
+  7-bit fraction + 16-bit zero padding]`. Untuk _encode_ FP32→BF16 gunakan
+`torch.bfloat16` / `ml_dtypes.bfloat16` (round-to-nearest-even), bukan truncasi
+manual. Prosedur ini di luar Rust `compare` saat ini (hanya membaca f32);
+gunakan skrip Python di atas hingga ada subcommand khusus.
 
 ## Layer-wise Timing Breakdown
 
@@ -1092,19 +1090,18 @@ pread 28 GB ia wajar melampaui VmHWM (dan `max`/throttling di `memory.events`
 adalah reclaim normal, bukan kegagalan). Meng-gate `memory.peak` ≤ 5 GiB akan
 FAIL spuriously; ia dicatat sebagai observability. Bound memori § dihitung atas
 alokasi anonim (= RSS), sehingga VmHWM adalah cermin yang tepat. M7 (O_DIRECT,
-bypass cache) meninjau ulang keputusan ini.
-5. **Statistik**: report p50/p95 (headroom per [R19] Tail at Scale 2013, ε=5%).
+bypass cache) meninjau ulang keputusan ini. 5. **Statistik**: report p50/p95 (headroom per [R19] Tail at Scale 2013, ε=5%).
 
 ### Expected Values (NVMe, entry-tier)
 
-| Metric                  | Target  | Unit |
-| ----------------------- | ------- | ---- |
-| Walltime (p50)          | ≤ 300   | s    |
-| Walltime (p95)          | ≤ 330   | s    |
-| VmHWM (p50)             | ≤ 5     | GiB  |
-| cgroup oom_kill         | == 0    | semua run |
-| Logical bytes read (per prompt) | ≈ 28,63 | GB |
-| BW effective (p50, logical/layer_forward) | ≥ 10 | GB/s |
+| Metric                                    | Target  | Unit      |
+| ----------------------------------------- | ------- | --------- |
+| Walltime (p50)                            | ≤ 300   | s         |
+| Walltime (p95)                            | ≤ 330   | s         |
+| VmHWM (p50)                               | ≤ 5     | GiB       |
+| cgroup oom_kill                           | == 0    | semua run |
+| Logical bytes read (per prompt)           | ≈ 28,63 | GB        |
+| BW effective (p50, logical/layer_forward) | ≥ 10    | GB/s      |
 
 ### F4/F5 Calibration
 

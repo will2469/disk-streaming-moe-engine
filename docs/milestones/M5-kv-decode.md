@@ -1,7 +1,6 @@
 # M5 — KV Cache + Decode Incremental
 
 > Proyek: `disk-streaming-moe-engine`. Fase: **Trial (rekayasa)**. Index: `../README.md`.
-> Implementasi dipecah menjadi waves: `../../scratch/wave/m5/README.md` (W1 decode-cli → W6 gates, catatan kerja gitignored).
 
 | Field       | Nilai                                                             |
 | ----------- | ----------------------------------------------------------------- |
@@ -290,14 +289,14 @@ Untuk G-M5-3 (memori @4K ctx), tambahkan variant:
 
 ### Error Types
 
-| Error Code            | Stage    | Description                              | Exit Code |
-| --------------------- | -------- | ---------------------------------------- | --------- |
-| `M5_ERR_INPUT`        | input    | Prompt kosong, max-tokens tidak valid    | 1         |
+| Error Code            | Stage    | Description                                   | Exit Code |
+| --------------------- | -------- | --------------------------------------------- | --------- |
+| `M5_ERR_INPUT`        | input    | Prompt kosong, max-tokens tidak valid         | 1         |
 | `M5_ERR_CONTEXT_SIZE` | kv_alloc | `S + N > ctx` atau ctx > s_max (rantai bound) | 2         |
-| `M5_ERR_KV_ALLOC`     | kv_alloc | Gagal alokasi KV cache (OOM)             | 3         |
-| `M5_ERR_PREFILL`      | prefill  | Shard corrupt / read gagal               | 4         |
-| `M5_ERR_DECODE`       | decode   | NaN/INF/overflow di layer forward        | 5         |
-| `M5_ERR_OUTPUT`       | output   | Gagal atomic write tokens                | 6         |
+| `M5_ERR_KV_ALLOC`     | kv_alloc | Gagal alokasi KV cache (OOM)                  | 3         |
+| `M5_ERR_PREFILL`      | prefill  | Shard corrupt / read gagal                    | 4         |
+| `M5_ERR_DECODE`       | decode   | NaN/INF/overflow di layer forward             | 5         |
+| `M5_ERR_OUTPUT`       | output   | Gagal atomic write tokens                     | 6         |
 
 ### Stage Failure Behavior
 
@@ -336,31 +335,31 @@ Trial MHA — asumsi formal terkunci (input rumus, bukan hasil sulap):
 
 ### Memory Budget Breakdown
 
-| Component                        | Size @2K ctx | Size @4K ctx | Lifetime       |
-| -------------------------------- | ------------ | ------------ | -------------- |
-| Embedding + lm_head resident F32 | 2,318 GiB    | 2,318 GiB    | Seluruh decode |
-| `model.norm.weight` F32          | 8 KiB        | 8 KiB        | Seluruh decode |
-| KV cache (K+V, BF16 stored)      | 384 MB       | 768 MB       | Seluruh decode |
-| Per-layer weights (BF16)         | ≈1,063 GiB   | ≈1,063 GiB   | 1 layer saja   |
-| Dequant scratch (chunked ≤64 MiB, strategi M1) | ≤64 MiB bound | ≤64 MiB bound | 1 layer |
-| Hidden state [1, H] F32          | 8 KiB        | 8 KiB        | Seluruh decode |
-| Attention scratch F32 (QKV new + scores [h,1,S] + out) | 168 KiB | 296 KiB | 1 layer |
-| MoE scratch F32 (router/dispatch/SwiGLU/combine/shared) | 115 KiB | 115 KiB | 1 layer |
-| I/O buffers                      | 1 MB         | 1 MB         | 1 layer        |
-| **$M_{tensor}$ @2K (accounted tensor peak)** | **≈3,82 GiB** | - | terhitung, bukan process bound |
-| **$M_{tensor}$ @4K (accounted tensor peak)** | - | **≈4,20 GiB** | terhitung, bukan process bound |
+| Component                                               | Size @2K ctx  | Size @4K ctx  | Lifetime                       |
+| ------------------------------------------------------- | ------------- | ------------- | ------------------------------ |
+| Embedding + lm_head resident F32                        | 2,318 GiB     | 2,318 GiB     | Seluruh decode                 |
+| `model.norm.weight` F32                                 | 8 KiB         | 8 KiB         | Seluruh decode                 |
+| KV cache (K+V, BF16 stored)                             | 384 MB        | 768 MB        | Seluruh decode                 |
+| Per-layer weights (BF16)                                | ≈1,063 GiB    | ≈1,063 GiB    | 1 layer saja                   |
+| Dequant scratch (chunked ≤64 MiB, strategi M1)          | ≤64 MiB bound | ≤64 MiB bound | 1 layer                        |
+| Hidden state [1, H] F32                                 | 8 KiB         | 8 KiB         | Seluruh decode                 |
+| Attention scratch F32 (QKV new + scores [h,1,S] + out)  | 168 KiB       | 296 KiB       | 1 layer                        |
+| MoE scratch F32 (router/dispatch/SwiGLU/combine/shared) | 115 KiB       | 115 KiB       | 1 layer                        |
+| I/O buffers                                             | 1 MB          | 1 MB          | 1 layer                        |
+| **$M_{tensor}$ @2K (accounted tensor peak)**            | **≈3,82 GiB** | -             | terhitung, bukan process bound |
+| **$M_{tensor}$ @4K (accounted tensor peak)**            | -             | **≈4,20 GiB** | terhitung, bukan process bound |
 
 **Dekomposisi $M_{peak}$ (normatif):** tabel di atas adalah $M_{tensor}$ —
 penjumlahan komponen bernama yang overlap — BUKAN upper bound proses. Bound proses:
 
 $$M_{peak\_bound} = M_{tensor} + M_{runtime} + M_{alloc} \le 5\ \text{GiB}, \qquad M_{peak\_observed} = \text{VmHWM}$$
 
-| Komponen | Isi | Allowance @4K | Cara verifikasi |
-|---|---|---|---|
-| $M_{tensor}$ | semua baris tabel (tensor + scratch + io explisit) | 4,20 GiB (terhitung) | aritmetika § ini |
-| $M_{runtime}$ | tokenizer + JSON buffers + logits transient [1,V] + thread stacks (@threads=1 gate) + tensor metadata + overhead runtime | ≤ 150 MiB | diukur-dicatatkan per laporan; tembus → naikkan allowance via rationale, bukan diam-diam |
-| $M_{alloc}$ | fragmentasi + metadata allocator (I/O path = pread, tanpa mmap; readahead hanya memengaruhi physical, bukan RSS) | ≤ 150 MiB (~3,5%) | tidak langsung; terverifikasi via selisih observed-vs-bound |
-| $M_{page\_cache}$ | file/page cache ter-charge cgroup | observability SAJA (`memory.stat`/VmHWM-eksklusif: RSS tidak mencakup page cache hasil `read()`) | dilaporkan, tidak di-gate (konsisten keputusan M4) |
+| Komponen          | Isi                                                                                                                      | Allowance @4K                                                                                    | Cara verifikasi                                                                          |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| $M_{tensor}$      | semua baris tabel (tensor + scratch + io explisit)                                                                       | 4,20 GiB (terhitung)                                                                             | aritmetika § ini                                                                         |
+| $M_{runtime}$     | tokenizer + JSON buffers + logits transient [1,V] + thread stacks (@threads=1 gate) + tensor metadata + overhead runtime | ≤ 150 MiB                                                                                        | diukur-dicatatkan per laporan; tembus → naikkan allowance via rationale, bukan diam-diam |
+| $M_{alloc}$       | fragmentasi + metadata allocator (I/O path = pread, tanpa mmap; readahead hanya memengaruhi physical, bukan RSS)         | ≤ 150 MiB (~3,5%)                                                                                | tidak langsung; terverifikasi via selisih observed-vs-bound                              |
+| $M_{page\_cache}$ | file/page cache ter-charge cgroup                                                                                        | observability SAJA (`memory.stat`/VmHWM-eksklusif: RSS tidak mencakup page cache hasil `read()`) | dilaporkan, tidak di-gate (konsisten keputusan M4)                                       |
 
 Bound @4K: $4{,}20 + 0{,}15 + 0{,}15 = 4{,}50$ GiB → margin eksplisit tak-teralokasi
 $0{,}50$ GiB ke gate 5 GiB. Gigi pengaman: $M_{peak\_observed} \le 5$ GiB WAJIB, dan
@@ -384,10 +383,12 @@ Notasi: $S$ = panjang prompt, $i = 0..N-1$ = iterasi decode, $p$ = posisi sekuen
 $g$ = jumlah token ter-generate sejauh ini.
 
 Prefill:
+
 - Input = prompt$[0:S]$; forward semua posisi; cache K/V untuk posisi $[0, S)$.
 - `next_logits` = logits pada posisi $S-1$.
 
 Decode step $i$:
+
 - `next_token = sample(next_logits)`; `generated[i] = next_token`.
 - Input = `next_token` pada posisi $p = S + i$ (SATU token, bukan ulang prompt).
 - Forward satu token di $p$; append K/V di $p$; `next_logits` = logits di $p$.
@@ -538,14 +539,14 @@ F4: $I_{decode}≈1$ FLOP/byte (self-canceling) → memory-bound; optimasi = kur
 
 ## Gate
 
-| Gate   | Kriteria                                         | Threshold                                                                                                               | Metode                                                                       |
-| ------ | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| G-M5-1 | decode incremental == recompute                  | F10 A→N→S loose (SHA bukan bukti — lihat Pembedaan di bawah)                                                        | 64 token @ ctx 2K                                                            |
-| G-M5-2 | prediksi F2 vs ukur                              | $e_{KV} \le 5\%$                                                                                                        | log engine + sampler                                                         |
-| G-M5-3 | memori @4K ctx                                   | $M_{peak} \le 5$ GiB (bound 4,50 GiB: tensor 4,20 + runtime/alloc 0,30)                                                | VmHWM + dekomposisi $M_{peak}$                                               |
-| G-M5-4 | kalibrasi waktu F5                               | $e_T \le 30\%$                                                                                                          | 30 run (`../03-testing.md` §4.4)                                             |
+| Gate   | Kriteria                                         | Threshold                                                                                                                                                                                                                                                                                                                 | Metode                                                                                                         |
+| ------ | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| G-M5-1 | decode incremental == recompute                  | F10 A→N→S loose (SHA bukan bukti — lihat Pembedaan di bawah)                                                                                                                                                                                                                                                              | 64 token @ ctx 2K                                                                                              |
+| G-M5-2 | prediksi F2 vs ukur                              | $e_{KV} \le 5\%$                                                                                                                                                                                                                                                                                                          | log engine + sampler                                                                                           |
+| G-M5-3 | memori @4K ctx                                   | $M_{peak} \le 5$ GiB (bound 4,50 GiB: tensor 4,20 + runtime/alloc 0,30)                                                                                                                                                                                                                                                   | VmHWM + dekomposisi $M_{peak}$                                                                                 |
+| G-M5-4 | kalibrasi waktu F5                               | $e_T \le 30\%$                                                                                                                                                                                                                                                                                                            | 30 run (`../03-testing.md` §4.4)                                                                               |
 | G-M5-5 | kurva skala core decode (rasio, device-agnostic) | (a) non-regression: monotonik ($T(c_2)\le T(c_1)\cdot1{,}05$) ∧ $S_{tok}(c)\ge1$ ∀c, dengan $S_{tok}(c) = T_{tok}(1)/T_{tok}(c)$; (b) F16-consistency: $e_{T,core}\le20\%$; (c) titik operasi $c^*$ = c terkecil dengan $T(c^*) \le 1{,}05 \times \min_c T(c)$, dilabeli `scales` vs `flat (memory-bound)` dari slope F16 | sweep $c\in\{1,2,4,\dots\}\cap[1,C_{max}]$, 10 run/level + 30 run di $c^*$; $c^*,r^*,p,\beta$ dilaporkan (F16) |
-| G-M5-6 | floor bandwidth RAM (gate minimal)               | $BW_{RAM}\ge10$ GB/s single-thread Copy read-equiv                                                                      | STREAM-like (`../03-testing.md` §4.4), median 10 run, governor `performance` |
+| G-M5-6 | floor bandwidth RAM (gate minimal)               | $BW_{RAM}\ge10$ GB/s single-thread Copy read-equiv                                                                                                                                                                                                                                                                        | STREAM-like (`../03-testing.md` §4.4), median 10 run, governor `performance`                                   |
 
 Kalibrasi: $e_{KV}=|pred-meas|/meas$, $e_T=|T^{pred}_{v1}-T^{meas}|/T^{meas}$ (terhadap prediksi
 v1 FROZEN, bukan v0). Meleset v0 = ekspektasi berlabel-asumsi, wajib catat + fit + freeze
@@ -568,19 +569,19 @@ menjaga regresi dan kejujuran model, (c) menjaga ekonomi core.
 
 ### Test Matrix
 
-| Test ID  | Scenario                                  | Expected                          | Priority |
-| -------- | ----------------------------------------- | --------------------------------- | -------- |
-| IT-M5-1  | Happy path: 64 token @ ctx 2K             | Exit 0, F10 PASS loose            | HIGH     |
-| IT-M5-2  | KV decode vs recompute                    | Exit 0, F10 PASS loose            | HIGH     |
-| IT-M5-3  | Context size 4K                           | Exit 0, VmHWM ≤ 5 GiB             | HIGH     |
-| IT-M5-4  | Context size > s_max                      | Exit 2, error M5_ERR_CONTEXT_SIZE | HIGH     |
-| IT-M5-5  | KV alloc fail (OOM)                       | Exit 3, error M5_ERR_KV_ALLOC     | HIGH     |
-| IT-M5-6  | Invalid prompt (kosong)                   | Exit 1, error M5_ERR_INPUT        | HIGH     |
-| IT-M5-7  | Cgroup memory.max=6G boundary @4K ctx     | Exit 0, VmHWM ≤ 5 GiB             | HIGH     |
+| Test ID  | Scenario                                                                            | Expected                                           | Priority |
+| -------- | ----------------------------------------------------------------------------------- | -------------------------------------------------- | -------- |
+| IT-M5-1  | Happy path: 64 token @ ctx 2K                                                       | Exit 0, F10 PASS loose                             | HIGH     |
+| IT-M5-2  | KV decode vs recompute                                                              | Exit 0, F10 PASS loose                             | HIGH     |
+| IT-M5-3  | Context size 4K                                                                     | Exit 0, VmHWM ≤ 5 GiB                              | HIGH     |
+| IT-M5-4  | Context size > s_max                                                                | Exit 2, error M5_ERR_CONTEXT_SIZE                  | HIGH     |
+| IT-M5-5  | KV alloc fail (OOM)                                                                 | Exit 3, error M5_ERR_KV_ALLOC                      | HIGH     |
+| IT-M5-6  | Invalid prompt (kosong)                                                             | Exit 1, error M5_ERR_INPUT                         | HIGH     |
+| IT-M5-7  | Cgroup memory.max=6G boundary @4K ctx                                               | Exit 0, VmHWM ≤ 5 GiB                              | HIGH     |
 | IT-M5-8  | Deterministic output = reproduksibilitas A SAJA (threads=1, greedy; seed diabaikan) | SHA-256 match di 2 run (bukan bukti ekuivalensi B) | MEDIUM   |
-| IT-M5-9  | Max-tokens = 0                            | Exit 1, error M5_ERR_INPUT        | MEDIUM   |
-| IT-M5-10 | Prefill shard corrupt                     | Exit 4, error M5_ERR_PREFILL      | MEDIUM   |
-| IT-M5-11 | Prompt+max overflow ctx (S+N > ctx)       | Exit 2, error M5_ERR_CONTEXT_SIZE | HIGH     |
+| IT-M5-9  | Max-tokens = 0                                                                      | Exit 1, error M5_ERR_INPUT                         | MEDIUM   |
+| IT-M5-10 | Prefill shard corrupt                                                               | Exit 4, error M5_ERR_PREFILL                       | MEDIUM   |
+| IT-M5-11 | Prompt+max overflow ctx (S+N > ctx)                                                 | Exit 2, error M5_ERR_CONTEXT_SIZE                  | HIGH     |
 
 ### Test Automation
 

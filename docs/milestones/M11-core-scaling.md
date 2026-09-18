@@ -1,7 +1,6 @@
 # M11 — Performance Scaling: Multi-Core CPU (F16), Disk I/O Streaming (F17/F18), & RAM Budgeting (F1–F3)
 
 > Proyek: `disk-streaming-moe-engine`. Fase: **Performance Scaling & Concurrency**. Index: `../README.md`.
-> Implementasi dipecah menjadi waves: `../../scratch/wave/m11/README.md` (W1 worker pool → W5 gates).
 > Landasan Ilmiah: Amdahl (1967) [R14], Gustafson (1988) [R15], Hill & Marty (2008) [R16], Roofline (2009) [R17], LLM Inference Unveiled (2024) [R18], Tail at Scale (2013) [R19], TaxBreak (2026) [R20], McCalpin STREAM (1995) [R21], LLM in a flash (2023) [R28], Fiddler (2024) [R29], Hennessy & Patterson (2017) [R30].
 
 | Field           | Nilai                                                                                                      |
