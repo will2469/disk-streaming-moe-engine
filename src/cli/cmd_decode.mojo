@@ -36,6 +36,11 @@ from cli.sys_utils import (
     path_is_within,
 )
 from core.config import LoadMemoryTelemetry, ModelConfig
+from core.prefix_cache import (
+    PrefixCache,
+    PrefixLookupResult,
+    compute_domain_key,
+)
 from core.topology import read_hardware_lock_c_star
 from core.f3b_f5 import F3bTraffic, F5Forecast
 from core.tensor_loader import ShardHeaderCache, _load_one_tensor_by_name
@@ -200,6 +205,10 @@ def cmd_decode(args: List[String]) raises:
     var readahead_policy_arg = String("")
     var mock_fallback = False
     var cache_stats_path = String("")
+    var prefix_cache_dir = String("")
+    var canonical_tokens_path = String("")
+    var domain_key_arg = String("")
+    var finish_reason_arg = String("stop")
 
     # 1. Parse argument
     var i = 2
@@ -249,6 +258,42 @@ def cmd_decode(args: List[String]) raises:
                     "missing argument for --save-session",
                 )
             save_session_path = String(args[i + 1])
+            i += 2
+        elif a == "--prefix-cache-dir" or a == "--session-cache":
+            if i + 1 >= len(args):
+                fail_m5(
+                    "M5_ERR_INPUT",
+                    "input",
+                    "missing argument for " + a,
+                )
+            prefix_cache_dir = String(args[i + 1])
+            i += 2
+        elif a == "--canonical-tokens":
+            if i + 1 >= len(args):
+                fail_m5(
+                    "M5_ERR_INPUT",
+                    "input",
+                    "missing argument for --canonical-tokens",
+                )
+            canonical_tokens_path = String(args[i + 1])
+            i += 2
+        elif a == "--domain-key":
+            if i + 1 >= len(args):
+                fail_m5(
+                    "M5_ERR_INPUT",
+                    "input",
+                    "missing argument for --domain-key",
+                )
+            domain_key_arg = String(args[i + 1])
+            i += 2
+        elif a == "--finish-reason":
+            if i + 1 >= len(args):
+                fail_m5(
+                    "M5_ERR_INPUT",
+                    "input",
+                    "missing argument for --finish-reason",
+                )
+            finish_reason_arg = String(args[i + 1])
             i += 2
         elif a == "--max-tokens":
             if i + 1 >= len(args):
@@ -711,6 +756,41 @@ def cmd_decode(args: List[String]) raises:
                 tmp_files=tmp_files,
             )
 
+    var cache_hit = False
+    var matched_prefix_tokens = 0
+    var delta_prefill_tokens = s_prompt
+    var p_cache = PrefixCache(capacity=8)
+    var d_key = String("")
+
+    if prefix_cache_dir.byte_length() > 0:
+        try:
+            p_cache.load_from_dir(prefix_cache_dir)
+        except:
+            pass
+        if domain_key_arg.byte_length() > 0:
+            d_key = domain_key_arg
+        else:
+            d_key = compute_domain_key("qwen3.6", "pinned_v1", "m12_v1")
+
+        var lookup_res = p_cache.lookup(d_key, prompt_tokens)
+        if lookup_res.hit and lookup_res.prefix_len > 0:
+            cache_hit = True
+            matched_prefix_tokens = lookup_res.prefix_len
+            delta_prefill_tokens = lookup_res.delta_tokens_len
+            ref entry = p_cache.entries[lookup_res.entry_index]
+            kmss_kv_cache = entry.kv_cache.copy()
+            kmss_gdn_states = entry.gdn_state.copy()
+            has_session = True
+        else:
+            cache_hit = False
+            matched_prefix_tokens = 0
+            delta_prefill_tokens = s_prompt
+            has_session = True
+    elif has_session:
+        matched_prefix_tokens = s_prompt
+        delta_prefill_tokens = 0
+        cache_hit = True
+
     # 6. Rantai bound normatif: S + N <= ctx <= s_max (DoD M5: dievaluasi SEBELUM alloc)
     var s_max_limit = 4096
     if has_session:
@@ -1072,17 +1152,71 @@ def cmd_decode(args: List[String]) raises:
             except:
                 pass
 
+        var l_att = cfg.num_attention_layers()
+        var h_kv = cfg.num_key_value_heads
+        var head_dim = cfg.head_dim()
+        var gdn_l = cfg.num_gdn_layers()
+        if matched_prefix_tokens == 0:
+            var kv_cap = s_prompt + max_tokens + 128
+            if kv_cap < 512:
+                kv_cap = 512
+            kmss_kv_cache = GatedAttnKVCache(kv_cap, l_att, h_kv, head_dim)
+            kmss_gdn_states = GDNState(gdn_l, 32, 32)
+
         var blocks = List[PortBlockWeights]()
         for l in range(cfg.num_hidden_layers):
             blocks.append(create_synthetic_block_weights(cfg, l, 32, 32))
 
-        var t_dec_start = perf_counter_ns()
+        var t_prefill_start_actual = perf_counter_ns()
         var timings = SchedulerTimings()
         var pool = WorkerPool(threads)
-        var last_tok = (
-            prompt_tokens[len(prompt_tokens) - 1] if len(prompt_tokens)
-            > 0 else 1
+
+        if delta_prefill_tokens > 0:
+            var x_prefill = List[Float32]()
+            x_prefill.resize(
+                delta_prefill_tokens * cfg.hidden_size, Float32(0.0)
+            )
+            for t in range(delta_prefill_tokens):
+                var tid = prompt_tokens[matched_prefix_tokens + t]
+                for d in range(cfg.hidden_size):
+                    x_prefill[t * cfg.hidden_size + d] = Float32(
+                        (tid * 17 + d * 3) % 100
+                    ) * Float32(0.001)
+
+            try:
+                _ = forward_port_macro_scheduler(
+                    x_prefill,
+                    blocks,
+                    kmss_gdn_states,
+                    kmss_kv_cache,
+                    matched_prefix_tokens,
+                    delta_prefill_tokens,
+                    cfg,
+                    timings,
+                    pool,
+                    32,
+                    32,
+                    Float32(1e-6),
+                )
+            except e:
+                pool.shutdown()
+                fail_m5(
+                    "M5_ERR_PREFILL",
+                    "prefill",
+                    "delta prefill failed: " + String(e),
+                    run_dir=run_dir,
+                    tmp_files=tmp_files,
+                )
+        var t_prefill_end_actual = perf_counter_ns()
+        var prefill_time_sec = (
+            Float64(t_prefill_end_actual - t_prefill_start_actual) / 1e9
         )
+        if prefill_time_sec <= 0.0:
+            prefill_time_sec = 0.0001
+
+        var t_dec_start = perf_counter_ns()
+        var t_first_tok_end: Int = 0
+        var last_tok = prompt_tokens[s_prompt - 1] if s_prompt > 0 else 1
 
         for step in range(max_tokens):
             var cur_input = last_tok
@@ -1091,7 +1225,7 @@ def cmd_decode(args: List[String]) raises:
             for d in range(cfg.hidden_size):
                 x[d] = Float32((cur_input * 17 + d * 3) % 100) * Float32(0.001)
 
-            var pos_offset = len(prompt_tokens) + step
+            var pos_offset = s_prompt + step
             try:
                 _ = forward_port_macro_scheduler(
                     x,
@@ -1122,6 +1256,8 @@ def cmd_decode(args: List[String]) raises:
                 gen_tok = -gen_tok
             generated_tokens.append(gen_tok)
             last_tok = gen_tok
+            if step == 0:
+                t_first_tok_end = perf_counter_ns()
 
         pool.shutdown()
         var t_dec_end = perf_counter_ns()
@@ -1129,7 +1265,13 @@ def cmd_decode(args: List[String]) raises:
         if decode_time_sec <= 0.0:
             decode_time_sec = 0.001
 
-        # Simpan sesi diperbarui jika diminta
+        var ttft_ms = (
+            Float64(t_first_tok_end - t_prefill_start_actual)
+            / 1e6 if t_first_tok_end
+            > 0 else 1.0
+        )
+
+        # Simpan sesi diperbarui jika diminta via --save-session
         if save_session_path.byte_length() > 0:
             var all_tokens = List[Int]()
             for t in range(len(prompt_tokens)):
@@ -1153,6 +1295,104 @@ def cmd_decode(args: List[String]) raises:
                     tmp_files=tmp_files,
                 )
 
+        # Simpan ke Prefix Cache jika --prefix-cache-dir aktif
+        if prefix_cache_dir.byte_length() > 0:
+            if finish_reason_arg == "stop" or finish_reason_arg == "length":
+                var canon_tokens = List[Int]()
+                if canonical_tokens_path.byte_length() > 0:
+                    try:
+                        var raw_c = read_small_file(canonical_tokens_path)
+                        canon_tokens = parse_flat_u32_tokens(
+                            raw_c, canonical_tokens_path
+                        )
+                    except:
+                        pass
+                if len(canon_tokens) == 0:
+                    for t in range(len(prompt_tokens)):
+                        canon_tokens.append(prompt_tokens[t])
+                    for t in range(len(generated_tokens)):
+                        canon_tokens.append(generated_tokens[t])
+
+                var is_same = len(canon_tokens) == len(prompt_tokens) + len(
+                    generated_tokens
+                )
+                if is_same:
+                    for t in range(len(prompt_tokens)):
+                        if canon_tokens[t] != prompt_tokens[t]:
+                            is_same = False
+                            break
+                    if is_same:
+                        for t in range(len(generated_tokens)):
+                            if (
+                                canon_tokens[len(prompt_tokens) + t]
+                                != generated_tokens[t]
+                            ):
+                                is_same = False
+                                break
+
+                var rebase_kv = kmss_kv_cache.copy()
+                var rebase_gdn = kmss_gdn_states.copy()
+
+                if not is_same:
+                    # Teacher-forced canonical rebase atas canon_tokens
+                    var reb_res = p_cache.lookup(d_key, canon_tokens)
+                    var reb_offset = reb_res.prefix_len if reb_res.hit else 0
+                    if reb_offset > 0:
+                        ref r_entry = p_cache.entries[reb_res.entry_index]
+                        rebase_kv = r_entry.kv_cache.copy()
+                        rebase_gdn = r_entry.gdn_state.copy()
+                    else:
+                        var cap_reb = len(canon_tokens) + 64
+                        if cap_reb < 512:
+                            cap_reb = 512
+                        rebase_kv = GatedAttnKVCache(
+                            cap_reb, l_att, h_kv, head_dim
+                        )
+                        rebase_gdn = GDNState(gdn_l, 32, 32)
+
+                    var reb_delta = len(canon_tokens) - reb_offset
+                    if reb_delta > 0:
+                        var x_reb = List[Float32]()
+                        x_reb.resize(reb_delta * cfg.hidden_size, Float32(0.0))
+                        for t in range(reb_delta):
+                            var tid = canon_tokens[reb_offset + t]
+                            for d in range(cfg.hidden_size):
+                                x_reb[t * cfg.hidden_size + d] = Float32(
+                                    (tid * 17 + d * 3) % 100
+                                ) * Float32(0.001)
+                        var pool_reb = WorkerPool(threads)
+                        var timings_reb = SchedulerTimings()
+                        try:
+                            _ = forward_port_macro_scheduler(
+                                x_reb,
+                                blocks,
+                                rebase_gdn,
+                                rebase_kv,
+                                reb_offset,
+                                reb_delta,
+                                cfg,
+                                timings_reb,
+                                pool_reb,
+                                32,
+                                32,
+                                Float32(1e-6),
+                            )
+                        except:
+                            pass
+                        pool_reb.shutdown()
+
+                _ = p_cache.insert(
+                    d_key,
+                    canon_tokens,
+                    rebase_kv,
+                    rebase_gdn,
+                    finish_reason=finish_reason_arg,
+                )
+                try:
+                    p_cache.save_to_dir(prefix_cache_dir, cfg)
+                except:
+                    pass
+
         try:
             atomic_write_tokens_json(target_output, generated_tokens)
         except e:
@@ -1174,14 +1414,17 @@ def cmd_decode(args: List[String]) raises:
             vmhwm = 10485760
 
         var kv_tokens_after = len(prompt_tokens) + max_tokens
-        var kv_layers = cfg.num_attention_layers()
-        var kv_heads = cfg.num_key_value_heads
-        var head_dim = cfg.head_dim()
-        var kv_payload_bytes = (
-            2 * kv_tokens_after * kv_layers * kv_heads * head_dim * 2
-        )
+        var kv_payload_bytes = 2 * kv_tokens_after * l_att * h_kv * head_dim * 2
         var gdn_layers = cfg.num_gdn_layers()
         var gdn_state_bytes = gdn_layers * 32 * 32 * 4
+
+        var hist_recomp = 0
+        if not cache_hit and session_path.byte_length() == 0:
+            hist_recomp = s_prompt
+
+        var gdn_reused_flag = True if (
+            cache_hit or session_path.byte_length() > 0
+        ) else False
 
         var out_json = String(
             '{\n  "status": "success",\n  "run_id": "',
@@ -1194,10 +1437,28 @@ def cmd_decode(args: List[String]) raises:
             String(max_tokens),
             ',\n  "tokens_generated": ',
             String(max_tokens),
-            ',\n  "historical_recompute_tokens": 0',
-            ',\n  "recompute_tokens": 0',
-            ',\n  "gdn_reused": true',
-            ',\n  "gdn_state_reused": true',
+            ',\n  "historical_recompute_tokens": ',
+            String(hist_recomp),
+            ',\n  "recompute_tokens": ',
+            String(hist_recomp),
+            ',\n  "cache_hit": ',
+            "true" if cache_hit else "false",
+            ',\n  "matched_prefix_tokens": ',
+            String(matched_prefix_tokens),
+            ',\n  "reused_prefix_tokens": ',
+            String(matched_prefix_tokens),
+            ',\n  "delta_prefill_tokens": ',
+            String(delta_prefill_tokens),
+            ',\n  "prefill_tokens": ',
+            String(delta_prefill_tokens),
+            ',\n  "gdn_reused": ',
+            "true" if gdn_reused_flag else "false",
+            ',\n  "gdn_state_reused": ',
+            "true" if gdn_reused_flag else "false",
+            ',\n  "finish_reason": "',
+            finish_reason_arg,
+            '",\n  "ttft_ms": ',
+            String(ttft_ms),
             ',\n  "context_size": ',
             String(context_size),
             ',\n  "kv_cache_bytes": ',
@@ -1211,10 +1472,11 @@ def cmd_decode(args: List[String]) raises:
             ',\n    "seed": ',
             sampling_seed_str,
             "\n  },\n",
-            (
-                '  "metrics": {\n    "prefill_time_sec": 0.000,\n   '
-                ' "decode_time_sec": '
-            ),
+            '  "metrics": {\n    "prefill_time_sec": ',
+            String(prefill_time_sec),
+            ',\n    "ttft_ms": ',
+            String(ttft_ms),
+            ',\n    "decode_time_sec": ',
             String(decode_time_sec),
             ',\n    "total_time_sec": ',
             String(total_time_sec),

@@ -97,3 +97,4 @@ validate-m11 = "bash -c 'bash tests/integration/test_m11_w1_workerpool.sh && bas
 test-m11 = "bash -c 'pixi run validate-m11'"
 test-m12-w1a = "bash tests/integration/test_m12_w1a_tokenizer.sh"
 test-m12-w1b = "bash tests/integration/test_m12_w1b_renderer.sh"
+test-m12-w2a = "bash tests/integration/test_m12_session_continuity.sh"

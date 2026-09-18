@@ -40,3 +40,9 @@ from core.topology import (
     read_sysfs_string,
     validate_runtime_feasibility,
 )
+from core.prefix_cache import (
+    PrefixCache,
+    PrefixCacheEntry,
+    PrefixLookupResult,
+    compute_domain_key,
+)
