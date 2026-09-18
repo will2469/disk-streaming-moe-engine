@@ -37,7 +37,7 @@ struct ModelConfig(Copyable, Movable):
         moe_intermediate_size: Int = 1408,
         shared_expert_intermediate_size: Int = 5632,
         norm_topk_prob: Bool = False,
-        architecture: String = "trial",
+        architecture: String = "qwen3.6",
         num_key_value_heads: Int = -1,
         head_dim_override: Int = 0,
         full_attention_interval: Int = 4,
@@ -113,7 +113,7 @@ struct ModelConfig(Copyable, Movable):
                 )
             )
 
-        if architecture != "trial" and architecture != "qwen3.6":
+        if architecture != "qwen3.6":
             raise Error(
                 error_json(
                     "ARCHITECTURE_ERROR",
@@ -146,8 +146,6 @@ struct ModelConfig(Copyable, Movable):
         return self.hidden_size // self.num_attention_heads
 
     def is_gdn_layer(self, layer_idx: Int) -> Bool:
-        if self.architecture == "trial":
-            return False
         return (layer_idx % self.full_attention_interval) != (
             self.full_attention_interval - 1
         )
@@ -156,15 +154,11 @@ struct ModelConfig(Copyable, Movable):
         return self.is_gdn_layer(layer_idx)
 
     def is_attention_layer(self, layer_idx: Int) -> Bool:
-        if self.architecture == "trial":
-            return True
         return (layer_idx % self.full_attention_interval) == (
             self.full_attention_interval - 1
         )
 
     def num_attention_layers(self) -> Int:
-        if self.architecture == "trial":
-            return self.num_hidden_layers
         return self.num_hidden_layers // self.full_attention_interval
 
     def num_gdn_layers(self) -> Int:

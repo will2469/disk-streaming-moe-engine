@@ -117,47 +117,23 @@ fi
 echo "   PASS: Flag --architecture tervalidasi fail-closed (Exit 2)."
 
 # -----------------------------------------------------------------------------
-# Stage 4: Verifikasi Arsitektur Trial (Qwen1.5-MoE)
 # -----------------------------------------------------------------------------
-echo ">> [4/7] Memverifikasi arsitektur Trial pada model nyata..."
-if [[ -d "$TRIAL_MODEL_DIR" ]]; then
-    TRIAL_OUT=$("$KIMO" forward-port \
-        --model-dir "$TRIAL_MODEL_DIR" \
-        --architecture trial \
-        --check-config-only)
-
-    echo "$TRIAL_OUT" | grep -q '"architecture": "trial"' || {
-        echo "FAIL: JSON output tidak menyatakan architecture trial!"
-        exit 1
-    }
-    echo "$TRIAL_OUT" | grep -q '"vocab_size": 151936' || {
-        echo "FAIL: JSON output vocab_size bukan 151936!"
-        exit 1
-    }
-    echo "$TRIAL_OUT" | grep -q '"num_hidden_layers": 24' || {
-        echo "FAIL: JSON output num_hidden_layers bukan 24!"
-        exit 1
-    }
-    echo "$TRIAL_OUT" | grep -q '"num_experts": 60' || {
-        echo "FAIL: JSON output num_experts bukan 60!"
-        exit 1
-    }
-    echo "$TRIAL_OUT" | grep -q '"num_experts_per_tok": 4' || {
-        echo "FAIL: JSON output num_experts_per_tok bukan 4!"
-        exit 1
-    }
-    echo "$TRIAL_OUT" | grep -q '"num_attention_layers": 24' || {
-        echo "FAIL: JSON output num_attention_layers bukan 24!"
-        exit 1
-    }
-    echo "$TRIAL_OUT" | grep -q '"num_gdn_layers": 0' || {
-        echo "FAIL: JSON output num_gdn_layers bukan 0!"
-        exit 1
-    }
-    echo "   PASS: Model Trial terverifikasi sempurna (24L, 60E/top-4, vocab 151K)."
-else
-    echo "   SKIP: Model Trial tidak ditemukan di $TRIAL_MODEL_DIR (opsional di CI)."
+# Stage 4: Verifikasi Kontrak Baru M10 (Flag --architecture Ditolak pada dismoen forward)
+# -----------------------------------------------------------------------------
+echo ">> [4/7] Memverifikasi flag --architecture ditolak pada dismoen forward..."
+set +e
+UNKNOWN_OUT=$("$KIMO" forward --architecture qwen3.6 2>&1)
+UNKNOWN_RC=$?
+set -e
+if [[ $UNKNOWN_RC -eq 0 ]]; then
+    echo "FAIL: dismoen forward harus menolak flag --architecture!"
+    exit 1
 fi
+echo "$UNKNOWN_OUT" | grep -q "unknown option: --architecture" || {
+    echo "FAIL: Output tidak mengandung 'unknown option: --architecture'!"
+    exit 1
+}
+echo "   PASS: Flag --architecture berhasil ditolak pada dismoen forward (§4.3)."
 
 # -----------------------------------------------------------------------------
 # Stage 5: Verifikasi Arsitektur Qwen3.6-35B-A3B (Model Nyata)
@@ -266,18 +242,18 @@ echo "   PASS: Synthetic mini port config lulus verifikasi (4L [3 GDN + 1 Attn],
 # -----------------------------------------------------------------------------
 echo ">> [7/7] Menjalankan mismatch detector test suite..."
 
-# Test 7.1: Architecture mismatch - flag trial pada model Qwen3.6 -> Exit 2
+# Test 7.1: Kontrak M10 - flag --architecture ditolak pada command forward
 if [[ -d "$QWEN36_MODEL_DIR" ]]; then
     set +e
-    ERR_OUT=$("$KIMO" forward-port --model-dir "$QWEN36_MODEL_DIR" --architecture trial --check-config-only 2>&1)
+    ERR_OUT=$("$KIMO" forward --model-dir "$QWEN36_MODEL_DIR" --architecture qwen3.6 --check-config-only 2>&1)
     CODE=$?
     set -e
-    if [[ $CODE -ne 2 ]]; then
-        echo "FAIL: Architecture mismatch (trial on Qwen3.6) harus exit 2, dapat: $CODE"
+    if [[ $CODE -eq 0 ]]; then
+        echo "FAIL: Flag --architecture harus ditolak pada forward, dapat exit 0"
         exit 1
     fi
-    echo "$ERR_OUT" | grep -q "ARCHITECTURE_MISMATCH" || {
-        echo "FAIL: Error output tidak mengandung ARCHITECTURE_MISMATCH!"
+    echo "$ERR_OUT" | grep -q "unknown option: --architecture" || {
+        echo "FAIL: Error output tidak mengandung 'unknown option: --architecture'!"
         exit 1
     }
 fi

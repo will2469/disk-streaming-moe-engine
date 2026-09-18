@@ -24,12 +24,8 @@ def find_compare_binary() -> String:
     var candidates = List[String]()
     candidates.append("target/release/dismoen-tools")
     candidates.append("target/debug/dismoen-tools")
-    candidates.append("target/release/kimo-tools")
-    candidates.append("target/debug/kimo-tools")
-    candidates.append("tools/kimo-tools/target/release/dismoen-tools")
-    candidates.append("tools/kimo-tools/target/debug/dismoen-tools")
-    candidates.append("tools/kimo-tools/target/release/kimo-tools")
-    candidates.append("tools/kimo-tools/target/debug/kimo-tools")
+    candidates.append("tools/dismoen-tools/target/release/dismoen-tools")
+    candidates.append("tools/dismoen-tools/target/debug/dismoen-tools")
     for i in range(len(candidates)):
         if c_access_r(candidates[i]):
             return candidates[i]

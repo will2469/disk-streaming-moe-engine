@@ -10,7 +10,7 @@
 #   3. CLI banner dan usage string menampilkan DISMOEN
 #   4. Subcommand help (--help, -h, help) keluar dengan kode 0
 #   5. Subcommand tidak dikenal menghasilkan JSON USAGE dengan kode 2
-#   6. Ketersediaan dual-binary Rust: dismoen-tools dan kimo-tools
+#   6. Ketersediaan single-binary Rust: dismoen-tools
 #   7. Formatted JSON scorecard Gate G-M10-1
 
 set -euo pipefail
@@ -128,9 +128,9 @@ fi
 echo "   PASS: Kontrak error machine-readable USAGE valid."
 
 # ---------------------------------------------------------------------------
-# Stage 4: Dual-Binary Rust Tooling Verification (dismoen-tools & kimo-tools)
+# Stage 4: Single-Binary Rust Tooling Verification (dismoen-tools)
 # ---------------------------------------------------------------------------
-echo "--> Stage 4: Dual-Binary Rust Tooling Verification"
+echo "--> Stage 4: Single-Binary Rust Tooling Verification (dismoen-tools)"
 
 if [ ! -d "$ROOT_DIR/tools/dismoen-tools" ]; then
     echo "FAIL: Path tools/dismoen-tools tidak ditemukan!"
@@ -138,11 +138,10 @@ if [ ! -d "$ROOT_DIR/tools/dismoen-tools" ]; then
 fi
 
 DISMOEN_TOOLS_BIN="$ROOT_DIR/target/debug/dismoen-tools"
-KIMO_TOOLS_BIN="$ROOT_DIR/target/debug/kimo-tools"
 
-if [ ! -x "$DISMOEN_TOOLS_BIN" ] || [ ! -x "$KIMO_TOOLS_BIN" ]; then
+if [ ! -x "$DISMOEN_TOOLS_BIN" ]; then
     echo "--> Membangun binaries tools..."
-    cargo build --manifest-path "$ROOT_DIR/tools/kimo-tools/Cargo.toml"
+    cargo build --manifest-path "$ROOT_DIR/tools/dismoen-tools/Cargo.toml" --bin dismoen-tools
 fi
 
 # Test dismoen-tools USAGE
@@ -155,17 +154,7 @@ if [ "$DT_RC" -ne 2 ] || ! echo "$DISMOEN_TOOLS_OUT" | grep -q '"error_type":"US
     exit 1
 fi
 
-# Test kimo-tools USAGE
-set +e
-KIMO_TOOLS_OUT=$("$KIMO_TOOLS_BIN" 2>&1)
-KT_RC=$?
-set -e
-if [ "$KT_RC" -ne 2 ] || ! echo "$KIMO_TOOLS_OUT" | grep -q '"error_type":"USAGE"'; then
-    echo "FAIL: kimo-tools gagal merespons kontrak USAGE"
-    exit 1
-fi
-
-echo "   PASS: Dual-binary Rust (dismoen-tools dan kimo-tools) siap dan valid."
+echo "   PASS: Single-binary Rust (dismoen-tools) siap dan valid."
 
 # ---------------------------------------------------------------------------
 # Stage 5: Formal Quality Gate Certification G-M10-1
@@ -186,7 +175,7 @@ scorecard = {
         'symlink_target': '$LINK_TARGET',
         'banner_verified': True,
         'usage_contract_rc2': True,
-        'rust_tooling_dual_bin': True
+        'rust_tooling_single_bin': True
     }
 }
 print(json.dumps(scorecard, indent=2))
