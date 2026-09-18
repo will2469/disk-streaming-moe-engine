@@ -44,6 +44,7 @@ from format.index import parse_index
 from format.kmss import read_kmss_v1, write_kmss_v1
 from format.types import json_escape
 
+from core.worker_pool import WorkerPool
 from layers.gated_attention import GatedAttnKVCache
 from layers.gdn import GDNState
 from layers.port_scheduler import (
@@ -702,6 +703,7 @@ def cmd_forward(args: List[String]) raises:
         # Jalankan macro scheduler transformer penuh dengan tracking waktu
         var t_fwd_start = perf_counter_ns()
         var timings = SchedulerTimings()
+        var pool = WorkerPool(threads)
         var out_x = List[Float32]()
         try:
             out_x = forward_port_macro_scheduler(
@@ -713,16 +715,19 @@ def cmd_forward(args: List[String]) raises:
                 seq_len,
                 cfg,
                 timings,
+                pool,
                 dk,
                 dv,
                 eps,
             )
         except e:
+            pool.shutdown()
             fail_m9(
                 M9_ERR_CONFIG,
                 "SCHEDULER_EXEC_FAILED",
                 "forward scheduler failed: " + String(e),
             )
+        pool.shutdown()
         var t_fwd_end = perf_counter_ns()
         var walltime_sec = Float64(t_fwd_end - t_fwd_start) / 1000000000.0
         if walltime_sec <= 0.0:

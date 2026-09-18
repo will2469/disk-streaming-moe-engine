@@ -11,6 +11,7 @@ Mengimplementasikan arsitektur 40 block hybrid:
 """
 
 from core.config import ModelConfig
+from core.worker_pool import WorkerPool
 from layers.gated_attention import (
     GatedAttentionWeights,
     GatedAttnKVCache,
@@ -278,11 +279,13 @@ def forward_port_block(
     seq_len: Int,
     cfg: ModelConfig,
     mut timings: SchedulerTimings,
+    mut pool: WorkerPool,
     dk: Int = 32,
     dv: Int = 32,
     eps: Float32 = Float32(1e-6),
 ) raises -> List[Float32]:
-    """Forward pass 1 block transformer hybrid (Token Mixer + Channel Mixer)."""
+    """Forward pass 1 block transformer hybrid (Token Mixer + Channel Mixer) dengan WorkerPool.
+    """
     var hidden = cfg.hidden_size
 
     # --- Sublayer 1: Token Mixer ---
@@ -378,6 +381,18 @@ def forward_port_block(
     var routed_outputs = List[List[Float32]]()
     routed_outputs.reserve(seq_len)
 
+    var w_gate_ptrs = List[Int]()
+    var w_up_ptrs = List[Int]()
+    var w_down_ptrs = List[Int]()
+    if pool.num_threads > 1 and len(block.routed_experts) > 0:
+        w_gate_ptrs.reserve(len(block.routed_experts))
+        w_up_ptrs.reserve(len(block.routed_experts))
+        w_down_ptrs.reserve(len(block.routed_experts))
+        for i in range(len(block.routed_experts)):
+            w_gate_ptrs.append(Int(block.routed_experts[i].w_gate.unsafe_ptr()))
+            w_up_ptrs.append(Int(block.routed_experts[i].w_up.unsafe_ptr()))
+            w_down_ptrs.append(Int(block.routed_experts[i].w_down.unsafe_ptr()))
+
     for t in range(seq_len):
         var t_off = t * hidden
         var x_tok = List[Float32]()
@@ -388,16 +403,41 @@ def forward_port_block(
         var token_routed = List[Float32]()
         ref exp_row = routing.selected_experts[t]
         var top_k = len(exp_row)
-        token_routed.reserve(top_k * hidden)
 
-        for k in range(top_k):
-            var exp_id = exp_row[k]
-            ref exp_w = block.routed_experts[exp_id]
-            var out_exp = swiglu_forward(
-                x_tok, exp_w, 1, hidden, exp_w.inter_dim
+        if pool.num_threads > 1 and top_k > 0 and len(block.routed_experts) > 0:
+            token_routed.resize(top_k * hidden, Float32(0.0))
+            var selected_exp_ids = List[Int]()
+            selected_exp_ids.reserve(top_k)
+            for k in range(top_k):
+                selected_exp_ids.append(exp_row[k])
+
+            var inter_dim = block.routed_experts[0].inter_dim
+            pool.parallel_moe_experts(
+                top_k,
+                hidden,
+                inter_dim,
+                Int(x_tok.unsafe_ptr()),
+                Int(token_routed.unsafe_ptr()),
+                Int(selected_exp_ids.unsafe_ptr()),
+                Int(w_gate_ptrs.unsafe_ptr()),
+                Int(w_up_ptrs.unsafe_ptr()),
+                Int(w_down_ptrs.unsafe_ptr()),
             )
-            for d in range(hidden):
-                token_routed.append(out_exp[d])
+            _ = x_tok
+            _ = selected_exp_ids
+            _ = w_gate_ptrs
+            _ = w_up_ptrs
+            _ = w_down_ptrs
+        else:
+            token_routed.reserve(top_k * hidden)
+            for k in range(top_k):
+                var exp_id = exp_row[k]
+                ref exp_w = block.routed_experts[exp_id]
+                var out_exp = swiglu_forward(
+                    x_tok, exp_w, 1, hidden, exp_w.inter_dim
+                )
+                for d in range(hidden):
+                    token_routed.append(out_exp[d])
         routed_outputs.append(token_routed^)
 
     # Shared Expert SwiGLU + Sigmoid Gate
@@ -426,6 +466,40 @@ def forward_port_block(
     var t_moe_end = perf_counter_ns()
     timings.moe_ns += Int(t_moe_end - t_moe_start)
     return res^
+
+
+def forward_port_block(
+    x: List[Float32],
+    block: PortBlockWeights,
+    mut gdn_states: GDNState,
+    mut kv_cache: GatedAttnKVCache,
+    layer_idx: Int,
+    pos_offset: Int,
+    seq_len: Int,
+    cfg: ModelConfig,
+    mut timings: SchedulerTimings,
+    dk: Int = 32,
+    dv: Int = 32,
+    eps: Float32 = Float32(1e-6),
+) raises -> List[Float32]:
+    """Forward pass 1 block transformer hybrid tanpa worker pool (single-threaded).
+    """
+    var dummy_pool = WorkerPool(1)
+    return forward_port_block(
+        x,
+        block,
+        gdn_states,
+        kv_cache,
+        layer_idx,
+        pos_offset,
+        seq_len,
+        cfg,
+        timings,
+        dummy_pool,
+        dk,
+        dv,
+        eps,
+    )
 
 
 def forward_port_block(
@@ -468,11 +542,12 @@ def forward_port_macro_scheduler(
     seq_len: Int,
     cfg: ModelConfig,
     mut timings: SchedulerTimings,
+    mut pool: WorkerPool,
     dk: Int = 32,
     dv: Int = 32,
     eps: Float32 = Float32(1e-6),
 ) raises -> List[Float32]:
-    """Mengeksekusi macro scheduler transformer penuh dengan tracking profil waktu.
+    """Mengeksekusi macro scheduler transformer penuh dengan WorkerPool dan tracking profil waktu.
     """
     var cur_x = List[Float32]()
     cur_x.resize(len(x), Float32(0.0))
@@ -491,12 +566,45 @@ def forward_port_macro_scheduler(
             seq_len,
             cfg,
             timings,
+            pool,
             dk,
             dv,
             eps,
         )
 
     return cur_x^
+
+
+def forward_port_macro_scheduler(
+    x: List[Float32],
+    blocks: List[PortBlockWeights],
+    mut gdn_states: GDNState,
+    mut kv_cache: GatedAttnKVCache,
+    pos_offset: Int,
+    seq_len: Int,
+    cfg: ModelConfig,
+    mut timings: SchedulerTimings,
+    dk: Int = 32,
+    dv: Int = 32,
+    eps: Float32 = Float32(1e-6),
+) raises -> List[Float32]:
+    """Mengeksekusi macro scheduler transformer penuh dengan tracking profil waktu.
+    """
+    var dummy_pool = WorkerPool(1)
+    return forward_port_macro_scheduler(
+        x,
+        blocks,
+        gdn_states,
+        kv_cache,
+        pos_offset,
+        seq_len,
+        cfg,
+        timings,
+        dummy_pool,
+        dk,
+        dv,
+        eps,
+    )
 
 
 def forward_port_macro_scheduler(

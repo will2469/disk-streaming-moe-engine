@@ -12,6 +12,7 @@ Spesifikasi (docs/milestones/M6-quantizer.md § Dequant Kernel Specification):
 - Vektor SIMD 8-lane (AVX2/NEON friendly), cache-friendly, overhead <= 10% decode.
 """
 
+from core.worker_pool import WorkerPool
 from format.half_float import float16_to_u16, is_allowed_group_size
 from std.builtin.dtype import DType
 from std.collections import List
@@ -136,6 +137,113 @@ def dequant_kernel_simd_f32(
     """
     var bf16_list = dequant_kernel_simd(
         scales, packed_weights, num_elements, group_size
+    )
+    var out_f32 = List[Float32]()
+    out_f32.resize(num_elements, Float32(0.0))
+    var p_bf16 = bf16_list.unsafe_ptr()
+    var p_f32 = out_f32.unsafe_ptr()
+
+    var i = 0
+    while i + 16 <= num_elements:
+        var bf_v = p_bf16.unsafe_load[width=16](i)
+        p_f32.unsafe_store[width=16](i, bf_v.cast[DType.float32]())
+        i += 16
+    while i < num_elements:
+        p_f32[unsafe_offset=i] = Float32(p_bf16[unsafe_offset=i])
+        i += 1
+
+    return out_f32^
+
+
+def dequant_kernel_simd_parallel(
+    scales: List[Float16],
+    packed_weights: List[UInt8],
+    num_elements: Int,
+    group_size: Int,
+    mut pool: WorkerPool,
+) raises -> List[BFloat16]:
+    """Mengonversi bobot 4-bit ke BFloat16 secara paralel pada WorkerPool.
+
+    Menjamin 100% bit-exact (Delta_max == 0) terhadap dequant_kernel_simd.
+    """
+    if pool.num_threads <= 1:
+        return dequant_kernel_simd(
+            scales, packed_weights, num_elements, group_size
+        )
+
+    if not is_allowed_group_size(group_size):
+        raise Error(
+            "dequant_kernel: group_size must be in {32, 64, 128, 256}, got "
+            + String(group_size)
+        )
+
+    if num_elements <= 0:
+        raise Error("dequant_kernel: num_elements must be positive")
+
+    if num_elements % group_size != 0:
+        raise Error(
+            "M6_ERR_INPUT: N % G != 0 (tail group not supported): N="
+            + String(num_elements)
+            + ", G="
+            + String(group_size)
+        )
+
+    var num_groups = num_elements // group_size
+    if len(scales) != num_groups:
+        raise Error(
+            "dequant_kernel: scales length mismatch: expected "
+            + String(num_groups)
+            + ", got "
+            + String(len(scales))
+        )
+
+    var exp_packed = (num_elements + 1) // 2
+    if len(packed_weights) != exp_packed:
+        raise Error(
+            "dequant_kernel: packed weights length mismatch: expected "
+            + String(exp_packed)
+            + ", got "
+            + String(len(packed_weights))
+        )
+
+    # Validasi skala (harus finite dan > 0)
+    for g in range(num_groups):
+        var s = scales[g]
+        var u = float16_to_u16(s)
+        var exp_bits = (u >> 10) & 0x1F
+        if exp_bits == 0x1F:
+            raise Error(
+                "dequant_kernel: scale is NaN or Inf at group " + String(g)
+            )
+        if s <= Float16(0.0):
+            raise Error(
+                "dequant_kernel: scale is non-positive at group " + String(g)
+            )
+
+    var out = List[BFloat16]()
+    out.resize(num_elements, BFloat16(0.0))
+
+    pool.parallel_dequant_bf16(
+        Int(scales.unsafe_ptr()),
+        Int(packed_weights.unsafe_ptr()),
+        Int(out.unsafe_ptr()),
+        num_elements,
+        group_size,
+    )
+
+    return out^
+
+
+def dequant_kernel_simd_f32_parallel(
+    scales: List[Float16],
+    packed_weights: List[UInt8],
+    num_elements: Int,
+    group_size: Int,
+    mut pool: WorkerPool,
+) raises -> List[Float32]:
+    """Mengonversi bobot 4-bit ke Float32 secara paralel pada WorkerPool."""
+    var bf16_list = dequant_kernel_simd_parallel(
+        scales, packed_weights, num_elements, group_size, pool
     )
     var out_f32 = List[Float32]()
     out_f32.resize(num_elements, Float32(0.0))

@@ -55,6 +55,7 @@ from layers.kv_cache import (
     NUM_LAYERS,
     validate_context_bounds,
 )
+from core.worker_pool import WorkerPool
 from layers.port_scheduler import (
     PortBlockWeights,
     SchedulerTimings,
@@ -1067,6 +1068,7 @@ def cmd_decode(args: List[String]) raises:
 
         var t_dec_start = perf_counter_ns()
         var timings = SchedulerTimings()
+        var pool = WorkerPool(threads)
         var last_tok = (
             prompt_tokens[len(prompt_tokens) - 1] if len(prompt_tokens)
             > 0 else 1
@@ -1090,11 +1092,13 @@ def cmd_decode(args: List[String]) raises:
                     1,
                     cfg,
                     timings,
+                    pool,
                     32,
                     32,
                     Float32(1e-6),
                 )
             except e:
+                pool.shutdown()
                 fail_m5(
                     "M5_ERR_DECODE",
                     "decode",
@@ -1109,6 +1113,7 @@ def cmd_decode(args: List[String]) raises:
             generated_tokens.append(gen_tok)
             last_tok = gen_tok
 
+        pool.shutdown()
         var t_dec_end = perf_counter_ns()
         var decode_time_sec = Float64(t_dec_end - t_dec_start) / 1e9
         if decode_time_sec <= 0.0:

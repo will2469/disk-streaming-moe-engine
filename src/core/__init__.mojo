@@ -21,3 +21,7 @@ from core.f3b_f5 import (
     KV_LAYER_TOTAL_SLOT_BYTES,
     KV_SLOT_BYTES_PER_LAYER,
 )
+from core.worker_pool import (
+    WorkerPool,
+    partition_range,
+)
