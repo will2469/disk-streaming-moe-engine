@@ -7,7 +7,7 @@ Target repository:
 
 ```text
 tools/
-├── kimo-tools/                 # Rust
+├── dismoen-tools/                 # Rust
 │   ├── src/main.rs
 │   ├── check_index.rs
 │   ├── compare.rs
@@ -27,7 +27,7 @@ Python/PyTorch
   └── generate reference *.bin
              │
              ▼
-        Rust kimo-tools
+        Rust dismoen-tools
           ├── launch Mojo
           ├── collect output
           ├── compare F10

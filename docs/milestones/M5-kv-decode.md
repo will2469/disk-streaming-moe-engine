@@ -16,14 +16,14 @@
 
 Menghilangkan boros ×n tanpa KV cache: tiap token baru memakai K/V lama, hanya hitung Q baru + 1 posisi.
 
-## CLI: `kimo decode`
+## CLI: `dismoen decode`
 
 Subcommand `decode` menjalankan prefill + decode dengan KV cache incremental.
 
 ### Input
 
 ```bash
-kimo decode \
+dismoen decode \
   --model-dir <DIR> \
   --prompt <TEXT> \
   --max-tokens <N> \
@@ -99,14 +99,14 @@ cukup — static allocation `ctx × 8 KB/layer` tidak punya ruang untuk kelebiha
 
 ```bash
 # Happy path: generate 64 tokens with 2K context
-kimo decode \
+dismoen decode \
   --model-dir /models/qwen-moe \
   --prompt "What is the capital of France?" \
   --max-tokens 64 \
   --context-size 2048
 
 # Greedy mode (temperature 0; --seed tidak perlu — diabaikan)
-kimo decode \
+dismoen decode \
   --model-dir /models/qwen-moe \
   --prompt "Explain quantum computing" \
   --max-tokens 64 \
@@ -114,7 +114,7 @@ kimo decode \
 
 # Cgroup boundary test @4K context
 systemd-run --scope -p MemoryMax=6G \
-  kimo decode \
+  dismoen decode \
   --model-dir /models/qwen-moe \
   --prompt "Write a Python function" \
   --max-tokens 64 \
@@ -440,7 +440,7 @@ $[0, p)$ half-open — tidak ada posisi "baru yang belum di-store" di dalamnya.
 
 ```mermaid
 flowchart TD
-    A[Start: kimo decode] --> B[Parse prompt]
+    A[Start: dismoen decode] --> B[Parse prompt]
     B --> C{Valid prompt?}
     C -->|No| ERR1[Error: M5_ERR_INPUT, exit 1]
     C -->|Yes| D[Tokenize prompt]
@@ -596,7 +596,7 @@ WORKDIR="/tmp/test_work"
 FIXTURE_DIR="tools/fixtures"
 
 # IT-M5-1: Happy path
-kimo decode \
+dismoen decode \
   --model-dir "$MODEL_DIR" \
   --prompt "The quick brown fox" \
   --max-tokens 64 \
@@ -618,7 +618,7 @@ python tools/compare.py \
 # Expect F10 PASS loose
 
 # IT-M5-3: Context size 4K
-kimo decode \
+dismoen decode \
   --model-dir "$MODEL_DIR" \
   --prompt "A very long prompt..." \
   --max-tokens 64 \
@@ -627,7 +627,7 @@ kimo decode \
 # Expect exit 0, VmHWM ≤ 5 GiB
 
 # IT-M5-4: Context size > s_max
-kimo decode \
+dismoen decode \
   --model-dir "$MODEL_DIR" \
   --prompt "Test" \
   --max-tokens 64 \
@@ -637,7 +637,7 @@ kimo decode \
 
 # IT-M5-11: S + N > ctx (prompt ~5000 kata ≫ sisa 2048-64; tokenizer apa pun jebol)
 BIG_PROMPT=$(python3 -c "print('hello ' * 5000)")
-if kimo decode \
+if dismoen decode \
   --model-dir "$MODEL_DIR" \
   --prompt "$BIG_PROMPT" \
   --max-tokens 64 \
@@ -649,7 +649,7 @@ fi
 
 # IT-M5-7: Cgroup boundary
 systemd-run --scope -p MemoryMax=6G \
-  kimo decode \
+  dismoen decode \
   --model-dir "$MODEL_DIR" \
   --prompt "Test" \
   --max-tokens 64 \
@@ -662,7 +662,7 @@ systemd-run --scope -p MemoryMax=6G \
 # --seed 42 sengaja diteruskan: wajib diterima-namun-diabaikan pada greedy (exit 0).
 OUTPUT1="$WORKDIR/tokens_run1.json"
 OUTPUT2="$WORKDIR/tokens_run2.json"
-kimo decode \
+dismoen decode \
   --model-dir "$MODEL_DIR" \
   --prompt "Test" \
   --max-tokens 64 \
@@ -671,7 +671,7 @@ kimo decode \
   --workdir "$WORKDIR" \
   --threads 1 \
   --seed 42
-kimo decode \
+dismoen decode \
   --model-dir "$MODEL_DIR" \
   --prompt "Test" \
   --max-tokens 64 \
@@ -1045,7 +1045,7 @@ Optional per-token timing untuk debugging decode bottleneck:
 ### Optional Flag
 
 ```bash
-kimo decode \
+dismoen decode \
   --model-dir /models/qwen-moe \
   --prompt "What is the capital of France?" \
   --max-tokens 64 \
@@ -1075,7 +1075,7 @@ kimo decode \
 
 ### CLI Implementation
 
-- [ ] `kimo decode` subcommand terimplementasi dengan semua argumen
+- [ ] `dismoen decode` subcommand terimplementasi dengan semua argumen
 - [ ] Input validation: prompt, max-tokens, rantai bound `S + N ≤ ctx ≤ s_max` setelah tokenize sebelum KV alloc, workdir writability
 - [ ] Exit codes: 0 (success), 1-6 (error per stage), semuanya teruji
 - [ ] Output JSON dengan run_id, metrics, prefill/decode timing tercommit schema

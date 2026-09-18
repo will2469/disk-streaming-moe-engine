@@ -17,7 +17,7 @@
 
 set -u
 
-KIMO="${KIMO:-./dismoen}"
+DISMOEN="${DISMOEN:-./dismoen}"
 MODEL_DIR="${MODEL_DIR:-/home/will/models/qwen1.5-moe-a2.7b-chat}"
 
 if [ ! -d "$MODEL_DIR" ] || [ ! -f "$MODEL_DIR/model.safetensors.index.json" ]; then
@@ -57,8 +57,8 @@ with open('$TOKENS', 'w') as f:
 "
 
 # 2. Jalankan forward 24 layer streaming
-echo ">> Menjalankan kimo forward 24 layer..."
-"$KIMO" forward \
+echo ">> Menjalankan dismoen forward 24 layer..."
+"$DISMOEN" forward \
   --model-dir "$MODEL_DIR" \
   --tokens "$TOKENS" \
   --output "$OUT_LOGITS" \
@@ -70,7 +70,7 @@ echo ">> Menjalankan kimo forward 24 layer..."
 status=$?
 
 if [ $status -ne 0 ]; then
-    echo "FAIL: kimo forward returned exit code $status (expected 0)"
+    echo "FAIL: dismoen forward returned exit code $status (expected 0)"
     cat "$STDERR_TXT"
     exit 1
 fi

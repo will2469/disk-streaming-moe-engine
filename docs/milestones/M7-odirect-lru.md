@@ -556,7 +556,7 @@ Per pattern:
 ### Configuration Parameters
 
 ```bash
-kimo decode \
+dismoen decode \
   --model-dir /models/qwen-moe-4bit \
   --prompt "Test" \
   --max-tokens 64 \
@@ -746,7 +746,7 @@ MODEL_DIR="/models/qwen-moe-4bit"
 WORKDIR="/tmp/test_work"
 
 # IT-M7-1: Happy path
-kimo decode \
+dismoen decode \
   --model-dir "$MODEL_DIR" \
   --prompt "Test" \
   --max-tokens 64 \
@@ -870,10 +870,10 @@ Per run (per ref-storage skill):
 
 ## CLI: Reader Configuration
 
-CLI parameters for O_DIRECT reader + LRU cache are already integrated into `kimo decode` (from M5). Additional reader-specific parameters:
+CLI parameters for O_DIRECT reader + LRU cache are already integrated into `dismoen decode` (from M5). Additional reader-specific parameters:
 
 ```bash
-kimo decode \
+dismoen decode \
   --model-dir /models/qwen-moe-4bit \
   --prompt "Test" \
   --max-tokens 64 \
@@ -1014,7 +1014,7 @@ Optional LRU cache statistics output for debugging cache effectiveness:
 ### Optional Flag
 
 ```bash
-kimo decode \
+dismoen decode \
   --model-dir /models/qwen-moe-4bit \
   --prompt "Test" \
   --max-tokens 64 \

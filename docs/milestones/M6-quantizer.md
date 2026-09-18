@@ -16,14 +16,14 @@
 
 "Menemukan kembali GGUF": kendali penuh atas format quant untuk menekan $B_{tok}$ (F3b) tanpa merusak kualitas. Bukan memakai GGUF/llama.cpp quant (ADR D6).
 
-## CLI: `kimo quantize`
+## CLI: `dismoen quantize`
 
 Subcommand `quantize` mengkonversi model BF16 ke format quant 4-bit buatan sendiri.
 
 ### Input
 
 ```bash
-kimo quantize \
+dismoen quantize \
   --input-dir <DIR> \
   --output-dir <DIR> \
   [--group-size <N>] \
@@ -71,13 +71,13 @@ kimo quantize \
 
 ```bash
 # Happy path: quantize BF16 → 4-bit
-kimo quantize \
+dismoen quantize \
   --input-dir /models/qwen-moe-bf16 \
   --output-dir /models/qwen-moe-4bit \
   --group-size 128
 
 # Custom group size
-kimo quantize \
+dismoen quantize \
   --input-dir /models/qwen-moe-bf16 \
   --output-dir /models/qwen-moe-4bit \
   --group-size 64
@@ -417,7 +417,7 @@ Compression ratio: 8,388,608 / 2,162,688 ≈ 3.88×.
 
 ```mermaid
 flowchart TD
-    A[Start: kimo quantize] --> B[Load BF16 model]
+    A[Start: dismoen quantize] --> B[Load BF16 model]
     B --> C{Input valid?}
     C -->|No| ERR1[Error: M6_ERR_INPUT, exit 1]
     C -->|Yes| D[Parse index.json]
@@ -578,7 +578,7 @@ EOF
 
 # IT-M6-1: Happy path
 expect_rc 0 "IT-M6-1 happy path" \
-kimo quantize \
+dismoen quantize \
   --input-dir "$INPUT_DIR" \
   --output-dir "$OUTPUT_DIR" \
   --group-size 128 \
@@ -586,7 +586,7 @@ kimo quantize \
 
 # IT-M6-2: Input-dir tidak ada
 expect_rc 1 "IT-M6-2 input-dir hilang" \
-kimo quantize \
+dismoen quantize \
   --input-dir "/nonexistent" \
   --output-dir "$OUTPUT_DIR" \
   --workdir "$WORKDIR"
@@ -594,7 +594,7 @@ expect_error_code M6_ERR_INPUT
 
 # IT-M6-3: Invalid group-size (∉ {32,64,128,256})
 expect_rc 1 "IT-M6-3 group-size 100 ditolak" \
-kimo quantize \
+dismoen quantize \
   --input-dir "$INPUT_DIR" \
   --output-dir "$OUTPUT_DIR" \
   --group-size 100 \
@@ -603,7 +603,7 @@ expect_error_code M6_ERR_INPUT
 
 # IT-M6-4: Quantization fail (NaN in scale)
 expect_rc 2 "IT-M6-4 tensor NaN" \
-kimo quantize \
+dismoen quantize \
   --input-dir "$INPUT_NAN" \
   --output-dir "$OUTPUT_DIR" \
   --workdir "$WORKDIR"
@@ -617,7 +617,7 @@ raw[-1] = (raw[-1] & 0x0F) | 0x80  # high nibble -> 0b1000 (reserved)
 open(sys.argv[2], "wb").write(bytes(raw))
 EOF
 expect_rc 2 "IT-M6-5 nibble reserved ditolak" \
-kimo quantize \
+dismoen quantize \
   --check "$OUTPUT_DIR/quant_corrupt.bin" \
   --workdir "$WORKDIR"
 expect_error_code M6_ERR_DEQUANT
@@ -626,7 +626,7 @@ expect_error_code M6_ERR_DEQUANT
 cp "$OUTPUT_DIR/quant_model.bin" "$OUTPUT_DIR/quant_trunc.bin"
 truncate -s -1 "$OUTPUT_DIR/quant_trunc.bin"
 expect_rc 4 "IT-M6-6 file terpotong" \
-kimo quantize \
+dismoen quantize \
   --check "$OUTPUT_DIR/quant_trunc.bin" \
   --workdir "$WORKDIR"
 expect_error_code M6_ERR_VALIDATION
@@ -640,13 +640,13 @@ python tools/oracle/oracle_ppl.py \
 # Expect ΔPPL ≤ +0.5, argmax agreement ≥ 95% (agregasi global)
 
 # IT-M6-8: Deterministic
-kimo quantize \
+dismoen quantize \
   --input-dir "$INPUT_DIR" \
   --output-dir "$OUTPUT_DIR" \
   --group-size 128 \
   --workdir "$WORKDIR"
 SHA1=$(sha256sum "$OUTPUT_DIR/quant_model.bin" | cut -d' ' -f1)
-kimo quantize \
+dismoen quantize \
   --input-dir "$INPUT_DIR" \
   --output-dir "$OUTPUT_DIR" \
   --group-size 128 \
@@ -656,14 +656,14 @@ SHA2=$(sha256sum "$OUTPUT_DIR/quant_model.bin" | cut -d' ' -f1)
 
 # IT-M6-9: Custom group-size (64)
 expect_rc 0 "IT-M6-9 group-size 64" \
-kimo quantize \
+dismoen quantize \
   --input-dir "$INPUT_DIR" \
   --output-dir "$OUTPUT_DIR" \
   --group-size 64 \
   --workdir "$WORKDIR"
 # Ukuran G=64 vs G=128: rasio harapan (4+16/64)/(4+16/128) ≈ 1.03; tolak di luar ±10%
 S64=$(stat -c%s "$OUTPUT_DIR/quant_model.bin")
-kimo quantize \
+dismoen quantize \
   --input-dir "$INPUT_DIR" \
   --output-dir "$OUTPUT_DIR" \
   --group-size 128 \
@@ -691,7 +691,7 @@ EOF
 
 # IT-M6-11: Tail group ditolak
 expect_rc 1 "IT-M6-11 N % G != 0" \
-kimo quantize \
+dismoen quantize \
   --input-dir "$INPUT_TAIL" \
   --output-dir "$OUTPUT_DIR" \
   --workdir "$WORKDIR"
@@ -997,7 +997,7 @@ Tensors dengan epsilon_rel > 0.01 flagged sebagai "high error":
 ### Optional Flag
 
 ```bash
-kimo quantize \
+dismoen quantize \
   --input-dir /models/qwen-moe-bf16 \
   --output-dir /models/qwen-moe-4bit \
   --group-size 128 \
@@ -1020,7 +1020,7 @@ kimo quantize \
 
 ### CLI Implementation
 
-- [ ] `kimo quantize` subcommand terimplementasi dengan semua argumen
+- [ ] `dismoen quantize` subcommand terimplementasi dengan semua argumen
 - [ ] Input validation: input-dir existence, index validity, group-size validity
 - [ ] Exit codes: 0 (success), 1-4 (error per stage), semuanya teruji
 - [ ] Output JSON dengan run_id, metrics, per-tensor epsilon_rel tercommit schema

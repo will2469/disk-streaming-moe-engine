@@ -1,7 +1,7 @@
 #!/bin/bash
 # Integration test suite for dismoen-tools compare & Gate G-M3-1 verdict (M3-W4)
 # Covers:
-# 1. Happy path: kimo layer --part moe (0, 12, 23) vs oracle moe_ref_*.bin (exit 0, MATCH, PASS, Gate G-M3-1)
+# 1. Happy path: dismoen layer --part moe (0, 12, 23) vs oracle moe_ref_*.bin (exit 0, MATCH, PASS, Gate G-M3-1)
 # 2. Routing verification: matching routing produces MATCH and PASS
 # 3. Gate G-M3-1 FAIL category classification (exit 1, MISMATCH, FAIL):
 #    - router-selection (routing SET mismatch)
@@ -15,10 +15,10 @@
 
 set -u
 
-KIMO="${KIMO:-./dismoen}"
-KIMO_TOOLS="${KIMO_TOOLS:-target/debug/dismoen-tools}"
-if [ ! -f "$KIMO_TOOLS" ]; then
-    KIMO_TOOLS="target/release/dismoen-tools"
+DISMOEN="${DISMOEN:-./dismoen}"
+DISMOEN_TOOLS="${DISMOEN_TOOLS:-target/debug/dismoen-tools}"
+if [ ! -f "$DISMOEN_TOOLS" ]; then
+    DISMOEN_TOOLS="target/release/dismoen-tools"
 fi
 
 MODEL_DIR="${MODEL_DIR:-/home/will/models/qwen1.5-moe-a2.7b-chat}"
@@ -29,10 +29,10 @@ ACT_BIN="fixtures/m3/activation.bin"
 fail=0
 
 # Ensure dismoen-tools binary exists
-if [ ! -f "$KIMO_TOOLS" ]; then
+if [ ! -f "$DISMOEN_TOOLS" ]; then
     echo "Building dismoen-tools release binary..."
     cargo build --release --manifest-path tools/dismoen-tools/Cargo.toml --bin dismoen-tools > /dev/null 2>&1
-    KIMO_TOOLS="target/release/dismoen-tools"
+    DISMOEN_TOOLS="target/release/dismoen-tools"
 fi
 
 # shellcheck disable=SC2317
@@ -62,18 +62,18 @@ if [ -d "$MODEL_DIR" ] && [ -f "$MODEL_DIR/model.safetensors.index.json" ]; then
         fi
 
         OUT_BIN="$WORKDIR/moe_mojo_${lyr}.bin"
-        REPORT_KIMO="$TEST_DIR/kimo_stdout_${lyr}.json"
-        "$KIMO" layer --layer "$lyr" --part moe "$ACT_BIN" --model-dir "$MODEL_DIR" --workdir "$WORKDIR" --output "moe_mojo_${lyr}.bin" > "$REPORT_KIMO" 2>&1
+        REPORT_DISMOEN="$TEST_DIR/dismoen_stdout_${lyr}.json"
+        "$DISMOEN" layer --layer "$lyr" --part moe "$ACT_BIN" --model-dir "$MODEL_DIR" --workdir "$WORKDIR" --output "moe_mojo_${lyr}.bin" > "$REPORT_DISMOEN" 2>&1
         status=$?
         if [ $status -ne 0 ]; then
-            echo "FAIL: kimo layer --part moe $lyr failed with exit code $status"
-            cat "$REPORT_KIMO"
+            echo "FAIL: dismoen layer --part moe $lyr failed with exit code $status"
+            cat "$REPORT_DISMOEN"
             fail=1
             continue
         fi
 
         REPORT_JSON="$TEST_DIR/report_happy_${lyr}.json"
-        "$KIMO_TOOLS" compare "$REF_BIN" "$OUT_BIN" --gate G-M3-1 --oracle-routing "$ROUT_JSON" --cand-routing "$ROUT_JSON" > "$REPORT_JSON" 2> "$TEST_DIR/err_happy_${lyr}.txt"
+        "$DISMOEN_TOOLS" compare "$REF_BIN" "$OUT_BIN" --gate G-M3-1 --oracle-routing "$ROUT_JSON" --cand-routing "$ROUT_JSON" > "$REPORT_JSON" 2> "$TEST_DIR/err_happy_${lyr}.txt"
         status=$?
         if [ $status -ne 0 ]; then
             echo "FAIL: compare returned non-zero ($status) for layer $lyr against oracle reference"
@@ -121,7 +121,7 @@ with open(sys.argv[2], 'wb') as f:
     f.write(data)
 " "$BASE_REF" "$mut_bin" "$delta"
 
-    "$KIMO_TOOLS" compare "$BASE_REF" "$mut_bin" --gate G-M3-1 > "$rpt_json" 2>/dev/null
+    "$DISMOEN_TOOLS" compare "$BASE_REF" "$mut_bin" --gate G-M3-1 > "$rpt_json" 2>/dev/null
     local rc=$?
     if [ $rc -ne 1 ]; then
         echo "FAIL: expected exit code 1 for $label, got $rc"
@@ -151,7 +151,7 @@ with open('$ROUT_MISMATCH', 'w') as f:
     json.dump(r, f)
 "
 REPORT_ROUT="$TEST_DIR/report_rout_mismatch.json"
-"$KIMO_TOOLS" compare "$BASE_REF" "$BASE_REF" --gate G-M3-1 --oracle-routing "$ROUT_ORACLE" --cand-routing "$ROUT_MISMATCH" > "$REPORT_ROUT" 2>/dev/null
+"$DISMOEN_TOOLS" compare "$BASE_REF" "$BASE_REF" --gate G-M3-1 --oracle-routing "$ROUT_ORACLE" --cand-routing "$ROUT_MISMATCH" > "$REPORT_ROUT" 2>/dev/null
 rc_rout=$?
 if [ $rc_rout -ne 1 ]; then
     echo "FAIL: expected exit code 1 on routing mismatch, got $rc_rout"
@@ -184,9 +184,9 @@ echo "=== 3. Dimension handling (--dim 2048 & autodetection) ==="
 REPORT_AUTO="$TEST_DIR/report_auto.json"
 REPORT_EXP="$TEST_DIR/report_explicit.json"
 
-"$KIMO_TOOLS" compare "$BASE_REF" "$BASE_REF" --gate G-M3-1 > "$REPORT_AUTO"
+"$DISMOEN_TOOLS" compare "$BASE_REF" "$BASE_REF" --gate G-M3-1 > "$REPORT_AUTO"
 rc_auto=$?
-"$KIMO_TOOLS" compare "$BASE_REF" "$BASE_REF" --dim 2048 --gate G-M3-1 > "$REPORT_EXP"
+"$DISMOEN_TOOLS" compare "$BASE_REF" "$BASE_REF" --dim 2048 --gate G-M3-1 > "$REPORT_EXP"
 rc_exp=$?
 
 if [ $rc_auto -ne 0 ] || [ $rc_exp -ne 0 ]; then
@@ -200,7 +200,7 @@ echo "=== 4. Layout mismatch detection (exit 2, LAYOUT_MISMATCH) ==="
 TRUNC_BIN="$WORKDIR/truncated.bin"
 head -c 65536 "$BASE_REF" > "$TRUNC_BIN"
 REPORT_TRUNC="$TEST_DIR/err_trunc.json"
-"$KIMO_TOOLS" compare "$BASE_REF" "$TRUNC_BIN" --gate G-M3-1 > /dev/null 2> "$REPORT_TRUNC"
+"$DISMOEN_TOOLS" compare "$BASE_REF" "$TRUNC_BIN" --gate G-M3-1 > /dev/null 2> "$REPORT_TRUNC"
 rc=$?
 if [ $rc -ne 2 ]; then
     echo "FAIL: expected exit code 2 on size mismatch, got $rc"
@@ -218,7 +218,7 @@ fi
 
 echo "=== 5. File not found detection (exit 2, FILE_NOT_FOUND) ==="
 REPORT_FNF="$TEST_DIR/err_fnf.json"
-"$KIMO_TOOLS" compare "$BASE_REF" "$WORKDIR/non_existent_file.bin" --gate G-M3-1 > /dev/null 2> "$REPORT_FNF"
+"$DISMOEN_TOOLS" compare "$BASE_REF" "$WORKDIR/non_existent_file.bin" --gate G-M3-1 > /dev/null 2> "$REPORT_FNF"
 rc=$?
 if [ $rc -ne 2 ]; then
     echo "FAIL: expected exit code 2 on missing candidate file, got $rc"

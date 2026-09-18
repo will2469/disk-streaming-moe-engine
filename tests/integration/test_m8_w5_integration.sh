@@ -13,7 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 
-KIMO="./dismoen"
+DISMOEN="./dismoen"
 FIXTURES_DIR="fixtures"
 TMP_DIR="$(mktemp -d -t dismoen_m8_w5_XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -23,8 +23,8 @@ echo "=== M8-W5 Master Test Suite: M7/M9 Integration, Stress, Perf, & SEC ==="
 echo "======================================================================="
 
 # Pastikan binary dismoen siap
-if [ ! -f "$KIMO" ]; then
-    echo "Binary kimo tidak ditemukan, mengompilasi via pixi build..."
+if [ ! -f "$DISMOEN" ]; then
+    echo "Binary dismoen tidak ditemukan, mengompilasi via pixi build..."
     pixi run build
 fi
 
@@ -42,7 +42,7 @@ echo ">> [2/7] Menguji integrasi M7 (O_DIRECT + LRU Cache)..."
 OUT_M7="$TMP_DIR/m7_gdn_state.bin"
 STDOUT_M7="$TMP_DIR/m7_gdn_stdout.json"
 
-"$KIMO" gdn \
+"$DISMOEN" gdn \
     --model-dir "$FIXTURES_DIR" \
     --tokens "$FIXTURES_DIR/m8_tokens.json" \
     --output "$OUT_M7" \
@@ -72,7 +72,7 @@ assert "timing_profile" in d
 '
 
 # Verifikasi numerik terhadap golden reference (Gate G-M8-1)
-"$KIMO" compare \
+"$DISMOEN" compare \
     --reference "$FIXTURES_DIR/m8_state_naive.bin" \
     --candidate "$OUT_M7" \
     --gate G-M8-1 >/dev/null

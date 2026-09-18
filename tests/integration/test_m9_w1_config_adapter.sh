@@ -9,7 +9,7 @@
 #
 # Pengujian:
 # Stage 1: Pre-commit formatting & zero-suppression hygiene (Mojo format, no noqa)
-# Stage 2: Binary compilation check (kimo binary siap)
+# Stage 2: Binary compilation check (dismoen binary siap)
 # Stage 3: Architecture flag validation (missing / invalid flag -> exit 2)
 # Stage 4: Trial architecture verification (real model qwen1.5-moe -> exit 0)
 # Stage 5: Qwen3.6 architecture verification (real model qwen3.6-35b -> exit 0)
@@ -22,7 +22,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-KIMO="${KIMO:-./dismoen}"
+DISMOEN="${DISMOEN:-./dismoen}"
 TEST_DIR="/tmp/test_m9_w1_$$"
 TRIAL_MODEL_DIR="${HOME}/models/qwen1.5-moe-a2.7b-chat"
 QWEN36_MODEL_DIR="${HOME}/models/qwen3.6-35b-a3b"
@@ -65,18 +65,18 @@ fi
 echo "   PASS: Formatting bersih, zero-suppression terverifikasi."
 
 # -----------------------------------------------------------------------------
-# Stage 2: Kompilasi Binary kimo
+# Stage 2: Kompilasi Binary dismoen
 # -----------------------------------------------------------------------------
-echo ">> [2/7] Memeriksa kompilasi binary kimo..."
+echo ">> [2/7] Memeriksa kompilasi binary dismoen..."
 pixi run build >/dev/null 2>&1 || {
-    echo "FAIL: Gagal melakukan build binary kimo!"
+    echo "FAIL: Gagal melakukan build binary dismoen!"
     exit 1
 }
-if [[ ! -x "$KIMO" ]]; then
-    echo "FAIL: Binary kimo tidak ditemukan atau tidak executable: $KIMO"
+if [[ ! -x "$DISMOEN" ]]; then
+    echo "FAIL: Binary dismoen tidak ditemukan atau tidak executable: $DISMOEN"
     exit 1
 fi
-echo "   PASS: Binary kimo siap eksekusi."
+echo "   PASS: Binary dismoen siap eksekusi."
 
 # -----------------------------------------------------------------------------
 # Stage 3: Validasi Flag --architecture (Exit Code 2)
@@ -85,7 +85,7 @@ echo ">> [3/7] Menguji validasi flag --architecture (wajib eksplisit, exit 2)...
 
 # Case A: Missing flag --architecture
 set +e
-MISSING_OUT=$("$KIMO" forward-port --model-dir "$QWEN36_MODEL_DIR" --check-config-only 2>&1)
+MISSING_OUT=$("$DISMOEN" forward-port --model-dir "$QWEN36_MODEL_DIR" --check-config-only 2>&1)
 EXIT_CODE=$?
 set -e
 if [[ $EXIT_CODE -ne 2 ]]; then
@@ -101,7 +101,7 @@ fi
 
 # Case B: Unsupported architecture value
 set +e
-INVALID_OUT=$("$KIMO" forward-port --model-dir "$QWEN36_MODEL_DIR" --architecture llama --check-config-only 2>&1)
+INVALID_OUT=$("$DISMOEN" forward-port --model-dir "$QWEN36_MODEL_DIR" --architecture llama --check-config-only 2>&1)
 EXIT_CODE=$?
 set -e
 if [[ $EXIT_CODE -ne 2 ]]; then
@@ -122,7 +122,7 @@ echo "   PASS: Flag --architecture tervalidasi fail-closed (Exit 2)."
 # -----------------------------------------------------------------------------
 echo ">> [4/7] Memverifikasi flag --architecture ditolak pada dismoen forward..."
 set +e
-UNKNOWN_OUT=$("$KIMO" forward --architecture qwen3.6 2>&1)
+UNKNOWN_OUT=$("$DISMOEN" forward --architecture qwen3.6 2>&1)
 UNKNOWN_RC=$?
 set -e
 if [[ $UNKNOWN_RC -eq 0 ]]; then
@@ -140,7 +140,7 @@ echo "   PASS: Flag --architecture berhasil ditolak pada dismoen forward (§4.3)
 # -----------------------------------------------------------------------------
 echo ">> [5/7] Memverifikasi arsitektur Qwen3.6-35B-A3B pada model nyata..."
 if [[ -d "$QWEN36_MODEL_DIR" ]]; then
-    PORT_OUT=$("$KIMO" forward-port \
+    PORT_OUT=$("$DISMOEN" forward-port \
         --model-dir "$QWEN36_MODEL_DIR" \
         --architecture qwen3.6 \
         --check-config-only)
@@ -198,7 +198,7 @@ fi
 # Stage 6: Verifikasi Synthetic Mini Port Config (Fixture CI)
 # -----------------------------------------------------------------------------
 echo ">> [6/7] Memverifikasi synthetic mini port config (fixtures/m9_port_config_mini.json)..."
-MINI_OUT=$("$KIMO" forward-port \
+MINI_OUT=$("$DISMOEN" forward-port \
     --model-dir fixtures/m9_port_config_mini.json \
     --architecture qwen3.6 \
     --check-config-only)
@@ -245,7 +245,7 @@ echo ">> [7/7] Menjalankan mismatch detector test suite..."
 # Test 7.1: Kontrak M10 - flag --architecture ditolak pada command forward
 if [[ -d "$QWEN36_MODEL_DIR" ]]; then
     set +e
-    ERR_OUT=$("$KIMO" forward --model-dir "$QWEN36_MODEL_DIR" --architecture qwen3.6 --check-config-only 2>&1)
+    ERR_OUT=$("$DISMOEN" forward --model-dir "$QWEN36_MODEL_DIR" --architecture qwen3.6 --check-config-only 2>&1)
     CODE=$?
     set -e
     if [[ $CODE -eq 0 ]]; then
@@ -261,7 +261,7 @@ fi
 # Test 7.2: Architecture mismatch - flag qwen3.6 pada model Trial -> Exit 2
 if [[ -d "$TRIAL_MODEL_DIR" ]]; then
     set +e
-    ERR_OUT=$("$KIMO" forward-port --model-dir "$TRIAL_MODEL_DIR" --architecture qwen3.6 --check-config-only 2>&1)
+    ERR_OUT=$("$DISMOEN" forward-port --model-dir "$TRIAL_MODEL_DIR" --architecture qwen3.6 --check-config-only 2>&1)
     CODE=$?
     set -e
     if [[ $CODE -ne 2 ]]; then
@@ -276,7 +276,7 @@ fi
 
 # Test 7.3: Config mismatch - tampered vocab size -> Exit 3
 set +e
-ERR_OUT=$("$KIMO" forward-port --model-dir fixtures/m9_mismatch_vocab.json --architecture qwen3.6 --check-config-only 2>&1)
+ERR_OUT=$("$DISMOEN" forward-port --model-dir fixtures/m9_mismatch_vocab.json --architecture qwen3.6 --check-config-only 2>&1)
 CODE=$?
 set -e
 if [[ $CODE -ne 3 ]]; then
@@ -290,7 +290,7 @@ echo "$ERR_OUT" | grep -q "CONFIG_MISMATCH" || {
 
 # Test 7.4: Config mismatch - tampered layer count -> Exit 3
 set +e
-ERR_OUT=$("$KIMO" forward-port --model-dir fixtures/m9_mismatch_layers.json --architecture qwen3.6 --check-config-only 2>&1)
+ERR_OUT=$("$DISMOEN" forward-port --model-dir fixtures/m9_mismatch_layers.json --architecture qwen3.6 --check-config-only 2>&1)
 CODE=$?
 set -e
 if [[ $CODE -ne 3 ]]; then
@@ -304,7 +304,7 @@ echo "$ERR_OUT" | grep -q "CONFIG_MISMATCH" || {
 
 # Test 7.5: Config mismatch - tampered top-k -> Exit 3
 set +e
-ERR_OUT=$("$KIMO" forward-port --model-dir fixtures/m9_mismatch_topk.json --architecture qwen3.6 --check-config-only 2>&1)
+ERR_OUT=$("$DISMOEN" forward-port --model-dir fixtures/m9_mismatch_topk.json --architecture qwen3.6 --check-config-only 2>&1)
 CODE=$?
 set -e
 if [[ $CODE -ne 3 ]]; then
@@ -318,7 +318,7 @@ echo "$ERR_OUT" | grep -q "CONFIG_MISMATCH" || {
 
 # Test 7.6: Config mismatch - tampered expert count -> Exit 3
 set +e
-ERR_OUT=$("$KIMO" forward-port --model-dir fixtures/m9_mismatch_experts.json --architecture qwen3.6 --check-config-only 2>&1)
+ERR_OUT=$("$DISMOEN" forward-port --model-dir fixtures/m9_mismatch_experts.json --architecture qwen3.6 --check-config-only 2>&1)
 CODE=$?
 set -e
 if [[ $CODE -ne 3 ]]; then

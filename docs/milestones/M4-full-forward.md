@@ -16,14 +16,14 @@
 
 Membuktikan seluruh badan transformer benar saat bobot di-stream per layer (pread → pakai → buang, RAM tidak menumpuk), dan error akumulasi masih dalam bound loose.
 
-## CLI: `kimo forward`
+## CLI: `dismoen forward`
 
 Subcommand `forward` menjalankan full forward pass 24 layer dengan streaming layer weights.
 
 ### Input
 
 ```bash
-kimo forward \
+dismoen forward \
   --model-dir <DIR> \
   --tokens <PATH> \
   --output <PATH> \
@@ -116,7 +116,7 @@ nested → `M4_ERR_INPUT`); (3) count 1..1024; (4) tiap ID < 151.936.
 
 ```bash
 # Happy path
-kimo forward \
+dismoen forward \
   --model-dir /models/qwen-moe \
   --tokens /data/prompt1_tokens.json \
   --output /work/prompt1_logits.bin \
@@ -124,7 +124,7 @@ kimo forward \
 
 # Cgroup boundary test
 systemd-run --scope -p MemoryMax=6G \
-  kimo forward \
+  dismoen forward \
   --model-dir /models/qwen-moe \
   --tokens /data/prompt1_tokens.json \
   --output /work/prompt1_logits.bin \
@@ -448,7 +448,7 @@ Tanpa KV cache: K/V dihitung ulang tiap layer dan dibuang bersama
 
 ```mermaid
 flowchart TD
-    A[Start: kimo forward] --> B[Load tokens.json + validasi path output ⊂ workdir]
+    A[Start: dismoen forward] --> B[Load tokens.json + validasi path output ⊂ workdir]
     B --> C{Validate tokens?}
     C -->|No| ERR1[Error: M4_ERR_INPUT, exit 1]
     C -->|Yes| D[Read 8 shard HEADERS (tanpa body)]
@@ -612,62 +612,62 @@ FIXTURE_DIR="tools/fixtures"
 for i in {1..5}; do
   TOKENS="$FIXTURE_DIR/m4_prompt${i}_tokens.json"
   OUTPUT="$WORKDIR/prompt${i}_logits.bin"
-  kimo forward --model-dir "$MODEL_DIR" --tokens "$TOKENS" --output "$OUTPUT" --workdir "$WORKDIR"
+  dismoen forward --model-dir "$MODEL_DIR" --tokens "$TOKENS" --output "$OUTPUT" --workdir "$WORKDIR"
   # Compare with oracle (FP32 vs FP32, gate G-M4-1; verdict A→N→S)
   # Bila kedua sisi memakai --dump-routing: Tier-1 architecture proof per layer
   # (atribusi layer tepat untuk debugging — SET dibandingkan order-insensitive):
   # for l in $(seq 0 23); do
-  #   kimo-tools compare --ref "$FIXTURE_DIR/m4_prompt${i}_oracle.bin" --cand "$OUTPUT" \
+  #   dismoen-tools compare --ref "$FIXTURE_DIR/m4_prompt${i}_oracle.bin" --cand "$OUTPUT" \
   #     --gate G-M4-1 --dim 151936 \
   #     --oracle-routing "$FIXTURE_DIR/m4_prompt${i}_routing/routing_L${l}.json" \
   #     --cand-routing "$WORKDIR/routing/routing_L${l}.json" || exit 1
   # done
-  kimo-tools compare --ref "$FIXTURE_DIR/m4_prompt${i}_oracle.bin" --cand "$OUTPUT" --gate G-M4-1 --dim 151936
+  dismoen-tools compare --ref "$FIXTURE_DIR/m4_prompt${i}_oracle.bin" --cand "$OUTPUT" --gate G-M4-1 --dim 151936
 done
 
 # IT-M4-2: Missing shard
 mv "$MODEL_DIR/model-00002-of-00008.safetensors" "$MODEL_DIR/model-00002-of-00008.safetensors.bak"
-kimo forward --model-dir "$MODEL_DIR" --tokens "$TOKENS" --output "$OUTPUT" --workdir "$WORKDIR" || true
+dismoen forward --model-dir "$MODEL_DIR" --tokens "$TOKENS" --output "$OUTPUT" --workdir "$WORKDIR" || true
 # Expect exit 4
 
 # IT-M4-3: Corrupt shard header
 # (modify header checksum)
-kimo forward --model-dir "$MODEL_DIR" --tokens "$TOKENS" --output "$OUTPUT" --workdir "$WORKDIR" || true
+dismoen forward --model-dir "$MODEL_DIR" --tokens "$TOKENS" --output "$OUTPUT" --workdir "$WORKDIR" || true
 # Expect exit 2
 
 # IT-M4-6: Cgroup boundary
 systemd-run --scope -p MemoryMax=6G \
-  kimo forward --model-dir "$MODEL_DIR" --tokens "$TOKENS" --output "$OUTPUT" --workdir "$WORKDIR"
+  dismoen forward --model-dir "$MODEL_DIR" --tokens "$TOKENS" --output "$OUTPUT" --workdir "$WORKDIR"
 # Expect exit 0, VmHWM ≤ 5 GiB, oom_kill == 0
 
 # IT-M4-7: Deterministic
 OUTPUT1="$WORKDIR/prompt1_run1.bin"
 OUTPUT2="$WORKDIR/prompt1_run2.bin"
-kimo forward --model-dir "$MODEL_DIR" --tokens "$TOKENS" --output "$OUTPUT1" --workdir "$WORKDIR" --threads 1
-kimo forward --model-dir "$MODEL_DIR" --tokens "$TOKENS" --output "$OUTPUT2" --workdir "$WORKDIR" --threads 1
+dismoen forward --model-dir "$MODEL_DIR" --tokens "$TOKENS" --output "$OUTPUT1" --workdir "$WORKDIR" --threads 1
+dismoen forward --model-dir "$MODEL_DIR" --tokens "$TOKENS" --output "$OUTPUT2" --workdir "$WORKDIR" --threads 1
 SHA1=$(sha256sum "$OUTPUT1" | cut -d' ' -f1)
 SHA2=$(sha256sum "$OUTPUT2" | cut -d' ' -f1)
 [ "$SHA1" = "$SHA2" ] || exit 1
 
 # IT-M4-11: Output escape ditolak (aturan output path, SEC-5)
-if kimo forward --model-dir "$MODEL_DIR" --tokens "$TOKENS" --output "$WORKDIR/../escape.bin" --workdir "$WORKDIR"; then
+if dismoen forward --model-dir "$MODEL_DIR" --tokens "$TOKENS" --output "$WORKDIR/../escape.bin" --workdir "$WORKDIR"; then
   echo "FAIL: escape via .. diterima"; exit 1
 fi
-if kimo forward --model-dir "$MODEL_DIR" --tokens "$TOKENS" --output /tmp/escape.bin --workdir "$WORKDIR"; then
+if dismoen forward --model-dir "$MODEL_DIR" --tokens "$TOKENS" --output /tmp/escape.bin --workdir "$WORKDIR"; then
   echo "FAIL: absolut di luar workdir diterima"; exit 1
 fi
 [ ! -e "$WORKDIR/../escape.bin" ] && [ ! -e /tmp/escape.bin ] || exit 1
 
 # IT-M4-12: Tokens melebihi batas (sebelum alokasi besar)
 python3 -c "import json; json.dump(list(range(1025)), open('$WORKDIR/big_tokens.json','w'))"
-if kimo forward --model-dir "$MODEL_DIR" --tokens "$WORKDIR/big_tokens.json" --output "$WORKDIR/big.bin" --workdir "$WORKDIR"; then
+if dismoen forward --model-dir "$MODEL_DIR" --tokens "$WORKDIR/big_tokens.json" --output "$WORKDIR/big.bin" --workdir "$WORKDIR"; then
   echo "FAIL: 1025 token diterima"; exit 1
 fi
 [ ! -e "$WORKDIR/big.bin" ] || exit 1
 
 # IT-M4-13: Isolasi cleanup workdir bersama
-kimo forward --model-dir "$MODEL_DIR" --tokens "$TOKENS" --output "$WORKDIR/iso_a.bin" --workdir "$WORKDIR"
-kimo forward --model-dir "$MODEL_DIR" --tokens "$TOKENS" --output "$WORKDIR/iso_b.bin" --workdir "$WORKDIR"
+dismoen forward --model-dir "$MODEL_DIR" --tokens "$TOKENS" --output "$WORKDIR/iso_a.bin" --workdir "$WORKDIR"
+dismoen forward --model-dir "$MODEL_DIR" --tokens "$TOKENS" --output "$WORKDIR/iso_b.bin" --workdir "$WORKDIR"
 [ -f "$WORKDIR/iso_a.bin" ] && [ -f "$WORKDIR/iso_b.bin" ] || exit 1
 [ -z "$(find "$WORKDIR/runs" -mindepth 1 2>/dev/null)" ] || { echo "FAIL: orphan temp tersisa"; exit 1; }
 ```
@@ -1047,7 +1047,7 @@ Optional per-layer timing untuk debugging layer bottleneck:
 ### Optional Flag
 
 ```bash
-kimo forward \
+dismoen forward \
   --model-dir /models/qwen-moe \
   --tokens /data/prompt1_tokens.json \
   --output /work/prompt1_logits.bin \
@@ -1078,7 +1078,7 @@ kimo forward \
 2. **Cold runs**: N=5 run dengan `sync; echo 3 > /proc/sys/vm/drop_caches` antar run.
 3. **Governor**: catat `cpupower frequency-info -g` (harus `performance` atau `schedutil`).
 4. **Metrics per run**:
-   - Walltime: `time kimo forward ...`
+   - Walltime: `time dismoen forward ...`
    - VmHWM — GATE (RSS, cache-independent): `/proc/<pid>/status` → `VmHWM`
    - cgroup OOM — GATE: `<cgroup>/memory.events` → `oom_kill == 0` di semua run
    - cgroup peak — observability: `<cgroup>/memory.peak` dibaca setelah run
@@ -1136,7 +1136,7 @@ Catat initial $e_T$ (compute intensity per token) untuk proyeksi F4/F5 di M5:
 
 ### CLI Implementation
 
-- [ ] `kimo forward` subcommand terimplementasi dengan semua argumen
+- [ ] `dismoen forward` subcommand terimplementasi dengan semua argumen
 - [ ] Input validation: tokens JSON format + `MAX_TOKENS`/`MAX_TOKENS_FILE_BYTES` sebelum alokasi, model dir existence, workdir writability, output containment
 - [ ] Exit codes: 0 (success), 1-6 (error per stage), semuanya teruji
 - [ ] Output JSON dengan run_id, metrics, phase breakdown tercommit schema

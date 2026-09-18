@@ -9,7 +9,7 @@
 # 2. tools/fixtures/generate_m6_ppl.py & m6_ppl_corpus.json:
 #    100 dokumen x tepat 256 token ID, token < 151.936, no pad/truncate,
 #    ppl_golden_pins.json & baseline artifacts terverifikasi.
-# 3. kimo quantize --error-report:
+# 3. dismoen quantize --error-report:
 #    per-tensor error breakdown (epsilon_rel, mse, property_ok, max_abs_error,
 #    num_groups, summary).
 # 4. oracle_ppl.py:
@@ -56,8 +56,8 @@ echo "   PASS: Formatting Mojo dan Python bersih 100%."
 # ----------------------------------------------------------------------
 echo ">> [2/6] Membangun binary dismoen via pixi build..."
 pixi run build
-KIMO="./dismoen"
-[ -x "$KIMO" ] || { echo "FAIL: binary dismoen tidak ditemukan"; exit 1; }
+DISMOEN="./dismoen"
+[ -x "$DISMOEN" ] || { echo "FAIL: binary dismoen tidak ditemukan"; exit 1; }
 echo "   PASS: Binary dismoen siap dijalankan."
 
 # ----------------------------------------------------------------------
@@ -211,19 +211,19 @@ print("   PASS: Korpus 100x256, golden pins, dan seluruh baseline artifacts vali
 EOF
 
 # ----------------------------------------------------------------------
-# 6. Pengujian kimo quantize --error-report & oracle_ppl.py
+# 6. Pengujian dismoen quantize --error-report & oracle_ppl.py
 # ----------------------------------------------------------------------
-echo ">> [6/6] Menguji kimo quantize --error-report dan oracle_ppl.py..."
+echo ">> [6/6] Menguji dismoen quantize --error-report dan oracle_ppl.py..."
 
-# 6a. kimo quantize dengan --error-report
-"$KIMO" quantize \
+# 6a. dismoen quantize dengan --error-report
+"$DISMOEN" quantize \
     --input-dir fixtures/m1 \
     --output-dir "$OUTPUT_DIR" \
     --group-size 64 \
-    --error-report "$WORKDIR/kimo_error_report.json" \
+    --error-report "$WORKDIR/dismoen_error_report.json" \
     --workdir "$WORKDIR" > "$WORKDIR/quant_stdout.json"
 
-PYTHONPATH=. uv run --python .venv python - "$WORKDIR/kimo_error_report.json" <<'EOF'
+PYTHONPATH=. uv run --python .venv python - "$WORKDIR/dismoen_error_report.json" <<'EOF'
 import json, sys
 rep = json.load(open(sys.argv[1]))
 assert rep["run_id"] == "M6-QUANT-CLI"
@@ -242,7 +242,7 @@ for t in tensors:
     assert t["property_ok"], f"Property Q-domain failed on {t['name']}"
     assert "max_abs_error" in t
     assert "num_groups" in t
-print("   PASS: kimo quantize --error-report menghasilkan schema per-tensor lengkap.")
+print("   PASS: dismoen quantize --error-report menghasilkan schema per-tensor lengkap.")
 EOF
 
 # 6b. oracle_ppl.py: proteksi golden pins (pin mismatch -> status INVALID)

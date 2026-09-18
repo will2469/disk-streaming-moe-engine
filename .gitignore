@@ -26,6 +26,7 @@ __pycache__/
 *.so
 build/
 dist/
+/dismoen
 /kimo
 /io_benchmark
 

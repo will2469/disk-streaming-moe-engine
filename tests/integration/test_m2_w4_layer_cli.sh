@@ -1,5 +1,5 @@
 #!/bin/bash
-# E2E test suite for kimo layer CLI (M2-W4)
+# E2E test suite for dismoen layer CLI (M2-W4)
 # Covers:
 # 1. Happy path (--model-dir) for layer 0, 12, 23
 # 2. Happy path (positional shards)
@@ -14,7 +14,7 @@
 
 set -u
 
-KIMO="${KIMO:-./dismoen}"
+DISMOEN="${DISMOEN:-./dismoen}"
 TEST_DIR="/tmp/test_m2_w4_layer_cli_$$"
 FX_DIR="$TEST_DIR/fixture"
 WORKDIR="$TEST_DIR/workdir"
@@ -118,7 +118,7 @@ with open('$ACT_VALID', 'wb') as f:
 echo "=== 1. Happy path: Layer 0, 12, 23 with --model-dir ==="
 for lyr in 0 12 23; do
     out_file="attn_out_${lyr}.bin"
-    res=$("$KIMO" layer --layer "$lyr" "$ACT_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" --output "$out_file")
+    res=$("$DISMOEN" layer --layer "$lyr" "$ACT_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" --output "$out_file")
     rc=$?
     if [ $rc -ne 0 ]; then
         echo "FAIL: layer $lyr returned exit code $rc"
@@ -177,7 +177,7 @@ done
 
 echo "=== 2. Happy path: Positional shards ==="
 out_shards="attn_out_shards.bin"
-res=$("$KIMO" layer --layer 0 "$ACT_VALID" "$FX_DIR/shard-00001-of-00002.safetensors" "$FX_DIR/shard-00002-of-00002.safetensors" --workdir "$WORKDIR" --output "$out_shards")
+res=$("$DISMOEN" layer --layer 0 "$ACT_VALID" "$FX_DIR/shard-00001-of-00002.safetensors" "$FX_DIR/shard-00002-of-00002.safetensors" --workdir "$WORKDIR" --output "$out_shards")
 rc=$?
 if [ $rc -ne 0 ]; then
     echo "FAIL: positional shards mode returned exit code $rc"
@@ -194,7 +194,7 @@ assert d['layer'] == 0
 
 echo "=== 3. Layer validation: Invalid layer values ==="
 # Missing --layer
-err=$("$KIMO" layer "$ACT_VALID" --model-dir "$FX_DIR" 2>&1)
+err=$("$DISMOEN" layer "$ACT_VALID" --model-dir "$FX_DIR" 2>&1)
 rc=$?
 if [ $rc -eq 2 ] && echo "$err" | grep -q '"error_type":"LAYER_INVALID"'; then
     echo "PASS: missing --layer rejected with LAYER_INVALID (exit 2)"
@@ -204,7 +204,7 @@ else
 fi
 
 # Invalid layer 5 (not in {0, 12, 23})
-err=$("$KIMO" layer --layer 5 "$ACT_VALID" --model-dir "$FX_DIR" 2>&1)
+err=$("$DISMOEN" layer --layer 5 "$ACT_VALID" --model-dir "$FX_DIR" 2>&1)
 rc=$?
 if [ $rc -eq 2 ] && echo "$err" | grep -q '"error_type":"LAYER_INVALID"'; then
     echo "PASS: layer 5 rejected with LAYER_INVALID (exit 2)"
@@ -214,7 +214,7 @@ else
 fi
 
 # Negative layer -1
-err=$("$KIMO" layer --layer -1 "$ACT_VALID" --model-dir "$FX_DIR" 2>&1)
+err=$("$DISMOEN" layer --layer -1 "$ACT_VALID" --model-dir "$FX_DIR" 2>&1)
 rc=$?
 if [ $rc -eq 2 ] && echo "$err" | grep -q '"error_type":"LAYER_INVALID"'; then
     echo "PASS: layer -1 rejected with LAYER_INVALID (exit 2)"
@@ -224,7 +224,7 @@ else
 fi
 
 # Layer 24 (out of bounds)
-err=$("$KIMO" layer --layer 24 "$ACT_VALID" --model-dir "$FX_DIR" 2>&1)
+err=$("$DISMOEN" layer --layer 24 "$ACT_VALID" --model-dir "$FX_DIR" 2>&1)
 rc=$?
 if [ $rc -eq 2 ] && echo "$err" | grep -q '"error_type":"LAYER_INVALID"'; then
     echo "PASS: layer 24 rejected with LAYER_INVALID (exit 2)"
@@ -234,7 +234,7 @@ else
 fi
 
 # Non-numeric layer 'abc'
-err=$("$KIMO" layer --layer abc "$ACT_VALID" --model-dir "$FX_DIR" 2>&1)
+err=$("$DISMOEN" layer --layer abc "$ACT_VALID" --model-dir "$FX_DIR" 2>&1)
 rc=$?
 if [ $rc -eq 2 ] && echo "$err" | grep -q '"error_type":"LAYER_INVALID"'; then
     echo "PASS: layer abc rejected with LAYER_INVALID (exit 2)"
@@ -245,7 +245,7 @@ fi
 
 echo "=== 4. Activation validation ==="
 # Missing activation file argument
-err=$("$KIMO" layer --layer 0 2>&1)
+err=$("$DISMOEN" layer --layer 0 2>&1)
 rc=$?
 if [ $rc -eq 2 ] && echo "$err" | grep -q '"error_type":"ACT_LOAD_FAILED"'; then
     echo "PASS: missing activation path rejected with ACT_LOAD_FAILED (exit 2)"
@@ -255,7 +255,7 @@ else
 fi
 
 # Activation file does not exist
-err=$("$KIMO" layer --layer 0 "$TEST_DIR/nonexistent.bin" --model-dir "$FX_DIR" 2>&1)
+err=$("$DISMOEN" layer --layer 0 "$TEST_DIR/nonexistent.bin" --model-dir "$FX_DIR" 2>&1)
 rc=$?
 if [ $rc -eq 2 ] && echo "$err" | grep -q '"error_type":"FILE_NOT_FOUND"'; then
     echo "PASS: nonexistent activation rejected with FILE_NOT_FOUND (exit 2)"
@@ -267,7 +267,7 @@ fi
 # Truncated activation file
 ACT_SHORT="$TEST_DIR/act_short.bin"
 head -c 100 "$ACT_VALID" > "$ACT_SHORT"
-err=$("$KIMO" layer --layer 0 "$ACT_SHORT" --model-dir "$FX_DIR" 2>&1)
+err=$("$DISMOEN" layer --layer 0 "$ACT_SHORT" --model-dir "$FX_DIR" 2>&1)
 rc=$?
 if [ $rc -eq 2 ] && echo "$err" | grep -q '"error_type":"ACT_LOAD_FAILED"'; then
     echo "PASS: truncated activation rejected with ACT_LOAD_FAILED (exit 2)"
@@ -285,7 +285,7 @@ with open('$ACT_NAN', 'wb') as f:
         v = float('nan') if i == 5 else math.sin(float(i + 1)) * 0.1
         f.write(struct.pack('<f', v))
 "
-err=$("$KIMO" layer --layer 0 "$ACT_NAN" --model-dir "$FX_DIR" 2>&1)
+err=$("$DISMOEN" layer --layer 0 "$ACT_NAN" --model-dir "$FX_DIR" 2>&1)
 rc=$?
 if [ $rc -eq 2 ] && echo "$err" | grep -q '"error_type":"ACT_LOAD_FAILED"'; then
     echo "PASS: NaN activation rejected with ACT_LOAD_FAILED (exit 2)"
@@ -303,7 +303,7 @@ with open('$ACT_INF', 'wb') as f:
         v = float('inf') if i == 10 else math.sin(float(i + 1)) * 0.1
         f.write(struct.pack('<f', v))
 "
-err=$("$KIMO" layer --layer 0 "$ACT_INF" --model-dir "$FX_DIR" 2>&1)
+err=$("$DISMOEN" layer --layer 0 "$ACT_INF" --model-dir "$FX_DIR" 2>&1)
 rc=$?
 if [ $rc -eq 2 ] && echo "$err" | grep -q '"error_type":"ACT_LOAD_FAILED"'; then
     echo "PASS: Inf activation rejected with ACT_LOAD_FAILED (exit 2)"
@@ -321,7 +321,7 @@ with open('$ACT_OUTLIER', 'wb') as f:
         v = 2e6 if i == 10 else math.sin(float(i + 1)) * 0.1
         f.write(struct.pack('<f', v))
 "
-err=$("$KIMO" layer --layer 0 "$ACT_OUTLIER" --model-dir "$FX_DIR" 2>&1)
+err=$("$DISMOEN" layer --layer 0 "$ACT_OUTLIER" --model-dir "$FX_DIR" 2>&1)
 rc=$?
 if [ $rc -eq 2 ] && echo "$err" | grep -q '"error_type":"ACT_LOAD_FAILED"'; then
     echo "PASS: outlier activation rejected with ACT_LOAD_FAILED (exit 2)"
@@ -332,7 +332,7 @@ fi
 
 echo "=== 5. Shard & Model Validation ==="
 # Missing shard file on disk
-err=$("$KIMO" layer --layer 0 "$ACT_VALID" "$TEST_DIR/shard_ghost.safetensors" 2>&1)
+err=$("$DISMOEN" layer --layer 0 "$ACT_VALID" "$TEST_DIR/shard_ghost.safetensors" 2>&1)
 rc=$?
 if [ $rc -eq 2 ] && echo "$err" | grep -q '"error_type":"FILE_NOT_FOUND"'; then
     echo "PASS: missing shard on disk rejected with FILE_NOT_FOUND (exit 2)"
@@ -342,7 +342,7 @@ else
 fi
 
 # Shards missing required layer weights (shard 2 only has layer 23, but we request layer 0)
-err=$("$KIMO" layer --layer 0 "$ACT_VALID" "$FX_DIR/shard-00002-of-00002.safetensors" 2>&1)
+err=$("$DISMOEN" layer --layer 0 "$ACT_VALID" "$FX_DIR/shard-00002-of-00002.safetensors" 2>&1)
 rc=$?
 if [ $rc -eq 2 ] && echo "$err" | grep -q '"error_type":"WEIGHT_LOAD_FAILED"'; then
     echo "PASS: shard missing layer weights rejected with WEIGHT_LOAD_FAILED (exit 2)"
@@ -366,7 +366,7 @@ del idx['weight_map']['model.layers.0.self_attn.q_proj.bias']
 with open('$FX_BAD_BIAS/model.safetensors.index.json', 'w') as f:
     json.dump(idx, f)
 "
-err=$("$KIMO" layer --layer 0 "$ACT_VALID" --model-dir "$FX_BAD_BIAS" 2>&1)
+err=$("$DISMOEN" layer --layer 0 "$ACT_VALID" --model-dir "$FX_BAD_BIAS" 2>&1)
 rc=$?
 if [ $rc -eq 2 ] && echo "$err" | grep -q '"error_type":"WEIGHT_LOAD_FAILED"'; then
     echo "PASS: bias count mismatch rejected with WEIGHT_LOAD_FAILED (exit 2)"
@@ -377,7 +377,7 @@ fi
 
 echo "=== 6. Workdir Containment & Atomic Rollback ==="
 # Workdir escape
-err=$("$KIMO" layer --layer 0 "$ACT_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" --output "../escaped.bin" 2>&1)
+err=$("$DISMOEN" layer --layer 0 "$ACT_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" --output "../escaped.bin" 2>&1)
 rc=$?
 if [ $rc -eq 2 ] && echo "$err" | grep -q '"error_type":"OUTPUT_WRITE_FAILED"'; then
     echo "PASS: workdir escape rejected with OUTPUT_WRITE_FAILED (exit 2)"
@@ -390,7 +390,7 @@ fi
 RO_DIR="$TEST_DIR/ro_dir"
 mkdir -p "$RO_DIR"
 chmod 555 "$RO_DIR"
-err=$("$KIMO" layer --layer 0 "$ACT_VALID" --model-dir "$FX_DIR" --workdir "$RO_DIR" --output "locked.bin" 2>&1)
+err=$("$DISMOEN" layer --layer 0 "$ACT_VALID" --model-dir "$FX_DIR" --workdir "$RO_DIR" --output "locked.bin" 2>&1)
 rc=$?
 chmod 755 "$RO_DIR"
 if [ $rc -eq 2 ] && echo "$err" | grep -q '"error_type":"OUTPUT_WRITE_FAILED"'; then
@@ -408,7 +408,7 @@ else
 fi
 
 # Ambiguous invocation: --model-dir forbids positional shards
-err=$("$KIMO" layer --layer 0 "$ACT_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" "$FX_DIR/shard-00001-of-00002.safetensors" 2>&1)
+err=$("$DISMOEN" layer --layer 0 "$ACT_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" "$FX_DIR/shard-00001-of-00002.safetensors" 2>&1)
 rc=$?
 if [ $rc -eq 2 ] && echo "$err" | grep -q '"error_type":"USAGE"'; then
     echo "PASS: ambiguous --model-dir + positional shards rejected (exit 2)"
@@ -430,7 +430,7 @@ with open('$ACT_REAL', 'wb') as f:
         f.write(struct.pack('<f', v))
 "
     for lyr in 0 12 23; do
-        res=$("$KIMO" layer --layer "$lyr" "$ACT_REAL" --model-dir "$REAL_MODEL" --workdir "$WORKDIR" --output "real_out_${lyr}.bin")
+        res=$("$DISMOEN" layer --layer "$lyr" "$ACT_REAL" --model-dir "$REAL_MODEL" --workdir "$WORKDIR" --output "real_out_${lyr}.bin")
         rc=$?
         if [ $rc -eq 0 ]; then
             echo "PASS: real model layer $lyr succeeded (exit 0)"

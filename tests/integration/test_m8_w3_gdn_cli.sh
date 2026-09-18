@@ -4,7 +4,7 @@
 # See LICENSE for details.
 #
 # Master Integration Test Suite: Milestone M8 Wave 3
-# CLI kimo gdn, State Lifecycle, GDNS v1 Serialization, and 7 Error Codes.
+# CLI dismoen gdn, State Lifecycle, GDNS v1 Serialization, and 7 Error Codes.
 
 set -euo pipefail
 
@@ -12,7 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 
-KIMO="./dismoen"
+DISMOEN="./dismoen"
 FIXTURES_DIR="fixtures"
 TMP_DIR="$(mktemp -d -t dismoen_m8_w3_XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -20,7 +20,7 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 echo "=== M8-W3 Master Integration Test Suite: dismoen gdn CLI & State Lifecycle ==="
 
 # Pastikan binary dismoen tersedia
-if [ ! -f "$KIMO" ]; then
+if [ ! -f "$DISMOEN" ]; then
     echo "Binary dismoen tidak ditemukan, mengompilasi via pixi build..."
     pixi run build
 fi
@@ -28,11 +28,11 @@ fi
 # ----------------------------------------------------------------------
 # Test 1: Happy Path CLI Invocation
 # ----------------------------------------------------------------------
-echo "--> Test 1: Verifikasi Happy Path CLI kimo gdn..."
+echo "--> Test 1: Verifikasi Happy Path CLI dismoen gdn..."
 OUT_HAPPY="$TMP_DIR/happy_state.bin"
 STDOUT_HAPPY="$TMP_DIR/happy_stdout.json"
 
-"$KIMO" gdn \
+"$DISMOEN" gdn \
     --model-dir "$FIXTURES_DIR" \
     --tokens "$FIXTURES_DIR/m8_tokens.json" \
     --output "$OUT_HAPPY" \
@@ -60,7 +60,7 @@ assert data["metrics"]["vmhwm_bytes"] > 0
 '
 
 # Verifikasi numerical equivalence dengan golden naive oracle (Gate G-M8-1)
-"$KIMO" compare \
+"$DISMOEN" compare \
     --reference "$FIXTURES_DIR/m8_state_naive.bin" \
     --candidate "$OUT_HAPPY" \
     --gate G-M8-1 >/dev/null
@@ -86,14 +86,14 @@ OUT_SEQ1="$TMP_DIR/seq1_state.bin"
 OUT_CONT="$TMP_DIR/cont_state.bin"
 
 # 1. Jalankan seq1 (zero-init)
-"$KIMO" gdn \
+"$DISMOEN" gdn \
     --model-dir "$FIXTURES_DIR" \
     --tokens "$TMP_DIR/tokens_seq1.json" \
     --output "$OUT_SEQ1" \
     --layers 2 --dk 32 --dv 32 --chunk-size 8 >/dev/null
 
 # 2. Jalankan seq2 dengan continuation dari state seq1
-"$KIMO" gdn \
+"$DISMOEN" gdn \
     --model-dir "$FIXTURES_DIR" \
     --tokens "$TMP_DIR/tokens_seq2.json" \
     --state-input "$OUT_SEQ1" \
@@ -101,7 +101,7 @@ OUT_CONT="$TMP_DIR/cont_state.bin"
     --layers 2 --dk 32 --dv 32 --chunk-size 8 >/dev/null
 
 # 3. Verifikasi ekuivalensi numerik continuation vs single-pass 16 token (Gate G-M8-1)
-"$KIMO" compare \
+"$DISMOEN" compare \
     --reference "$OUT_HAPPY" \
     --candidate "$OUT_CONT" \
     --gate G-M8-1 >/dev/null
@@ -115,7 +115,7 @@ echo "--> Test 3: Verifikasi Error Code 1 (INPUT_INVALID)..."
 
 # 3a: Tokens file tidak ditemukan
 set +e
-ERR_OUT1=$("$KIMO" gdn --model-dir "$FIXTURES_DIR" --tokens "$TMP_DIR/non_existent.json" --output "$TMP_DIR/dummy.bin" 2>&1 >/dev/null)
+ERR_OUT1=$("$DISMOEN" gdn --model-dir "$FIXTURES_DIR" --tokens "$TMP_DIR/non_existent.json" --output "$TMP_DIR/dummy.bin" 2>&1 >/dev/null)
 RET1=$?
 set -e
 [ "$RET1" -eq 1 ] || { echo "FAIL: expected exit 1 on missing tokens, got $RET1"; exit 1; }
@@ -129,7 +129,7 @@ assert err["error_type"] == "INPUT_INVALID"
 # 3b: Tokens JSON format salah
 echo "invalid json content {" > "$TMP_DIR/bad_tokens.json"
 set +e
-ERR_OUT2=$("$KIMO" gdn --model-dir "$FIXTURES_DIR" --tokens "$TMP_DIR/bad_tokens.json" --output "$TMP_DIR/dummy.bin" 2>&1 >/dev/null)
+ERR_OUT2=$("$DISMOEN" gdn --model-dir "$FIXTURES_DIR" --tokens "$TMP_DIR/bad_tokens.json" --output "$TMP_DIR/dummy.bin" 2>&1 >/dev/null)
 RET2=$?
 set -e
 [ "$RET2" -eq 1 ] || { echo "FAIL: expected exit 1 on corrupt tokens JSON, got $RET2"; exit 1; }
@@ -142,7 +142,7 @@ assert err["error_type"] == "INPUT_INVALID"
 
 # 3c: Opsi CLI tidak dikenal (mis. --seed di runtime forward ditolak)
 set +e
-ERR_OUT3=$("$KIMO" gdn --model-dir "$FIXTURES_DIR" --tokens "$FIXTURES_DIR/m8_tokens.json" --output "$TMP_DIR/dummy.bin" --seed 42 2>&1 >/dev/null)
+ERR_OUT3=$("$DISMOEN" gdn --model-dir "$FIXTURES_DIR" --tokens "$FIXTURES_DIR/m8_tokens.json" --output "$TMP_DIR/dummy.bin" --seed 42 2>&1 >/dev/null)
 RET3=$?
 set -e
 [ "$RET3" -eq 1 ] || { echo "FAIL: expected exit 1 on unknown option --seed, got $RET3"; exit 1; }
@@ -162,7 +162,7 @@ echo "--> Test 4: Verifikasi Error Code 2 (CONFIG_INVALID)..."
 
 # 4a: Dimensi negatif atau nol
 set +e
-ERR_OUT_CFG1=$("$KIMO" gdn --model-dir "$FIXTURES_DIR" --tokens "$FIXTURES_DIR/m8_tokens.json" --output "$TMP_DIR/dummy.bin" --layers -2 2>&1 >/dev/null)
+ERR_OUT_CFG1=$("$DISMOEN" gdn --model-dir "$FIXTURES_DIR" --tokens "$FIXTURES_DIR/m8_tokens.json" --output "$TMP_DIR/dummy.bin" --layers -2 2>&1 >/dev/null)
 RET_CFG1=$?
 set -e
 [ "$RET_CFG1" -eq 2 ] || { echo "FAIL: expected exit 2 on negative layers, got $RET_CFG1"; exit 1; }
@@ -175,7 +175,7 @@ assert err["error_type"] == "CONFIG_INVALID"
 
 # 4b: Pre-alloc checked arithmetic guard (> 100 MB ceiling)
 set +e
-ERR_OUT_CFG2=$("$KIMO" gdn --model-dir "$FIXTURES_DIR" --tokens "$FIXTURES_DIR/m8_tokens.json" --output "$TMP_DIR/dummy.bin" --layers 1000000 --dk 1000000 2>&1 >/dev/null)
+ERR_OUT_CFG2=$("$DISMOEN" gdn --model-dir "$FIXTURES_DIR" --tokens "$FIXTURES_DIR/m8_tokens.json" --output "$TMP_DIR/dummy.bin" --layers 1000000 --dk 1000000 2>&1 >/dev/null)
 RET_CFG2=$?
 set -e
 [ "$RET_CFG2" -eq 2 ] || { echo "FAIL: expected exit 2 on allocation overflow, got $RET_CFG2"; exit 1; }
@@ -188,7 +188,7 @@ assert err["error_type"] == "CONFIG_INVALID"
 
 # 4c: State input dimension mismatch (state dk=32, dipanggil dengan dk=48)
 set +e
-ERR_OUT_CFG3=$("$KIMO" gdn --model-dir "$FIXTURES_DIR" --tokens "$TMP_DIR/tokens_seq2.json" --state-input "$OUT_SEQ1" --output "$TMP_DIR/dummy.bin" --layers 2 --dk 48 --dv 32 2>&1 >/dev/null)
+ERR_OUT_CFG3=$("$DISMOEN" gdn --model-dir "$FIXTURES_DIR" --tokens "$TMP_DIR/tokens_seq2.json" --state-input "$OUT_SEQ1" --output "$TMP_DIR/dummy.bin" --layers 2 --dk 48 --dv 32 2>&1 >/dev/null)
 RET_CFG3=$?
 set -e
 [ "$RET_CFG3" -eq 2 ] || { echo "FAIL: expected exit 2 on state input dimension mismatch, got $RET_CFG3"; exit 1; }
@@ -219,7 +219,7 @@ with open("'$CORRUPT_STATE'", "r+b") as f:
 '
 
 set +e
-ERR_OUT_IO=$("$KIMO" gdn --model-dir "$FIXTURES_DIR" --tokens "$TMP_DIR/tokens_seq2.json" --state-input "$CORRUPT_STATE" --output "$TMP_DIR/dummy.bin" --layers 2 --dk 32 --dv 32 2>&1 >/dev/null)
+ERR_OUT_IO=$("$DISMOEN" gdn --model-dir "$FIXTURES_DIR" --tokens "$TMP_DIR/tokens_seq2.json" --state-input "$CORRUPT_STATE" --output "$TMP_DIR/dummy.bin" --layers 2 --dk 32 --dv 32 2>&1 >/dev/null)
 RET_IO=$?
 set -e
 [ "$RET_IO" -eq 4 ] || { echo "FAIL: expected exit 4 on corrupt state checksum, got $RET_IO"; exit 1; }
@@ -242,7 +242,7 @@ mkdir -p "$RO_DIR"
 chmod 555 "$RO_DIR"
 
 set +e
-ERR_OUT_WRITE=$("$KIMO" gdn --model-dir "$FIXTURES_DIR" --tokens "$FIXTURES_DIR/m8_tokens.json" --output "$RO_DIR/state.bin" --layers 2 --dk 32 --dv 32 --chunk-size 8 2>&1 >/dev/null)
+ERR_OUT_WRITE=$("$DISMOEN" gdn --model-dir "$FIXTURES_DIR" --tokens "$FIXTURES_DIR/m8_tokens.json" --output "$RO_DIR/state.bin" --layers 2 --dk 32 --dv 32 --chunk-size 8 2>&1 >/dev/null)
 RET_WRITE=$?
 set -e
 chmod 777 "$RO_DIR"
@@ -263,7 +263,7 @@ echo "--> Test 7: Verifikasi Error Code 7 (CHUNK_SIZE_ERROR)..."
 
 # 7a: chunk_size < 8
 set +e
-ERR_OUT_C1=$("$KIMO" gdn --model-dir "$FIXTURES_DIR" --tokens "$FIXTURES_DIR/m8_tokens.json" --output "$TMP_DIR/dummy.bin" --chunk-size 4 2>&1 >/dev/null)
+ERR_OUT_C1=$("$DISMOEN" gdn --model-dir "$FIXTURES_DIR" --tokens "$FIXTURES_DIR/m8_tokens.json" --output "$TMP_DIR/dummy.bin" --chunk-size 4 2>&1 >/dev/null)
 RET_C1=$?
 set -e
 [ "$RET_C1" -eq 7 ] || { echo "FAIL: expected exit 7 on chunk_size=4, got $RET_C1"; exit 1; }
@@ -276,7 +276,7 @@ assert err["error_type"] == "CHUNK_SIZE_ERROR"
 
 # 7b: chunk_size > 4096
 set +e
-ERR_OUT_C2=$("$KIMO" gdn --model-dir "$FIXTURES_DIR" --tokens "$FIXTURES_DIR/m8_tokens.json" --output "$TMP_DIR/dummy.bin" --chunk-size 5000 2>&1 >/dev/null)
+ERR_OUT_C2=$("$DISMOEN" gdn --model-dir "$FIXTURES_DIR" --tokens "$FIXTURES_DIR/m8_tokens.json" --output "$TMP_DIR/dummy.bin" --chunk-size 5000 2>&1 >/dev/null)
 RET_C2=$?
 set -e
 [ "$RET_C2" -eq 7 ] || { echo "FAIL: expected exit 7 on chunk_size=5000, got $RET_C2"; exit 1; }
@@ -301,7 +301,7 @@ cp "$FIXTURES_DIR/m8_gdn_weights.safetensors" "$RO_MODEL/"
 chmod -R 555 "$RO_MODEL"
 
 OUT_SEC5="$TMP_DIR/sec5_state.bin"
-"$KIMO" gdn \
+"$DISMOEN" gdn \
     --model-dir "$RO_MODEL" \
     --tokens "$FIXTURES_DIR/m8_tokens.json" \
     --output "$OUT_SEC5" \
@@ -313,7 +313,7 @@ chmod -R 777 "$RO_MODEL"
 # SEC-4: RLIMIT_FSIZE
 (
     ulimit -f 100000 2>/dev/null || true
-    "$KIMO" gdn \
+    "$DISMOEN" gdn \
         --model-dir "$FIXTURES_DIR" \
         --tokens "$FIXTURES_DIR/m8_tokens.json" \
         --output "$TMP_DIR/sec4_state.bin" \
@@ -330,7 +330,7 @@ echo "--> Test 9: Uji Determinisme 5x Ulangan Run Identik..."
 REF_HASH=""
 for run in 1 2 3 4 5; do
     RUN_OUT="$TMP_DIR/run_${run}.bin"
-    "$KIMO" gdn \
+    "$DISMOEN" gdn \
         --model-dir "$FIXTURES_DIR" \
         --tokens "$FIXTURES_DIR/m8_tokens.json" \
         --output "$RUN_OUT" \
@@ -347,4 +347,4 @@ for run in 1 2 3 4 5; do
 done
 echo "PASS: Test 9 (Determinisme bitwise 5x ulangan identik terverifikasi, SHA=$REF_HASH)"
 
-echo "=== M8-W3 SUKSES 100%: CLI kimo gdn, Lifecycle, GDNS v1, dan 7 Error Codes LULUS ==="
+echo "=== M8-W3 SUKSES 100%: CLI dismoen gdn, Lifecycle, GDNS v1, dan 7 Error Codes LULUS ==="

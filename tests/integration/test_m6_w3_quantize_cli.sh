@@ -3,7 +3,7 @@
 # test_m6_w3_quantize_cli.sh — Integration Test Suite M6-W3 (Quantize CLI & Rollback)
 #
 # Memverifikasi DoD M6-W3:
-# 1. CLI `kimo quantize` lengkap: --input-dir, --output-dir, --group-size, --workdir, --check.
+# 1. CLI `dismoen quantize` lengkap: --input-dir, --output-dir, --group-size, --workdir, --check.
 # 2. Strict JSON RFC 8259 pada stdout untuk output sukses dan error.
 # 3. Pemetaan 5 kode error normatif dan exit code yang tepat:
 #    - M6_ERR_INPUT      -> exit 1
@@ -22,7 +22,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 echo "======================================================================"
-echo "M6-W3: CLI kimo quantize + Error Handling + Atomic Rollback"
+echo "M6-W3: CLI dismoen quantize + Error Handling + Atomic Rollback"
 echo "======================================================================"
 
 # ----------------------------------------------------------------------
@@ -46,8 +46,8 @@ echo "   PASS: Formatting Mojo bersih 100%."
 # ----------------------------------------------------------------------
 echo ">> [2/6] Membangun binary dismoen via pixi build..."
 pixi run build
-KIMO="./dismoen"
-[ -x "$KIMO" ] || { echo "FAIL: binary dismoen tidak ditemukan"; exit 1; }
+DISMOEN="./dismoen"
+[ -x "$DISMOEN" ] || { echo "FAIL: binary dismoen tidak ditemukan"; exit 1; }
 echo "   PASS: Binary dismoen siap dijalankan."
 
 # ----------------------------------------------------------------------
@@ -154,7 +154,7 @@ echo ">> [4/6] Menguji skenario input, exit code 0-2, dan validasi input-dir..."
 
 # IT-M6-1: Happy path
 expect_rc 0 "IT-M6-1 happy path quantize" \
-    "$KIMO" quantize \
+    "$DISMOEN" quantize \
     --input-dir "$INPUT_DIR" \
     --output-dir "$OUTPUT_DIR" \
     --group-size 128 \
@@ -175,7 +175,7 @@ echo "   PASS: IT-M6-1 output JSON dan file biner terverifikasi valid."
 
 # IT-M6-2: Input-dir tidak ada
 expect_rc 1 "IT-M6-2 input-dir tidak ada" \
-    "$KIMO" quantize \
+    "$DISMOEN" quantize \
     --input-dir "/tmp/nonexistent_model_dir_$$" \
     --output-dir "$OUTPUT_DIR" \
     --workdir "$WORKDIR"
@@ -183,7 +183,7 @@ expect_error_code M6_ERR_INPUT
 
 # IT-M6-3: Invalid group-size (∉ {32,64,128,256})
 expect_rc 1 "IT-M6-3 group-size 100 ditolak" \
-    "$KIMO" quantize \
+    "$DISMOEN" quantize \
     --input-dir "$INPUT_DIR" \
     --output-dir "$OUTPUT_DIR" \
     --group-size 100 \
@@ -192,7 +192,7 @@ expect_error_code M6_ERR_INPUT
 
 # IT-M6-11: Tail group (N % G != 0)
 expect_rc 1 "IT-M6-11 tail group N % G != 0 ditolak" \
-    "$KIMO" quantize \
+    "$DISMOEN" quantize \
     --input-dir "$INPUT_TAIL" \
     --output-dir "$OUTPUT_DIR" \
     --group-size 128 \
@@ -201,7 +201,7 @@ expect_error_code M6_ERR_INPUT
 
 # IT-M6-4: Quantization fail pada NaN in scale / tensor
 expect_rc 2 "IT-M6-4 tensor mengandung NaN" \
-    "$KIMO" quantize \
+    "$DISMOEN" quantize \
     --input-dir "$INPUT_NAN" \
     --output-dir "$OUTPUT_DIR" \
     --workdir "$WORKDIR"
@@ -214,7 +214,7 @@ echo ">> [5/6] Menguji mode --check, IT-M6-5, IT-M6-6 & rollback..."
 
 # Mode --check pada berkas valid
 expect_rc 0 "Mode --check berkas valid" \
-    "$KIMO" quantize \
+    "$DISMOEN" quantize \
     --check "$OUTPUT_DIR/quant_model.bin" \
     --workdir "$WORKDIR"
 
@@ -228,7 +228,7 @@ open(sys.argv[2], "wb").write(bytes(raw))
 EOF
 
 expect_rc 2 "IT-M6-5 nibble reserved 0x8 ditolak" \
-    "$KIMO" quantize \
+    "$DISMOEN" quantize \
     --check "$OUTPUT_DIR/quant_corrupt.bin" \
     --workdir "$WORKDIR"
 expect_error_code M6_ERR_DEQUANT
@@ -238,7 +238,7 @@ cp "$OUTPUT_DIR/quant_model.bin" "$OUTPUT_DIR/quant_trunc.bin"
 truncate -s -1 "$OUTPUT_DIR/quant_trunc.bin"
 
 expect_rc 4 "IT-M6-6 file terpotong ditolak" \
-    "$KIMO" quantize \
+    "$DISMOEN" quantize \
     --check "$OUTPUT_DIR/quant_trunc.bin" \
     --workdir "$WORKDIR"
 expect_error_code M6_ERR_VALIDATION
@@ -255,7 +255,7 @@ echo ">> [6/6] Menguji determinisme IT-M6-8 & custom group-size 64 IT-M6-9..."
 
 # IT-M6-8: Deterministic SHA-256
 expect_rc 0 "IT-M6-8 run 1" \
-    "$KIMO" quantize \
+    "$DISMOEN" quantize \
     --input-dir "$INPUT_DIR" \
     --output-dir "$OUTPUT_DIR" \
     --group-size 128 \
@@ -263,7 +263,7 @@ expect_rc 0 "IT-M6-8 run 1" \
 SHA1=$(sha256sum "$OUTPUT_DIR/quant_model.bin" | cut -d' ' -f1)
 
 expect_rc 0 "IT-M6-8 run 2" \
-    "$KIMO" quantize \
+    "$DISMOEN" quantize \
     --input-dir "$INPUT_DIR" \
     --output-dir "$OUTPUT_DIR" \
     --group-size 128 \
@@ -275,7 +275,7 @@ echo "   PASS: IT-M6-8 deterministik bit-identical (SHA256: $SHA1)."
 
 # IT-M6-9: Custom group size 64
 expect_rc 0 "IT-M6-9 custom group-size 64" \
-    "$KIMO" quantize \
+    "$DISMOEN" quantize \
     --input-dir "$INPUT_DIR" \
     --output-dir "$OUTPUT_DIR" \
     --group-size 64 \
@@ -283,7 +283,7 @@ expect_rc 0 "IT-M6-9 custom group-size 64" \
 S64=$(stat -c%s "$OUTPUT_DIR/quant_model.bin")
 
 expect_rc 0 "IT-M6-9 group-size 128 untuk perbandingan rasio" \
-    "$KIMO" quantize \
+    "$DISMOEN" quantize \
     --input-dir "$INPUT_DIR" \
     --output-dir "$OUTPUT_DIR" \
     --group-size 128 \

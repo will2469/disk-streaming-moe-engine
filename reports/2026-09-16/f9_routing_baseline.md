@@ -19,7 +19,7 @@ Hasil utama:
   - Seluruh expert ID berada dalam interval valid $[0, 59]$.
   - $\sum_{k=0}^3 p_k^{(t)} \le 1{,}0$ terpenuhi pada semua token (top-4 unrenormalized).
   - Total frekuensi $\sum_{i=0}^{59} f_i = 1{,}000000$.
-  - Kesamaan SET expert antara Mojo engine (`kimo`) dan PyTorch Oracle mencapai $100\%$ tanpa ada perbedaan seleksi (0 flip).
+  - Kesamaan SET expert antara Mojo engine (`dismoen`) dan PyTorch Oracle mencapai $100\%$ tanpa ada perbedaan seleksi (0 flip).
 
 ---
 

@@ -367,7 +367,6 @@ def main():
     )
     parser.add_argument(
         "--dismoen-bin",
-        "--kimo-bin",
         dest="dismoen_bin",
         type=Path,
         default=REPO_ROOT / "dismoen",

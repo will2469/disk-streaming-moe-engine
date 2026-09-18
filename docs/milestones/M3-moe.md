@@ -72,7 +72,7 @@ Diagnostik F9 (analisis): $f_i, P_i, \mathcal{L}_{lb}=N_e\sum f_iP_i$, $CV=\sigm
 
 ```bash
 # contoh fixture synthetic; checkpoint asli 8 shard
-kimo layer --layer 0 --part moe activation.bin shard-00001-of-00003.safetensors shard-00002-of-00003.safetensors shard-00003-of-00003.safetensors
+dismoen layer --layer 0 --part moe activation.bin shard-00001-of-00003.safetensors shard-00002-of-00003.safetensors shard-00003-of-00003.safetensors
 ```
 
 **Contoh output (success):**

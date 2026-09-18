@@ -24,9 +24,9 @@ if [ ! -x "$PYTHON" ]; then
     PYTHON="python3"
 fi
 
-KIMO="${KIMO:-$ROOT_DIR/dismoen}"
-if [[ ! -x "$KIMO" && -x "$ROOT_DIR/build/bin/dismoen" ]]; then
-    KIMO="$ROOT_DIR/build/bin/dismoen"
+DISMOEN="${DISMOEN:-$ROOT_DIR/dismoen}"
+if [[ ! -x "$DISMOEN" && -x "$ROOT_DIR/build/bin/dismoen" ]]; then
+    DISMOEN="$ROOT_DIR/build/bin/dismoen"
 fi
 
 MINI_CONFIG="fixtures/m9_port_config_mini.json"
@@ -65,13 +65,13 @@ echo "--> Test 2: Binary Build & CLI Flags Verification"
 
 pixi run build
 
-if [ ! -x "$KIMO" ]; then
-    echo "FAIL: Binary dismoen tidak ditemukan atau tidak executable di $KIMO!"
+if [ ! -x "$DISMOEN" ]; then
+    echo "FAIL: Binary dismoen tidak ditemukan atau tidak executable di $DISMOEN!"
     exit 1
 fi
 
 # Pastikan flag --run-id dan --timing-profile menghasilkan metrics block yang valid
-CLI_TEST_OUT=$("$KIMO" forward-port \
+CLI_TEST_OUT=$("$DISMOEN" forward-port \
     --architecture qwen3.6 \
     --model-dir "$MINI_CONFIG" \
     --tokens "$TOKENS_FIXTURE" \
@@ -136,7 +136,7 @@ echo "PASS: Test 3 (Gate G-M9-4, F1-Port, dan F5 calibration PASS)"
 echo "--> Test 4: Performance Protocol (Prefill N=5, Decode N=30, p50/p95)"
 
 BENCH_OUT=$("$PYTHON" tools/bench/bench_port_perf.py \
-    --kimo-bin "$KIMO" \
+    --dismoen-bin "$DISMOEN" \
     --config-path "$MINI_CONFIG" \
     --warmup 2 \
     --n-prefill 5 \
@@ -187,13 +187,13 @@ echo "PASS: Test 4 (Performance protocol selesai dengan laporan p50/p95 lengkap)
 # ---------------------------------------------------------------------------
 echo "--> Test 5: Invarian Determinisme Output Stdout Tanpa Flag Profiling"
 
-RUN1_OUT=$("$KIMO" forward-port \
+RUN1_OUT=$("$DISMOEN" forward-port \
     --architecture qwen3.6 \
     --model-dir "$MINI_CONFIG" \
     --tokens "$TOKENS_FIXTURE" \
     --threads 1)
 
-RUN2_OUT=$("$KIMO" forward-port \
+RUN2_OUT=$("$DISMOEN" forward-port \
     --architecture qwen3.6 \
     --model-dir "$MINI_CONFIG" \
     --tokens "$TOKENS_FIXTURE" \

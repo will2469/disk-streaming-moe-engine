@@ -27,7 +27,7 @@ Milestone M10 meresmikan transformasi dari fase riset multi-model (Trial model Q
    - Menjamin kapasitas storage maksimal dan aman untuk menampung bobot asli Qwen 3.6-35B ($68{,}12\text{ GiB}$) beserta berkas kuantisasi runtime GGUF target ($13{,}5 - 16{,}8\text{ GiB}$), dengan margin operasional $B_{reserved}$ sesuai §4.2 sehingga operasi M10 diizinkan hanya jika safety margin tetap terpenuhi.
 2. **Rebranding Resmi Menjadi `dismoen`**:
    - Mengganti nama binary CLI dari `kimo` menjadi `dismoen` (akronim: **DI**sk **S**treaming **MO**e **EN**gine).
-   - Menyediakan symlink otomatis `kimo -> dismoen` demi kompatibilitas balik (_backwards compatibility_).
+   - Mengeliminasi symlink transisi `kimo -> dismoen` dan `tools/kimo-tools` secara tuntas.
    - Memperbarui crate perkakas Rust `tools/kimo-tools` menjadi `tools/dismoen-tools`.
 3. **Pembersihan Percabangan Kode Legacy Trial (`trial` codepaths)**:
    - Membuang logika kondisional `if architecture == "trial"` di config parser, scheduler, dan CLI.
@@ -264,7 +264,7 @@ aktif (ditemukan saat audit: cabang `"trial"` di `config.mojo` /
   `QuantTensorMetadata`, `parse_model_config_adapter`, `kimo-tools` —
   masing-masing $\equiv 0$ di `src/` (kode, komentar, maupun docstring).
 - **Bukan pelanggaran**: variabel loop bernama `trial` (tanpa quote),
-  `kimo` polos (symlink `kimo -> dismoen` wajib hidup per G-M10-1),
+  `kimo` polos (symlink `kimo` dieliminasi total),
   dan arsip `docs/`/`reports/` historis.
 - **Kasus khusus `quant_format.mojo`**: helper matematika FP16 generik
   (`float16_to_u16`, `u16_to_float16`, …) yang dipakai `gguf.mojo`
@@ -346,7 +346,7 @@ Target M10 adalah satu production lock identity. Maka:
 
 | Gate        | Kriteria Penilaian                                                                                                                                                                                                                                 |                                                                  Ambang Batas                                                                   | Verifier Tool                   |
 | :---------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------: | :------------------------------ |
-| **G-M10-1** | **Rebranding & Toolchain Integrity**: Kompilasi `dismoen` 0 compiler warning, symlink `kimo` aktif, CLI banner menampilkan nama DISMOEN                                                                                                            |                                                  Exit code 0, binary executable, symlink valid                                                  | `test_m10_w1_rebrand.sh`        |
+| **G-M10-1** | **Rebranding & Toolchain Integrity**: Kompilasi `dismoen` 0 compiler warning, 0 leftover legacy, CLI banner menampilkan nama DISMOEN                                                                                                            |                                                  Exit code 0, binary executable, symlink valid                                                  | `test_m10_w1_rebrand.sh`        |
 | **G-M10-2** | **Storage Sanitization & Zero-Legacy Multi-Layer Verification**: Penghapusan fisik berkas legacy 1.5 di `${DISMOEN_MODEL_ROOT}`, dekopling referensi tes aktif, penguncian lockfile, verifikasi kuota pembebasan byte, **dan zero-legacy source** (tidak ada simbol trial/quant-legacy di kode aktif) | 0 legacy path ($L_{paths} \equiv 0$), 0 test references, lockfile Qwen3.6 lengkap 7 field (§4.5), $L_{logical} \equiv 0$ (§4.4, bukan free-space), $\Delta S \ge 33 \times 2^{30}\text{ B}$,    margin operasional $B_{free\_before} - B_{required} \ge B_{reserved} = 2\text{ GiB}$ (§4.2), + lapisan source (§4.3): `"trial"` $\equiv 0$, `quant_model.bin`+`.kimo.bin` $\equiv 0$, `{QuantHeader, QuantTensorMetadata}` $\equiv 0$, `parse_model_config_adapter` $\equiv 0$, `kimo-tools` $\equiv 0$ di `src/` (kode+komentar+docstring), `quant_format.mojo` retired | `test_m10_w2_sanitization.sh` |
 | **G-M10-3** | **Unified Forward Numerical Parity & Decode Continuation**: `dismoen forward` memenuhi paritas numerik terhadap reference logits M9 ($\Delta_{\max} \le 10^{-7}$), `dismoen decode` menjalankan hybrid continuation tanpa menghitung ulang token historis |                             $\Delta_{\max} \le 10^{-7}$, $\text{historical\_recompute\_tokens} = 0$ (§3.2), $\text{gdn\_reused} = \text{true}$                             | `test_m10_w3_forward_decode.sh` |
 | **G-M10-4** | **Zero Regression & Code Hygiene**: Seluruh suite tes regresi (`validate-m9`, `validate-m8`) dan 13 hook pre-commit 100% hijau                                                                                                                     |                                                       100% PASS, 0 `# noqa`, 0 `#[allow]`                                                       | `test_m10_w5_gates.sh`          |
@@ -359,7 +359,7 @@ Pelaksanaan Milestone M10 dipecah menjadi 5 gelombang kerja berurutan:
 
 ### Gelombang 1 (M10-W1): Rebranding Toolchain & Executable `dismoen`
 
-- Konfigurasi `pixi.toml` dan `Makefile` untuk mengompilasi binary `-o dismoen && ln -sf dismoen kimo`.
+- Konfigurasi `pixi.toml` dan `Makefile` untuk mengompilasi binary `-o dismoen`.
 - Perbarui banner usage di `src/main.mojo`.
 - Rename / aliaskan crate `tools/kimo-tools` menjadi `tools/dismoen-tools`.
 - Verifikasi Gate G-M10-1.
@@ -401,7 +401,7 @@ Pelaksanaan Milestone M10 dipecah menjadi 5 gelombang kerja berurutan:
 
 ## 7. Definisi Selesai (DoD M10)
 
-- [ ] Binary utama terkompilasi sebagai `dismoen` dengan symlink `kimo` aktif dan banner resmi `DISMOEN`.
+- [ ] Binary utama terkompilasi sebagai `dismoen` dengan 0 leftover legacy dan banner resmi `DISMOEN`.
 - [ ] Berkas bobot fisik Qwen 1.5 terhapus dari `${DISMOEN_MODEL_ROOT}` dengan verifikasi multi-layer Gate G-M10-2 ($L_{paths} \equiv 0$, $L_{logical} \equiv 0$ logical-bytes, 0 referensi di tes aktif, $\Delta B_{free}$ hanya observasional, margin tulis $B_{free\_before} - B_{required} \ge 2\text{ GiB}$, dan pembebasan $\ge 33 \times 2^{30}\text{ Bytes}$).
 - [ ] Zero-legacy source lolos Gate G-M10-2 lapisan §4.3 (0 simbol trial/quant-legacy/`kimo-tools` di `src/`; `quant_format.mojo` retired; uji mismatch trial M9 dimigrasi; stage dual-binary W1 ditulis ulang single-binary).
 - [ ] Pengujian unit `test_odirect.mojo` dan `test_lru_cache.mojo` terbebas dari path Qwen 1.5 dan lulus 100%.

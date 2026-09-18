@@ -52,11 +52,11 @@ fi
 echo "   PASS: Formatting Mojo bersih 100%."
 
 # ----------------------------------------------------------------------
-# 2. Build Binary kimo
+# 2. Build Binary dismoen
 # ----------------------------------------------------------------------
-echo ">> [2/5] Membangun binary kimo via pixi build..."
+echo ">> [2/5] Membangun binary dismoen via pixi build..."
 pixi run build
-echo "   PASS: Binary kimo siap dijalankan (0 warnings, 0 errors)."
+echo "   PASS: Binary dismoen siap dijalankan (0 warnings, 0 errors)."
 
 # ----------------------------------------------------------------------
 # 3. Unit Test Suite (test_lru_cache.mojo)

@@ -38,7 +38,7 @@ echo "   PASS: Pre-commit 13 hooks lolos 100%, 0 noqa, 0 #[allow]."
 # ---------------------------------------------------------------------------
 echo "--> Stage 2: Gate G-M10-1 (Rebranding & Toolchain Integrity)"
 bash tests/integration/test_m10_w1_rebrand.sh
-echo "   PASS: Gate G-M10-1 TERSERTIFIKASI HIJAU (Executable dismoen, symlink kimo, banner DISMOEN)."
+echo "   PASS: Gate G-M10-1 TERSERTIFIKASI HIJAU (Executable dismoen, single SSOT dismoen, banner DISMOEN)."
 
 # ---------------------------------------------------------------------------
 # Stage 3: Gate G-M10-2 (Storage Sanitization, 7-Field Lockfile, Zero-Legacy Source)
@@ -91,9 +91,9 @@ cat <<EOF > "$SCORECARD_FILE"
 
 Milestone M10 berhasil menyelesaikan unifikasi dan konsolidasi penuh engine inferensi:
 1. **Gate G-M10-1 (Rebranding & Toolchain Integrity)**:
-   Engine resmi bertransformasi menjadi executable biner tunggal \`dismoen\`, didukung symlink mundur \`kimo -> dismoen\`. Crate pembantu dialiaskan secara deterministik sebagai \`dismoen-tools\`. Banner CLI dan opsi bantuan menampilkan identitas resmi DISMOEN secara konsisten.
+   Engine resmi bertransformasi menjadi executable biner tunggal \`dismoen\` dengan physical crate \`tools/dismoen-tools\` tanpa leftover legacy. Banner CLI dan opsi bantuan menampilkan identitas resmi DISMOEN secara konsisten.
 2. **Gate G-M10-2 (Storage Sanitization, Lockfile 7-Field & Zero-Legacy Source)**:
-   Seluruh berkas fisik model legacy Qwen 1.5 telah dipurging dari penyimpanan host (\$L_{paths} \equiv 0, L_{logical} \equiv 0\\text{ bytes}\$), membebaskan kuota \$\\Delta S_{freed} \\ge 33\\text{ GiB}\$ (\$36{,}026{,}526{,}631\\text{ bytes}\$). Margin operasional pra-tulis memenuhi batas aman \$B_{free\\_before} - B_{required} \\ge B_{reserved} = 2\\text{ GiB}\$. File \`models.lock.json\` mengunci identitas model secara production-ready dengan 7 field tanpa placeholder hash. Lapisan source bersih 100% dari simbol legacy (\`"trial"\`, \`quant_model.bin\`, \`.kimo.bin\`, \`QuantHeader\`, \`QuantTensorMetadata\`, \`parse_model_config_adapter\`, \`kimo-tools\`, \`quant_format\` masing-masing \$\\equiv 0\$ di \`src/\`).
+   Seluruh berkas fisik model legacy Qwen 1.5 telah dipurging dari penyimpanan host (\$L_{paths} \equiv 0, L_{logical} \equiv 0\\text{ bytes}\$), membebaskan kuota \$\\Delta S_{freed} \\ge 33\\text{ GiB}\$ (\$36{,}026{,}526{,}631\\text{ bytes}\$). Margin operasional pra-tulis memenuhi batas aman \$B_{free\\_before} - B_{required} \\ge B_{reserved} = 2\\text{ GiB}\$. File \`models.lock.json\` mengunci identitas model secara production-ready dengan 7 field tanpa placeholder hash. Lapisan source bersih 100% dari seluruh 8 simbol legacy masing-masing \$\\equiv 0\$ di \`src/\`.
 3. **Gate G-M10-3 (Unified Forward Numerical Parity & Decode Continuation)**:
    Perintah \`dismoen forward\` terpadu memenuhi paritas numerik bit-exact terhadap referensi logits naive M9 (\$\\Delta_{\\max} = 0.0 \\le 10^{-7}\$, Cosine Similarity \$\\approx 1.0\$). Perintah \`dismoen decode\` menjalankan decoding autoregresif 40-layer hybrid bersambung dengan \`KMSS v1\` tanpa menghitung ulang token historis (\`historical_recompute_tokens == 0\`, \`gdn_reused == true\`).
 4. **Gate G-M10-4 (Zero Regression & Code Hygiene)**:
@@ -105,7 +105,7 @@ Milestone M10 berhasil menyelesaikan unifikasi dan konsolidasi penuh engine infe
 
 | Gate | Deskripsi Kriteria | Batas / Syarat Normatif | Hasil Pengukuran / Verifikasi | Status |
 | :--- | :--- | :--- | :--- | :---: |
-| **G-M10-1** | **Rebranding & Toolchain Integrity** | Binary \`dismoen\`, symlink \`kimo\`, banner \`DISMOEN\`, 0 warning | Exit code 0, binary valid, symlink aktif, single binary \`dismoen-tools\` | **[PASS]** |
+| **G-M10-1** | **Rebranding & Toolchain Integrity** | Binary \`dismoen\`, zero leftover, banner \`DISMOEN\`, 0 warning | Exit code 0, binary valid, leftover dieliminasi, single binary \`dismoen-tools\` | **[PASS]** |
 | **G-M10-2** | **Storage Sanitization & Zero-Legacy** | \$L_{paths} = 0, L_{logical} = 0\$, margin \$\\ge 2\\text{ GiB}\$, lockfile 7-field, 8 simbol source \$= 0\$ | \$L_{paths}=0, L_{logical}=0\$, surplus 69.19 GiB, 7-field SEC-1 OK, 8 simbol \$\\equiv 0\$ di \`src/\` | **[PASS]** |
 | **G-M10-3** | **Unified Forward Parity & Decode** | \$\\Delta_{\\max} \\le 10^{-7}\$, \$\\text{historical\\_recompute\\_tokens} = 0\$, \$\\text{gdn\\_reused} = \\text{true}\$ | \$\\Delta_{\\max} = 0.0 \\le 10^{-7}\$, recompute: 0, GDN state reused OK | **[PASS]** |
 | **G-M10-4** | **Zero Regression & Code Hygiene** | \`validate-m9\` PASS, \`validate-m8\` PASS, 13 hooks PASS, 0 noqa/allow | 100% PASS, 0 supresi di \`src/\`, GGUF v3 SSOT | **[PASS]** |

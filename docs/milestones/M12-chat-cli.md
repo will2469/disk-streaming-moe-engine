@@ -34,7 +34,7 @@ Milestone M12 mentransformasi `dismoen` menjadi **produk inferensi mandiri (_sel
    - Penanganan otomatis template ChatML Qwen3.6 **subset text-only** — role
    `system`/`user`/`assistant` dengan konten string saja
    (ID di-resolve runtime dari metadata tokenizer, tanpa hardcode — §2.1).
-   - Melanjutkan konteks multi-turn (_session continuation_) dengan memanfaatkan KMSS v1 (Kimo MoE Session State) tanpa perlu menghitung ulang (_prefill_) riwayat percakapan sebelumnya.
+   - Melanjutkan konteks multi-turn (_session continuation_) dengan memanfaatkan KMSS v1 (Dismoen MoE Session State) tanpa perlu menghitung ulang (_prefill_) riwayat percakapan sebelumnya.
 
 2. **`dismoen serve` (Native OpenAI-Compatible Micro HTTP Server)**:
    - Server HTTP ringan (_low footprint_) yang berjalan sebagai daemon lokal (default port `8000`).
@@ -161,7 +161,7 @@ Bentuk byte-exact untuk contoh dua-turn (`\n` eksplisit):
 Contoh yang SAMA bila histori sudah berisi jawaban assistant:
 
 ```text
-<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\nHalo, siapa kamu?<|im_end|>\n<|im_start|>assistant\nSaya Kimo.<|im_end|>\n<|im_start|>user\nLanjut.<|im_end|>\n<|im_start|>assistant\n<think>\n
+<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\nHalo, siapa kamu?<|im_end|>\n<|im_start|>assistant\nSaya Dismoen.<|im_end|>\n<|im_start|>user\nLanjut.<|im_end|>\n<|im_start|>assistant\n<think>\n
 ```
 
 Kedua string di atas direproduksi persis dari render Jinja

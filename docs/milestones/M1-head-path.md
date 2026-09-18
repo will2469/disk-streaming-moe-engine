@@ -50,7 +50,7 @@ Aturan resolusi (normatif, satu resolver — tidak ada dua algoritma):
 6. Shape/dtype aktual dari header tiap required tensor wajib diassert terhadap config (`hidden_size`, `vocab_size`); pelanggaran → `WEIGHT_LOAD_FAILED` dengan `tensor_name` + expected/actual.
 7. Error struktural reader (header korup, offset overflow, dtype tak dikenal, layout mismatch) **dipropagasikan apa adanya** dengan taxonomy M0 — tidak boleh diflatten menjadi `WEIGHT_LOAD_FAILED` (lihat § Error Handling M1).
 
-Catatan fixture: pada fixture M0, embedding + `lm_head` berada di shard 1 sedangkan `model.norm.weight` di shard 2 — satu shard saja tidak pernah cukup untuk M1 trial/fixture. Contoh `kimo head tokens.json shard-00001...` tunggal adalah INVALID secara semantik dan wajib gagal dengan `WEIGHT_LOAD_FAILED`, bukan dengan hasil parsial.
+Catatan fixture: pada fixture M0, embedding + `lm_head` berada di shard 1 sedangkan `model.norm.weight` di shard 2 — satu shard saja tidak pernah cukup untuk M1 trial/fixture. Contoh `dismoen head tokens.json shard-00001...` tunggal adalah INVALID secara semantik dan wajib gagal dengan `WEIGHT_LOAD_FAILED`, bukan dengan hasil parsial.
 
 ### Anggaran memori M1 (F1, normatif)
 
@@ -138,13 +138,13 @@ VmHWM (vmhwm_bytes)     ≤ 3,5 GiB       # authoritative peak kernel
 
 ```bash
 # mode utama: resolusi otomatis dari model dir (tanpa seleksi shard manual)
-kimo head tokens.json --model-dir ./models/qwen1.5-moe
+dismoen head tokens.json --model-dir ./models/qwen1.5-moe
 
 # mode positional: shard eksplisit, resolver tetap memeriksa kelengkapan 3 tensor
-kimo head tokens.json shard-00001-of-00003.safetensors shard-00002-of-00003.safetensors shard-00003-of-00003.safetensors
+dismoen head tokens.json shard-00001-of-00003.safetensors shard-00002-of-00003.safetensors shard-00003-of-00003.safetensors
 
 # output eksplisit (wajib untuk run paralel/CI agar tidak tabrakan)
-kimo head tokens.json --model-dir ./models/qwen1.5-moe --output out/prompt-set-a.bin
+dismoen head tokens.json --model-dir ./models/qwen1.5-moe --output out/prompt-set-a.bin
 ```
 
 **Contoh output (success):**

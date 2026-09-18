@@ -12,12 +12,12 @@
 
 | Metric | p50 | p95 | min | max |
 | :--- | :---: | :---: | :---: | :---: |
-| `walltime_sec` | 0.0360 s | 0.0428 s | 0.0300 s | 0.0440 s |
-| `tokens_per_sec` | 3467.9790 tok/s | 4132.5820 tok/s | 2895.3310 tok/s | 4247.8470 tok/s |
-| `gdn_time_ms` | 4.0570 ms | 5.1234 ms | 3.6260 ms | 5.2600 ms |
-| `gated_attn_time_ms` | 19.4990 ms | 26.0938 ms | 15.7850 ms | 27.6790 ms |
-| `moe_time_ms` | 11.1630 ms | 12.1546 ms | 9.6950 ms | 12.3760 ms |
-| `moe_percent` | 33.3090 % | 33.4446 % | 26.0220 % | 33.4740 % |
+| `walltime_sec` | 0.0370 s | 0.0380 s | 0.0290 s | 0.0380 s |
+| `tokens_per_sec` | 3430.8360 tok/s | 4172.4792 tok/s | 3333.1870 tok/s | 4350.6760 tok/s |
+| `gdn_time_ms` | 3.9290 ms | 4.8308 ms | 3.4890 ms | 5.0170 ms |
+| `gated_attn_time_ms` | 20.9400 ms | 21.5388 ms | 15.6430 ms | 21.5390 ms |
+| `moe_time_ms` | 11.3040 ms | 12.1582 ms | 9.2120 ms | 12.3400 ms |
+| `moe_percent` | 31.9810 % | 33.0314 % | 30.6090 % | 33.1640 % |
 
 ---
 
@@ -25,18 +25,18 @@
 
 | Metric | p50 | p95 | min | max |
 | :--- | :---: | :---: | :---: | :---: |
-| `walltime_sec` | 0.0010 s | 0.0010 s | 0.0000 s | 0.0010 s |
-| `tokens_per_sec` | 866.4620 tok/s | 1481.2283 tok/s | 527.0020 tok/s | 1942.1360 tok/s |
-| `gdn_time_ms` | 0.1260 ms | 0.2030 ms | 0.0520 ms | 0.2150 ms |
-| `gated_attn_time_ms` | 0.6605 ms | 0.9170 ms | 0.3050 ms | 1.0890 ms |
-| `moe_time_ms` | 0.2515 ms | 0.4553 ms | 0.1120 ms | 0.5820 ms |
-| `moe_percent` | 25.4540 % | 29.7100 % | 22.4260 % | 37.8300 % |
+| `walltime_sec` | 0.0000 s | 0.0015 s | 0.0000 s | 0.0020 s |
+| `tokens_per_sec` | 1111.6830 tok/s | 1550.7604 tok/s | 456.5010 tok/s | 1914.0880 tok/s |
+| `gdn_time_ms` | 0.0965 ms | 0.2029 ms | 0.0530 ms | 0.2360 ms |
+| `gated_attn_time_ms` | 0.5305 ms | 1.2424 ms | 0.3180 ms | 1.3630 ms |
+| `moe_time_ms` | 0.1965 ms | 0.4097 ms | 0.1050 ms | 0.4370 ms |
+| `moe_percent` | 24.6880 % | 27.4864 % | 20.8520 % | 29.2080 % |
 
 ---
 
 ## 3. Sublayer Breakdown & MoE Bottleneck Verification
 
-- **GDN Sublayer**: p50 = 0.126 ms (12.1%)
-- **Gated Attention Sublayer**: p50 = 0.660 ms (63.6%)
-- **MoE Channel Mixer Sublayer**: p50 = 0.252 ms (25.5%)
-- **Verdict**: [PASS] MoE Channel Mixer sublayer terukur (25.5%).
+- **GDN Sublayer**: p50 = 0.097 ms (11.7%)
+- **Gated Attention Sublayer**: p50 = 0.530 ms (64.4%)
+- **MoE Channel Mixer Sublayer**: p50 = 0.197 ms (24.7%)
+- **Verdict**: [PASS] MoE Channel Mixer sublayer terukur (24.7%).

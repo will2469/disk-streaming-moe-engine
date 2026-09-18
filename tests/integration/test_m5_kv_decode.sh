@@ -24,7 +24,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 MODEL_DIR="${MODEL_DIR:-/home/will/models/qwen1.5-moe-a2.7b-chat}"
-KIMO="${KIMO:-./dismoen}"
+DISMOEN="${DISMOEN:-./dismoen}"
 COMPARE_BIN="${COMPARE_BIN:-target/debug/dismoen-tools}"
 FIXTURE_DIR="tools/fixtures"
 BENCH_RAW_JSON="reports/2026-09-17/m5_benchmark_raw.json"
@@ -49,7 +49,7 @@ echo "M5-W6: Milestone M5 Final Integration Tests & Gate Verification"
 echo "======================================================================"
 
 # Build dismoen and dismoen-tools if necessary
-if [ ! -f "$KIMO" ]; then
+if [ ! -f "$DISMOEN" ]; then
     echo ">> Building dismoen binary..."
     pixi run build
 fi
@@ -66,7 +66,7 @@ echo ">> [IT-M5-1] Happy path: 64 tokens @ ctx 2048..."
 IT1_OUT="$WORKDIR/tokens_it1.json"
 IT1_STDOUT="$TEST_DIR/stdout_it1.json"
 
-"$KIMO" decode \
+"$DISMOEN" decode \
     --model-dir "$MODEL_DIR" \
     --prompt "The quick brown fox jumps over the lazy dog." \
     --max-tokens 64 \
@@ -136,7 +136,7 @@ echo ">> [IT-M5-3] Context size 4K execution..."
 IT3_OUT="$WORKDIR/tokens_it3.json"
 IT3_STDOUT="$TEST_DIR/stdout_it3.json"
 
-"$KIMO" decode \
+"$DISMOEN" decode \
     --model-dir "$MODEL_DIR" \
     --prompt "A very long prompt testing 4K context scaling." \
     --max-tokens 64 \
@@ -161,7 +161,7 @@ print(f'   PASS: IT-M5-3 context 4K executed cleanly (VmHWM: {vmhwm_gib:.2f} GiB
 echo ">> [IT-M5-4] Context size > s_max (8192 > 4096) -> Exit 2..."
 IT4_ERR="$TEST_DIR/stderr_it4.json"
 set +e
-"$KIMO" decode \
+"$DISMOEN" decode \
     --model-dir "$MODEL_DIR" \
     --prompt "Test" \
     --max-tokens 64 \
@@ -186,7 +186,7 @@ print('   PASS: IT-M5-4 rejected ctx > s_max with exit 2 and M5_ERR_CONTEXT_SIZE
 echo ">> [IT-M5-5] KV alloc failure (OOM / injected) -> Exit 3..."
 IT5_ERR="$TEST_DIR/stderr_it5.json"
 set +e
-"$KIMO" decode \
+"$DISMOEN" decode \
     --mock-error "M5_ERR_KV_ALLOC" \
     --model-dir "$MODEL_DIR" \
     --prompt "Test" \
@@ -212,7 +212,7 @@ print('   PASS: IT-M5-5 rejected with exit 3 and M5_ERR_KV_ALLOC.')
 echo ">> [IT-M5-6] Invalid prompt (empty prompt) -> Exit 1..."
 IT6_ERR="$TEST_DIR/stderr_it6.json"
 set +e
-"$KIMO" decode \
+"$DISMOEN" decode \
     --model-dir "$MODEL_DIR" \
     --prompt "" \
     --max-tokens 64 \
@@ -240,7 +240,7 @@ if command -v systemd-run >/dev/null 2>&1 && systemd-run --user --scope true >/d
     IT7_STDOUT="$TEST_DIR/stdout_it7.json"
     IT7_STDERR="$TEST_DIR/stderr_it7.txt"
     systemd-run --user --scope -q -p MemoryMax=6G \
-        "$KIMO" decode \
+        "$DISMOEN" decode \
             --model-dir "$MODEL_DIR" \
             --prompt "Testing cgroup boundary under 4K context." \
             --max-tokens 64 \
@@ -268,7 +268,7 @@ echo ">> [IT-M5-8] Reproducibility A (run-sama -> byte-sama)..."
 TOKENS1="$WORKDIR/tokens_run1.json"
 TOKENS2="$WORKDIR/tokens_run2.json"
 
-"$KIMO" decode \
+"$DISMOEN" decode \
     --model-dir "$MODEL_DIR" \
     --prompt "Deterministic Output Verification Prompt" \
     --max-tokens 64 \
@@ -278,7 +278,7 @@ TOKENS2="$WORKDIR/tokens_run2.json"
     --threads 1 \
     --seed 42 > /dev/null 2>&1
 
-"$KIMO" decode \
+"$DISMOEN" decode \
     --model-dir "$MODEL_DIR" \
     --prompt "Deterministic Output Verification Prompt" \
     --max-tokens 64 \
@@ -303,7 +303,7 @@ echo "   PASS: IT-M5-8 identical SHA-256 ($SHA1) verified across runs."
 echo ">> [IT-M5-9] Max-tokens = 0 -> Exit 1..."
 IT9_ERR="$TEST_DIR/stderr_it9.json"
 set +e
-"$KIMO" decode \
+"$DISMOEN" decode \
     --model-dir "$MODEL_DIR" \
     --prompt "Test" \
     --max-tokens 0 \
@@ -327,7 +327,7 @@ print('   PASS: IT-M5-9 max-tokens=0 rejected with exit 1.')
 echo ">> [IT-M5-10] Prefill failure -> Exit 4..."
 IT10_ERR="$TEST_DIR/stderr_it10.json"
 set +e
-"$KIMO" decode \
+"$DISMOEN" decode \
     --mock-error "M5_ERR_PREFILL" \
     --model-dir "$MODEL_DIR" \
     --prompt "Test" \
@@ -354,7 +354,7 @@ echo ">> [IT-M5-11] Context overflow S + N > ctx -> Exit 2..."
 BIG_PROMPT=$(python3 -c "print('hello ' * 5000)")
 IT11_ERR="$TEST_DIR/stderr_it11.json"
 set +e
-"$KIMO" decode \
+"$DISMOEN" decode \
     --model-dir "$MODEL_DIR" \
     --prompt "$BIG_PROMPT" \
     --max-tokens 64 \
@@ -381,7 +381,7 @@ echo ">> [SEC-4 & SEC-5] Security invariants verification..."
 # SEC-5: Workdir path traversal containment
 TRAVERSAL_PATH="$TEST_DIR/outside_workdir/escaped_tokens.json"
 set +e
-"$KIMO" decode \
+"$DISMOEN" decode \
     --model-dir "$MODEL_DIR" \
     --prompt "Test traversal" \
     --max-tokens 16 \

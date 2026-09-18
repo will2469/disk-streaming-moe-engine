@@ -54,11 +54,11 @@ uvx ruff@0.8.4 format --check tools/oracle/oracle_dequant.py
 echo "   PASS: Formatting Mojo dan Python bersih 100%."
 
 # ----------------------------------------------------------------------
-# 2. Build Binary kimo
+# 2. Build Binary dismoen
 # ----------------------------------------------------------------------
-echo ">> [2/6] Membangun binary kimo via pixi build..."
+echo ">> [2/6] Membangun binary dismoen via pixi build..."
 pixi run build
-echo "   PASS: Binary kimo siap dijalankan."
+echo "   PASS: Binary dismoen siap dijalankan."
 
 # ----------------------------------------------------------------------
 # 3. Pembangkitan Fixture Conformance G-M6-K (Seed-42)
@@ -83,7 +83,7 @@ pixi run mojo run -I src tests/unit/test_m6_dequant.mojo
 echo "   PASS: Seluruh unit test Mojo lulus 100% (G-M6-K bit-identical terverifikasi)."
 
 # ----------------------------------------------------------------------
-# 5. File-Level Conformance (Oracle vs kimo quantize output)
+# 5. File-Level Conformance (Oracle vs dismoen quantize output)
 # ----------------------------------------------------------------------
 echo ">> [5/6] Menyiapkan model BF16 dan menguji konformansi file-level..."
 
@@ -157,7 +157,7 @@ if [ "$TRUNC_FAILED" -ne 1 ]; then
 fi
 echo "   PASS: SEC-4 berhasil menolak berkas quant terpotong (truncated)."
 
-# SEC-4 Fault Injection: inject reserved nibble 0x8 ke dalam model.kimo.bin
+# SEC-4 Fault Injection: inject reserved nibble 0x8 ke dalam model.dismoen.bin
 cp "$QUANT_MODEL_BIN" "$QUANT_OUT_DIR/model_corrupt.bin"
 python3 - "$QUANT_OUT_DIR/model_corrupt.bin" <<'EOF'
 import sys

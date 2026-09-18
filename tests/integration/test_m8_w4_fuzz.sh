@@ -4,7 +4,7 @@
 # See LICENSE for details.
 #
 # Fuzz Runner untuk Milestone M8 Wave 4 (DoD M8 § Fuzzing).
-# Menguji 20+ (27) kasus mutasi terhadap kimo gdn dengan timeout 10 detik/kasus (anti-hang).
+# Menguji 20+ (27) kasus mutasi terhadap dismoen gdn dengan timeout 10 detik/kasus (anti-hang).
 
 set -euo pipefail
 
@@ -12,12 +12,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 
-KIMO="./dismoen"
+DISMOEN="./dismoen"
 DIR="fixtures/m8-fuzz"
 TMP_OUT="$(mktemp -d -t dismoen_fuzz_m8_XXXXXX)"
 trap 'rm -rf "$TMP_OUT"' EXIT
 
-if [ ! -f "$KIMO" ]; then
+if [ ! -f "$DISMOEN" ]; then
     echo "dismoen binary not found, building..."
     pixi run build
 fi
@@ -75,7 +75,7 @@ for idx, case in enumerate(manifest["cases"]):
     echo -n "   --> Kasus [$case_id]... "
 
     set +e
-    out=$(timeout 10 "$KIMO" gdn $cmd_args 2>&1 >/dev/null)
+    out=$(timeout 10 "$DISMOEN" gdn $cmd_args 2>&1 >/dev/null)
     exit_code=$?
     set -e
 

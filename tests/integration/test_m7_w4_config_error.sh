@@ -8,7 +8,7 @@
 #
 # Pengujian:
 # 1. Formatting compliance (Mojo format bersih)
-# 2. Binary compilation (kimo binary siap)
+# 2. Binary compilation (dismoen binary siap)
 # 3. CLI flag & parameter validation:
 #    - block-size {512, 4096, 8192} vs invalid (1024 -> exit 1)
 #    - queue-depth {1, 2, 4, 8, 16} vs invalid (32 -> exit 1)
@@ -25,7 +25,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-KIMO="${KIMO:-./dismoen}"
+DISMOEN="${DISMOEN:-./dismoen}"
 TEST_DIR="/tmp/test_m7_w4_$$"
 WORKDIR="$TEST_DIR/workdir"
 MODEL_DIR="$TEST_DIR/model"
@@ -62,11 +62,11 @@ fi
 echo "   PASS: Formatting Mojo bersih 100%."
 
 # -----------------------------------------------------------------------------
-# Stage 2: Membangun binary kimo
+# Stage 2: Membangun binary dismoen
 # -----------------------------------------------------------------------------
-echo ">> [2/8] Membangun binary kimo via pixi build..."
+echo ">> [2/8] Membangun binary dismoen via pixi build..."
 pixi run build
-echo "   PASS: Binary kimo siap dijalankan."
+echo "   PASS: Binary dismoen siap dijalankan."
 
 # -----------------------------------------------------------------------------
 # Stage 3: Flag CLI & Validasi Parameter Fail-Fast
@@ -76,7 +76,7 @@ ERR_FILE="$TEST_DIR/err_out.json"
 
 # 3a. Block size invalid (1024 bukan kelipatan diizinkan {512, 4096, 8192}) -> exit 1
 set +e
-"$KIMO" decode \
+"$DISMOEN" decode \
   --mock-decode \
   --model-dir "$MODEL_DIR" \
   --prompt "Test" \
@@ -101,7 +101,7 @@ echo "   PASS: block-size 1024 ditolak fail-fast dengan M7_ERR_ODIRECT_ALIGNMENT
 
 # 3b. Queue depth invalid (32 bukan diizinkan {1, 2, 4, 8, 16}) -> exit 1
 set +e
-"$KIMO" decode \
+"$DISMOEN" decode \
   --mock-decode \
   --model-dir "$MODEL_DIR" \
   --prompt "Test" \
@@ -126,7 +126,7 @@ echo "   PASS: queue-depth 32 ditolak fail-fast dengan M7_ERR_ODIRECT_ALIGNMENT 
 
 # 3c. Valid parameters {512, 4096, 8192} & QD {1, 2, 4, 8, 16} diterima
 OUT_OK="$TEST_DIR/out_ok.json"
-"$KIMO" decode \
+"$DISMOEN" decode \
   --mock-decode \
   --model-dir "$MODEL_DIR" \
   --prompt "Test" \
@@ -146,7 +146,7 @@ echo "   PASS: Parameter valid diterima dan tercatat di io_config."
 
 # 3d. Budget memori terlampaui -> exit 4 (M7_ERR_LRU_ALLOC)
 set +e
-"$KIMO" decode \
+"$DISMOEN" decode \
   --mock-decode \
   --model-dir "$MODEL_DIR" \
   --prompt "Test" \
@@ -179,7 +179,7 @@ echo ">> [4/8] Menguji phase-split probe-fallback warning vs pasca-probe hard fa
 FALLBACK_STDOUT="$TEST_DIR/fallback_stdout.json"
 FALLBACK_STDERR="$TEST_DIR/fallback_stderr.txt"
 
-"$KIMO" decode \
+"$DISMOEN" decode \
   --mock-decode \
   --model-dir "$MODEL_DIR" \
   --prompt "Test" \
@@ -205,7 +205,7 @@ echo "   PASS: Fase probe yang gagal memicu warning stderr + fallback buffered y
 # 4b. Pasca-probe hard fail: fault injection M7_ERR_FORMAT_ALIGNMENT dilarang fallback diam-diam
 POST_PROBE_ERR="$TEST_DIR/post_probe_err.json"
 set +e
-"$KIMO" decode \
+"$DISMOEN" decode \
   --mock-decode \
   --model-dir "$MODEL_DIR" \
   --prompt "Test" \
@@ -250,7 +250,7 @@ for err_code in "${!EXPECTED_EXITS[@]}"; do
     E_OUT="$TEST_DIR/err_${err_code}.json"
 
     set +e
-    "$KIMO" decode \
+    "$DISMOEN" decode \
       --mock-decode \
       --model-dir "$MODEL_DIR" \
       --prompt "Test" \
@@ -288,7 +288,7 @@ DIR_COUNT_BEFORE=$(find "$WORKDIR" -type d | wc -l)
 FILE_COUNT_BEFORE=$(find "$WORKDIR" -type f | wc -l)
 
 set +e
-"$KIMO" decode \
+"$DISMOEN" decode \
   --mock-decode \
   --model-dir "$MODEL_DIR" \
   --prompt "Test Rollback" \
@@ -313,7 +313,7 @@ echo ">> [7/8] Memverifikasi kebijakan readahead [R25]..."
 STDOUT_OD="$TEST_DIR/stdout_odirect.json"
 if [ -f "$REAL_MODEL_FILE" ]; then
     REAL_DIR="$(dirname "$REAL_MODEL_FILE")"
-    "$KIMO" decode \
+    "$DISMOEN" decode \
       --mock-decode \
       --model-dir "$REAL_DIR" \
       --prompt "Readahead Test" \
@@ -333,7 +333,7 @@ fi
 
 # Buffered path: readahead POSIX_FADV_SEQUENTIAL
 STDOUT_BUF="$TEST_DIR/stdout_buffered.json"
-"$KIMO" decode \
+"$DISMOEN" decode \
   --mock-decode \
   --model-dir "$MODEL_DIR" \
   --prompt "Buffered Test" \
@@ -355,7 +355,7 @@ echo "   PASS: Jalur Buffered mencatat readahead POSIX_FADV_SEQUENTIAL [R25]."
 echo ">> [8/8] Memverifikasi telemetri filesystem dan sensor termal per run..."
 
 STDOUT_TELEMETRY="$TEST_DIR/stdout_telemetry.json"
-"$KIMO" decode \
+"$DISMOEN" decode \
   --mock-decode \
   --model-dir "$MODEL_DIR" \
   --prompt "Telemetry Test" \

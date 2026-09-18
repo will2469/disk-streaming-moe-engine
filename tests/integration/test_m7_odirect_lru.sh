@@ -83,9 +83,9 @@ echo ">> [2/8] Membangun binary dismoen dan io_benchmark via pixi build..."
 pixi run build
 pixi run bash -c 'PATH="/usr/bin:$PATH" mojo build -I src tools/bench/io_benchmark.mojo -o io_benchmark'
 
-KIMO="./dismoen"
+DISMOEN="./dismoen"
 IO_BENCH="./io_benchmark"
-[ -x "$KIMO" ] || { echo "FAIL: binary dismoen tidak ditemukan"; exit 1; }
+[ -x "$DISMOEN" ] || { echo "FAIL: binary dismoen tidak ditemukan"; exit 1; }
 [ -x "$IO_BENCH" ] || { echo "FAIL: binary io_benchmark tidak ditemukan"; exit 1; }
 echo "   PASS: Binary dismoen dan io_benchmark siap dijalankan."
 
@@ -172,7 +172,7 @@ echo ">> [5/8] Menguji skenario Test Matrix IT-M7-1 s/d IT-M7-16..."
 
 # IT-M7-1: Happy path: O_DIRECT + LRU -> decode 4-bit (Exit 0, >= 2 tok/s)
 expect_rc 0 "IT-M7-1: Happy path O_DIRECT + LRU decode 4-bit" \
-    "$KIMO" decode \
+    "$DISMOEN" decode \
       --model-dir "$REAL_MODEL_DIR" \
       --tokens tools/fixtures/m4_prompt1_tokens.json \
       --max-tokens 64 \
@@ -197,7 +197,7 @@ EOF
 
 # IT-M7-2: O_DIRECT unsupported -> fallback to buffered I/O, log warning
 expect_rc 0 "IT-M7-2: Fallback to buffered I/O saat O_DIRECT tidak didukung" \
-    "$KIMO" decode \
+    "$DISMOEN" decode \
       --mock-decode \
       --model-dir "$MOCK_MODEL_DIR" \
       --prompt "Test" \
@@ -220,7 +220,7 @@ echo "         IT-M7-2 terverifikasi: fallback buffered tercatat dan warning ter
 
 # IT-M7-3: Layout format langgar alignment pasca-probe -> hard fail (exit 2)
 expect_rc 2 "IT-M7-3: Pasca-probe alignment violation hard fail M7_ERR_FORMAT_ALIGNMENT" \
-    "$KIMO" decode \
+    "$DISMOEN" decode \
       --mock-decode \
       --model-dir "$MOCK_MODEL_DIR" \
       --prompt "Test" \
@@ -232,7 +232,7 @@ expect_error_code "M7_ERR_FORMAT_ALIGNMENT"
 
 # IT-M7-4: O_DIRECT short read selaras
 expect_rc 2 "IT-M7-4: O_DIRECT short read ditangani dengan M7_ERR_ODIRECT_SHORT_READ" \
-    "$KIMO" decode \
+    "$DISMOEN" decode \
       --mock-decode \
       --model-dir "$MOCK_MODEL_DIR" \
       --prompt "Test" \
@@ -244,7 +244,7 @@ expect_error_code "M7_ERR_ODIRECT_SHORT_READ"
 
 # IT-M7-5: ENOSPC on write path (exit 3)
 expect_rc 3 "IT-M7-5: ENOSPC write path memicu M7_ERR_ODIRECT_ENOSPC" \
-    "$KIMO" decode \
+    "$DISMOEN" decode \
       --mock-decode \
       --model-dir "$MOCK_MODEL_DIR" \
       --prompt "Test" \
@@ -256,7 +256,7 @@ expect_error_code "M7_ERR_ODIRECT_ENOSPC"
 # IT-M7-6: LRU cache capacity exceeded -> eviksi normal teramati
 CACHE_STATS_OUT="$WORKDIR/lru_stats_it6.json"
 expect_rc 0 "IT-M7-6: Kapasitas cache terlampaui memicu eviksi LRU normal" \
-    "$KIMO" decode \
+    "$DISMOEN" decode \
       --mock-decode \
       --model-dir "$MOCK_MODEL_DIR" \
       --prompt "Test" \
@@ -276,7 +276,7 @@ EOF
 
 # IT-M7-7: LRU cache alloc fail (OOM) (exit 4)
 expect_rc 4 "IT-M7-7: Alokasi LRU gagal memicu M7_ERR_LRU_ALLOC" \
-    "$KIMO" decode \
+    "$DISMOEN" decode \
       --mock-decode \
       --model-dir "$MOCK_MODEL_DIR" \
       --prompt "Test" \
@@ -287,7 +287,7 @@ expect_error_code "M7_ERR_LRU_ALLOC"
 
 # IT-M7-8: LRU cache corruption (fault injection) (exit 4)
 expect_rc 4 "IT-M7-8: Revalidasi korupsi cache memicu clear + M7_ERR_LRU_CORRUPT" \
-    "$KIMO" decode \
+    "$DISMOEN" decode \
       --mock-decode \
       --model-dir "$MOCK_MODEL_DIR" \
       --prompt "Test" \
@@ -343,7 +343,7 @@ echo "         IT-M7-10 terverifikasi: QD sweep 1..16 berhasil dijalankan dan di
 
 # IT-M7-11: EINVAL pasca-probe fault injection hard fail
 expect_rc 2 "IT-M7-11: EINVAL pasca-probe dilarang fallback diam-diam" \
-    "$KIMO" decode \
+    "$DISMOEN" decode \
       --mock-decode \
       --model-dir "$MOCK_MODEL_DIR" \
       --prompt "Test" \
@@ -355,7 +355,7 @@ expect_error_code "M7_ERR_FORMAT_ALIGNMENT"
 
 # IT-M7-12: Short remainder tak selaras -> fail M7_ERR_ODIRECT_SHORT_READ
 expect_rc 2 "IT-M7-12: Short remainder tak selaras ditolak fail-fast" \
-    "$KIMO" decode \
+    "$DISMOEN" decode \
       --mock-decode \
       --model-dir "$MOCK_MODEL_DIR" \
       --prompt "Test" \
@@ -418,7 +418,7 @@ echo ">> [6/8] Memverifikasi Kontrak Keamanan SEC-4 dan SEC-5..."
 # SEC-4: Aligned + Bounded Buffers & Kapasitas dari Config
 # Block size invalid (1024) -> ditolak fail-fast exit 1
 expect_rc 1 "SEC-4: Penolakan block-size 1024 yang melanggar alignment" \
-    "$KIMO" decode \
+    "$DISMOEN" decode \
       --mock-decode \
       --model-dir "$MOCK_MODEL_DIR" \
       --prompt "Test" \
@@ -429,7 +429,7 @@ expect_error_code "M7_ERR_ODIRECT_ALIGNMENT"
 
 # Queue depth invalid (32) -> ditolak fail-fast exit 1
 expect_rc 1 "SEC-4: Penolakan queue-depth 32 yang melebihi batas {1,2,4,8,16}" \
-    "$KIMO" decode \
+    "$DISMOEN" decode \
       --mock-decode \
       --model-dir "$MOCK_MODEL_DIR" \
       --prompt "Test" \
@@ -440,7 +440,7 @@ expect_error_code "M7_ERR_ODIRECT_ALIGNMENT"
 
 # Memory budget invalid -> ditolak fail-fast exit 4
 expect_rc 4 "SEC-4: Penolakan alokasi melebihi budget memori sistem" \
-    "$KIMO" decode \
+    "$DISMOEN" decode \
       --mock-decode \
       --model-dir "$MOCK_MODEL_DIR" \
       --prompt "Test" \
@@ -456,7 +456,7 @@ touch "$SEC5_MODEL_DIR/dummy.bin"
 chmod -w "$SEC5_MODEL_DIR"
 
 expect_rc 0 "SEC-5: Engine berjalan aman dengan model-dir Read-Only" \
-    "$KIMO" decode \
+    "$DISMOEN" decode \
       --mock-decode \
       --model-dir "$SEC5_MODEL_DIR" \
       --prompt "Test SEC-5" \
@@ -467,7 +467,7 @@ chmod +w "$SEC5_MODEL_DIR"
 # SEC-5: Atomic rollback (tidak ada file bocor saat error)
 FILE_COUNT_BEFORE=$(find "$WORKDIR" -type f | wc -l)
 set +e
-"$KIMO" decode \
+"$DISMOEN" decode \
   --mock-decode \
   --model-dir "$MOCK_MODEL_DIR" \
   --prompt "Test" \

@@ -9,7 +9,7 @@
 #
 # Pengujian:
 # Stage 1: Pre-commit formatting & zero-suppression hygiene (Mojo format, no noqa/allow)
-# Stage 2: Binary compilation check (kimo binary siap)
+# Stage 2: Binary compilation check (dismoen binary siap)
 # Stage 3: Unit test execution (test_m9_w3_gguf.mojo)
 # Stage 4: On-demand GGUF streaming execution & telemetry check
 # Stage 5: SEC-1/3/4 Port validations (models.lock port, vocab check, memory budget)
@@ -22,7 +22,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-KIMO="${KIMO:-./dismoen}"
+DISMOEN="${DISMOEN:-./dismoen}"
 TEST_DIR="/tmp/test_m9_w3_$$"
 GGUF_FIXTURE="fixtures/m9_port_mini.gguf"
 TOKENS_FIXTURE="fixtures/m9_port_tokens.json"
@@ -70,18 +70,18 @@ fi
 echo "   PASS: Formatting bersih, zero-suppression terverifikasi."
 
 # -----------------------------------------------------------------------------
-# Stage 2: Kompilasi Binary kimo
+# Stage 2: Kompilasi Binary dismoen
 # -----------------------------------------------------------------------------
-echo ">> [2/7] Memeriksa kompilasi binary kimo..."
+echo ">> [2/7] Memeriksa kompilasi binary dismoen..."
 pixi run build >/dev/null 2>&1 || {
-    echo "FAIL: Gagal melakukan build binary kimo!"
+    echo "FAIL: Gagal melakukan build binary dismoen!"
     exit 1
 }
-if [[ ! -x "$KIMO" ]]; then
-    echo "FAIL: Binary kimo tidak ditemukan atau tidak executable: $KIMO"
+if [[ ! -x "$DISMOEN" ]]; then
+    echo "FAIL: Binary dismoen tidak ditemukan atau tidak executable: $DISMOEN"
     exit 1
 fi
-echo "   PASS: Binary kimo siap eksekusi."
+echo "   PASS: Binary dismoen siap eksekusi."
 
 # -----------------------------------------------------------------------------
 # Stage 3: Eksekusi Unit Test M9-W3
@@ -97,7 +97,7 @@ echo "   PASS: Seluruh unit test GGUF & Security lolos."
 # Stage 4: On-Demand GGUF Streaming Execution
 # -----------------------------------------------------------------------------
 echo ">> [4/7] Menguji on-demand GGUF streaming forward execution..."
-OUT_GGUF=$("$KIMO" forward-port \
+OUT_GGUF=$("$DISMOEN" forward-port \
     --architecture qwen3.6 \
     --model-dir "$GGUF_FIXTURE" \
     --tokens "$TOKENS_FIXTURE")
@@ -155,7 +155,7 @@ OUT_TAMPER=$("$PYTHON" -c '
 import subprocess
 try:
     res = subprocess.run([
-        "'"$KIMO"'", "forward-port",
+        "'"$DISMOEN"'", "forward-port",
         "--architecture", "qwen3.6",
         "--model-dir", "'"$TAMPER_MODEL_DIR"'",
         "--tokens", "'"$TOKENS_FIXTURE"'"
@@ -222,8 +222,8 @@ print(c["id"] + "\t" + str(c["want_exit"]) + "\t" + c["want_err"] + "\t" + " ".j
     CARGS=$(echo "$CASE_DATA" | cut -f4-)
 
     set +e
-    # Jalankan kimo dengan timeout 5s anti-hang
-    FOUT=$(timeout 5s "$KIMO" forward-port $CARGS 2>&1)
+    # Jalankan dismoen dengan timeout 5s anti-hang
+    FOUT=$(timeout 5s "$DISMOEN" forward-port $CARGS 2>&1)
     FEXIT=$?
     set -e
 

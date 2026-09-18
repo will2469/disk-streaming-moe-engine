@@ -58,7 +58,7 @@ Membuktikan kernel attention trial benar: MHA 16 head × 128, **QKV bias ada**, 
 
 ```bash
 # contoh fixture synthetic; checkpoint asli 8 shard
-kimo layer --layer 0 activation.bin shard-00001-of-00003.safetensors shard-00002-of-00003.safetensors shard-00003-of-00003.safetensors
+dismoen layer --layer 0 activation.bin shard-00001-of-00003.safetensors shard-00002-of-00003.safetensors shard-00003-of-00003.safetensors
 ```
 
 **Contoh output (success):**

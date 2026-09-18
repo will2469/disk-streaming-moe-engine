@@ -95,7 +95,7 @@ Pengujian dilakukan pada model asli `Qwen1.5-MoE-A2.7B-Chat` (8 shard, 28,63 GB)
 
 Rangkaian uji integrasi dijalankan via `cargo test --test integration_m1`:
 
-1. **`test_1_happy_path_g_m1_1`**: Output logits biner diverifikasi terhadap oracle PyTorch menggunakan `kimo-tools compare`. Status: `MATCH`, Verdict: `PASS`, exit 0.
+1. **`test_1_happy_path_g_m1_1`**: Output logits biner diverifikasi terhadap oracle PyTorch menggunakan `dismoen-tools compare`. Status: `MATCH`, Verdict: `PASS`, exit 0.
 2. **`test_2_token_validation`**: Token ID negatif dan token ID $\ge V$ ditolak secara deterministik dengan exit code 2 dan error JSON `TOKEN_INVALID`.
 3. **`test_3_weight_load_failure`**:
    - (a) Propagasi reader error M0: shard hilang memicu `FILE_NOT_FOUND` (exit 2).

@@ -13,7 +13,7 @@ Spesifikasi (docs/milestones/M6-quantizer.md § Conformance vs Oracle (G-M6-K)):
    y = float32(s_g) * q_j
    bf16_val = torch.tensor(y, dtype=torch.float32).to(torch.bfloat16)
 3. Verifikasi file-level:
-   Dequant oracle vs SIMD pada berkas quant biner (.kimo.bin).
+   Dequant oracle vs SIMD pada berkas quant biner.
 """
 
 import argparse
@@ -173,7 +173,7 @@ def generate_conformance_fixtures(
 def verify_file_level_conformance(
     quant_file: str,
 ) -> dict[str, Any]:
-    """Membaca file .kimo.bin dan mendekuantisasi setiap tensor via oracle."""
+    """Membaca file quant model dan mendekuantisasi setiap tensor via oracle."""
     with open(quant_file, "rb") as f:
         hdr_bytes = f.read(QUANT_HEADER_SIZE)
         hdr_json_str = hdr_bytes.split(b"\x00")[0].decode("utf-8")
@@ -237,7 +237,7 @@ def main():
     parser.add_argument(
         "--verify-file",
         type=str,
-        help="File quant .kimo.bin untuk verifikasi file-level",
+        help="File quant model biner untuk verifikasi file-level",
     )
     args = parser.parse_args()
 

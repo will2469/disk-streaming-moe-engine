@@ -7,7 +7,7 @@
 ```mermaid
 flowchart TB
     subgraph HOST["Host - 8 GB RAM / NVMe / no GPU"]
-        subgraph ENG["Engine Mojo - bin/kimo"]
+        subgraph ENG["Engine Mojo - bin/dismoen"]
             CLI["main.mojo\nCLI: check-index / head / layer / forward"]
             KER["model.mojo\nconfig - kernels (rmsnorm, rope, attn, moe) - forward streaming"]
             ST["safetensors.mojo\nJSON header scan - STSet multi-shard - pread"]

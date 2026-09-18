@@ -1,5 +1,5 @@
 #!/bin/bash
-# E2E test suite for kimo forward CLI (M4-W1)
+# E2E test suite for dismoen forward CLI (M4-W1)
 # Covers:
 # 1. USAGE and CLI options validation (missing required, unknown options)
 # 2. Happy path: stdout valid JSON, logits exact size s*151936*4, run_id format, runs/<run-id> cleaned
@@ -14,7 +14,7 @@
 
 set -u
 
-KIMO="${KIMO:-./dismoen}"
+DISMOEN="${DISMOEN:-./dismoen}"
 TEST_DIR="/tmp/test_m4_w1_cli_$$"
 WORKDIR="$TEST_DIR/workdir"
 MODEL_DIR="$TEST_DIR/model"
@@ -40,7 +40,7 @@ json.dump([i * 10 for i in range(16)], open('$TOKENS_16', 'w'))
 
 echo "== 1. USAGE & CLI option validation =="
 ERR_OUT="$TEST_DIR/err_usage.txt"
-"$KIMO" forward > "$ERR_OUT" 2>&1
+"$DISMOEN" forward > "$ERR_OUT" 2>&1
 status=$?
 if [ $status -ne 1 ]; then
     echo "FAIL: expected exit 1 on empty forward command, got $status"
@@ -48,7 +48,7 @@ if [ $status -ne 1 ]; then
 fi
 grep -q '"code":"M4_ERR_INPUT"' "$ERR_OUT" || { echo "FAIL: error code not M4_ERR_INPUT"; fail=1; }
 
-"$KIMO" forward --unknown-flag > "$ERR_OUT" 2>&1
+"$DISMOEN" forward --unknown-flag > "$ERR_OUT" 2>&1
 status=$?
 if [ $status -ne 1 ]; then
     echo "FAIL: expected exit 1 on unknown option, got $status"
@@ -61,7 +61,7 @@ OUT_LOGITS="$WORKDIR/logits_happy.bin"
 STDOUT_JSON="$TEST_DIR/happy_stdout.json"
 STDERR_TXT="$TEST_DIR/happy_stderr.txt"
 
-"$KIMO" forward \
+"$DISMOEN" forward \
   --mock-forward \
   --model-dir "$MODEL_DIR" \
   --tokens "$TOKENS_16" \
@@ -122,7 +122,7 @@ fi
 
 echo "== 3. Output escape containment (SEC-5) =="
 # Escape via ../
-"$KIMO" forward --model-dir "$MODEL_DIR" --tokens "$TOKENS_16" --output "$WORKDIR/../escape.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
+"$DISMOEN" forward --model-dir "$MODEL_DIR" --tokens "$TOKENS_16" --output "$WORKDIR/../escape.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
 status=$?
 if [ $status -ne 1 ]; then
     echo "FAIL: expected exit 1 on ../ output escape, got $status"
@@ -132,7 +132,7 @@ grep -q '"code":"M4_ERR_INPUT"' "$ERR_OUT" || { echo "FAIL: error code not M4_ER
 [ ! -e "$WORKDIR/../escape.bin" ] || { echo "FAIL: escape file was written!"; fail=1; }
 
 # Escape via absolute path outside workdir
-"$KIMO" forward --model-dir "$MODEL_DIR" --tokens "$TOKENS_16" --output "/tmp/escape_$$.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
+"$DISMOEN" forward --model-dir "$MODEL_DIR" --tokens "$TOKENS_16" --output "/tmp/escape_$$.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
 status=$?
 if [ $status -ne 1 ]; then
     echo "FAIL: expected exit 1 on absolute output escape, got $status"
@@ -144,7 +144,7 @@ grep -q '"code":"M4_ERR_INPUT"' "$ERR_OUT" || { echo "FAIL: error code not M4_ER
 # Escape via symlink in workdir pointing outside
 mkdir -p "$WORKDIR/sub"
 ln -s /tmp "$WORKDIR/sub/sym_link"
-"$KIMO" forward --model-dir "$MODEL_DIR" --tokens "$TOKENS_16" --output "sub/sym_link/escape.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
+"$DISMOEN" forward --model-dir "$MODEL_DIR" --tokens "$TOKENS_16" --output "sub/sym_link/escape.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
 status=$?
 if [ $status -ne 1 ]; then
     echo "FAIL: expected exit 1 on symlink output escape, got $status"
@@ -154,7 +154,7 @@ grep -q '"code":"M4_ERR_INPUT"' "$ERR_OUT" || { echo "FAIL: error code not M4_ER
 [ ! -e "/tmp/escape.bin" ] || { echo "FAIL: symlink escape file was written!"; fail=1; }
 
 # Escape via --layer-timing
-"$KIMO" forward --model-dir "$MODEL_DIR" --tokens "$TOKENS_16" --output "$WORKDIR/out.bin" --workdir "$WORKDIR" --layer-timing "$WORKDIR/../timing_escape.json" > "$ERR_OUT" 2>&1
+"$DISMOEN" forward --model-dir "$MODEL_DIR" --tokens "$TOKENS_16" --output "$WORKDIR/out.bin" --workdir "$WORKDIR" --layer-timing "$WORKDIR/../timing_escape.json" > "$ERR_OUT" 2>&1
 status=$?
 if [ $status -ne 1 ]; then
     echo "FAIL: expected exit 1 on layer-timing escape, got $status"
@@ -170,7 +170,7 @@ python3 -c "
 with open('$BIG_FILE', 'w') as f:
     f.write('[' + '0,' * 600000 + '0]')
 "
-"$KIMO" forward --model-dir "$MODEL_DIR" --tokens "$BIG_FILE" --output "$WORKDIR/big_file.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
+"$DISMOEN" forward --model-dir "$MODEL_DIR" --tokens "$BIG_FILE" --output "$WORKDIR/big_file.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
 status=$?
 if [ $status -ne 1 ]; then
     echo "FAIL: expected exit 1 on file size > 1 MiB, got $status"
@@ -184,7 +184,7 @@ python3 -c "
 import json
 json.dump(list(range(1025)), open('$BIG_TOKENS', 'w'))
 "
-"$KIMO" forward --model-dir "$MODEL_DIR" --tokens "$BIG_TOKENS" --output "$WORKDIR/big_tok.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
+"$DISMOEN" forward --model-dir "$MODEL_DIR" --tokens "$BIG_TOKENS" --output "$WORKDIR/big_tok.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
 status=$?
 if [ $status -ne 1 ]; then
     echo "FAIL: expected exit 1 on tokens count > 1024, got $status"
@@ -195,7 +195,7 @@ grep -q 'MAX_TOKENS' "$ERR_OUT" || { echo "FAIL: error message missing MAX_TOKEN
 # 4.3 Empty tokens array []
 EMPTY_TOKENS="$TOKENS_DIR/empty.json"
 echo "[]" > "$EMPTY_TOKENS"
-"$KIMO" forward --model-dir "$MODEL_DIR" --tokens "$EMPTY_TOKENS" --output "$WORKDIR/empty.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
+"$DISMOEN" forward --model-dir "$MODEL_DIR" --tokens "$EMPTY_TOKENS" --output "$WORKDIR/empty.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
 status=$?
 if [ $status -ne 1 ]; then
     echo "FAIL: expected exit 1 on empty tokens array, got $status"
@@ -209,7 +209,7 @@ python3 -c "
 import json
 json.dump([10, 20, 151936], open('$OUT_OF_VOCAB', 'w'))
 "
-"$KIMO" forward --model-dir "$MODEL_DIR" --tokens "$OUT_OF_VOCAB" --output "$WORKDIR/oov.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
+"$DISMOEN" forward --model-dir "$MODEL_DIR" --tokens "$OUT_OF_VOCAB" --output "$WORKDIR/oov.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
 status=$?
 if [ $status -ne 1 ]; then
     echo "FAIL: expected exit 1 on out of vocab token, got $status"
@@ -222,54 +222,54 @@ echo "== 5. Token syntax and format strictness =="
 # 5.1 Nested array [[1, 2]]
 NESTED_TOK="$TOKENS_DIR/nested.json"
 echo "[[1, 2]]" > "$NESTED_TOK"
-"$KIMO" forward --model-dir "$MODEL_DIR" --tokens "$NESTED_TOK" --output "$WORKDIR/nested.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
+"$DISMOEN" forward --model-dir "$MODEL_DIR" --tokens "$NESTED_TOK" --output "$WORKDIR/nested.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
 [ $? -eq 1 ] || { echo "FAIL: nested array not rejected"; fail=1; }
 
 # 5.2 Negative integer
 NEG_TOK="$TOKENS_DIR/neg.json"
 echo "[-1, 2]" > "$NEG_TOK"
-"$KIMO" forward --model-dir "$MODEL_DIR" --tokens "$NEG_TOK" --output "$WORKDIR/neg.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
+"$DISMOEN" forward --model-dir "$MODEL_DIR" --tokens "$NEG_TOK" --output "$WORKDIR/neg.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
 [ $? -eq 1 ] || { echo "FAIL: negative token not rejected"; fail=1; }
 
 # 5.3 Float
 FLOAT_TOK="$TOKENS_DIR/float.json"
 echo "[1.5, 2]" > "$FLOAT_TOK"
-"$KIMO" forward --model-dir "$MODEL_DIR" --tokens "$FLOAT_TOK" --output "$WORKDIR/float.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
+"$DISMOEN" forward --model-dir "$MODEL_DIR" --tokens "$FLOAT_TOK" --output "$WORKDIR/float.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
 [ $? -eq 1 ] || { echo "FAIL: float token not rejected"; fail=1; }
 
 # 5.4 String element
 STR_TOK="$TOKENS_DIR/str.json"
 echo '["123", 2]' > "$STR_TOK"
-"$KIMO" forward --model-dir "$MODEL_DIR" --tokens "$STR_TOK" --output "$WORKDIR/str.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
+"$DISMOEN" forward --model-dir "$MODEL_DIR" --tokens "$STR_TOK" --output "$WORKDIR/str.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
 [ $? -eq 1 ] || { echo "FAIL: string token not rejected"; fail=1; }
 
 # 5.5 Leading zero integer
 ZERO_TOK="$TOKENS_DIR/zero.json"
 echo '[01, 2]' > "$ZERO_TOK"
-"$KIMO" forward --model-dir "$MODEL_DIR" --tokens "$ZERO_TOK" --output "$WORKDIR/zero.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
+"$DISMOEN" forward --model-dir "$MODEL_DIR" --tokens "$ZERO_TOK" --output "$WORKDIR/zero.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
 [ $? -eq 1 ] || { echo "FAIL: leading zero not rejected"; fail=1; }
 
 # 5.6 Trailing garbage
 GARB_TOK="$TOKENS_DIR/garb.json"
 echo '[1, 2]GARBAGE' > "$GARB_TOK"
-"$KIMO" forward --model-dir "$MODEL_DIR" --tokens "$GARB_TOK" --output "$WORKDIR/garb.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
+"$DISMOEN" forward --model-dir "$MODEL_DIR" --tokens "$GARB_TOK" --output "$WORKDIR/garb.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
 [ $? -eq 1 ] || { echo "FAIL: trailing garbage not rejected"; fail=1; }
 
 # 5.7 Trailing comma
 COMMA_TOK="$TOKENS_DIR/comma.json"
 echo '[1, 2,]' > "$COMMA_TOK"
-"$KIMO" forward --model-dir "$MODEL_DIR" --tokens "$COMMA_TOK" --output "$WORKDIR/comma.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
+"$DISMOEN" forward --model-dir "$MODEL_DIR" --tokens "$COMMA_TOK" --output "$WORKDIR/comma.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
 [ $? -eq 1 ] || { echo "FAIL: trailing comma not rejected"; fail=1; }
 
 # 5.8 Unterminated array
 UNTERM_TOK="$TOKENS_DIR/unterm.json"
 printf '[' > "$UNTERM_TOK"
-"$KIMO" forward --model-dir "$MODEL_DIR" --tokens "$UNTERM_TOK" --output "$WORKDIR/unterm.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
+"$DISMOEN" forward --model-dir "$MODEL_DIR" --tokens "$UNTERM_TOK" --output "$WORKDIR/unterm.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
 [ $? -eq 1 ] || { echo "FAIL: unterminated array not rejected"; fail=1; }
 
 echo "== 6. Model directory & workdir validation =="
 # Missing model directory
-"$KIMO" forward --model-dir "/nonexistent_model_dir_$$" --tokens "$TOKENS_16" --output "$WORKDIR/out.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
+"$DISMOEN" forward --model-dir "/nonexistent_model_dir_$$" --tokens "$TOKENS_16" --output "$WORKDIR/out.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
 [ $? -eq 1 ] || { echo "FAIL: nonexistent model dir not rejected"; fail=1; }
 grep -q '"code":"M4_ERR_INPUT"' "$ERR_OUT" || { echo "FAIL: error code not M4_ERR_INPUT"; fail=1; }
 
@@ -277,7 +277,7 @@ grep -q '"code":"M4_ERR_INPUT"' "$ERR_OUT" || { echo "FAIL: error code not M4_ER
 RO_WORKDIR="$TEST_DIR/ro_workdir"
 mkdir -p "$RO_WORKDIR"
 chmod 555 "$RO_WORKDIR"
-"$KIMO" forward --model-dir "$MODEL_DIR" --tokens "$TOKENS_16" --output "out.bin" --workdir "$RO_WORKDIR" > "$ERR_OUT" 2>&1
+"$DISMOEN" forward --model-dir "$MODEL_DIR" --tokens "$TOKENS_16" --output "out.bin" --workdir "$RO_WORKDIR" > "$ERR_OUT" 2>&1
 [ $? -eq 1 ] || { echo "FAIL: unwritable workdir not rejected with exit 1"; fail=1; }
 grep -q '"code":"M4_ERR_INPUT"' "$ERR_OUT" || { echo "FAIL: error code not M4_ERR_INPUT"; fail=1; }
 chmod 777 "$RO_WORKDIR"
@@ -286,7 +286,7 @@ echo "== 7. Atomic rollback on output failure =="
 RO_OUTDIR="$WORKDIR/readonly_outdir"
 mkdir -p "$RO_OUTDIR"
 chmod 555 "$RO_OUTDIR"
-"$KIMO" forward --model-dir "$MODEL_DIR" --tokens "$TOKENS_16" --output "readonly_outdir/out.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
+"$DISMOEN" forward --model-dir "$MODEL_DIR" --tokens "$TOKENS_16" --output "readonly_outdir/out.bin" --workdir "$WORKDIR" > "$ERR_OUT" 2>&1
 status=$?
 if [ $status -ne 1 ] && [ $status -ne 6 ]; then
     echo "FAIL: expected exit 1 or 6 on unwritable output destination, got $status"
@@ -304,10 +304,10 @@ OUT_ISO_B="$WORKDIR/iso_b.bin"
 JSON_A="$TEST_DIR/iso_a.json"
 JSON_B="$TEST_DIR/iso_b.json"
 
-"$KIMO" forward --mock-forward --model-dir "$MODEL_DIR" --tokens "$TOKENS_16" --output "$OUT_ISO_A" --workdir "$WORKDIR" --run-id "M4-20260916-001" > "$JSON_A" 2>&1
+"$DISMOEN" forward --mock-forward --model-dir "$MODEL_DIR" --tokens "$TOKENS_16" --output "$OUT_ISO_A" --workdir "$WORKDIR" --run-id "M4-20260916-001" > "$JSON_A" 2>&1
 [ $? -eq 0 ] || { echo "FAIL: run A failed"; fail=1; }
 
-"$KIMO" forward --mock-forward --model-dir "$MODEL_DIR" --tokens "$TOKENS_16" --output "$OUT_ISO_B" --workdir "$WORKDIR" --run-id "M4-20260916-002" > "$JSON_B" 2>&1
+"$DISMOEN" forward --mock-forward --model-dir "$MODEL_DIR" --tokens "$TOKENS_16" --output "$OUT_ISO_B" --workdir "$WORKDIR" --run-id "M4-20260916-002" > "$JSON_B" 2>&1
 [ $? -eq 0 ] || { echo "FAIL: run B failed"; fail=1; }
 
 # Both output files must exist
@@ -329,7 +329,7 @@ fi
 echo "== 9. Error channel contract (stdout sterile, stderr JSON) =="
 STDOUT_ERR_TEST="$TEST_DIR/sterile_stdout.txt"
 STDERR_ERR_TEST="$TEST_DIR/sterile_stderr.txt"
-"$KIMO" forward --model-dir "$MODEL_DIR" --tokens "$TOKENS_16" --output "$WORKDIR/../escape.bin" --workdir "$WORKDIR" > "$STDOUT_ERR_TEST" 2> "$STDERR_ERR_TEST" || true
+"$DISMOEN" forward --model-dir "$MODEL_DIR" --tokens "$TOKENS_16" --output "$WORKDIR/../escape.bin" --workdir "$WORKDIR" > "$STDOUT_ERR_TEST" 2> "$STDERR_ERR_TEST" || true
 if [ -s "$STDOUT_ERR_TEST" ]; then
     echo "FAIL: stdout is not sterile on error:"
     cat "$STDOUT_ERR_TEST"
@@ -357,7 +357,7 @@ declare -A EXPECTED_CODES=(
 for err_code in "${!EXPECTED_CODES[@]}"; do
     expected_exit="${EXPECTED_CODES[$err_code]}"
     ERR_JSON="$TEST_DIR/mock_${err_code}.json"
-    "$KIMO" forward \
+    "$DISMOEN" forward \
       --model-dir "$MODEL_DIR" \
       --tokens "$TOKENS_16" \
       --output "$WORKDIR/out_${err_code}.bin" \

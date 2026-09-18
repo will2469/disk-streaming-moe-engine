@@ -23,9 +23,9 @@ if [ ! -x "$PYTHON" ]; then
     PYTHON="python3"
 fi
 
-KIMO="${KIMO:-$ROOT_DIR/dismoen}"
-if [[ ! -x "$KIMO" && -x "$ROOT_DIR/build/bin/dismoen" ]]; then
-    KIMO="$ROOT_DIR/build/bin/dismoen"
+DISMOEN="${DISMOEN:-$ROOT_DIR/dismoen}"
+if [[ ! -x "$DISMOEN" && -x "$ROOT_DIR/build/bin/dismoen" ]]; then
+    DISMOEN="$ROOT_DIR/build/bin/dismoen"
 fi
 
 MINI_CONFIG="fixtures/m9_port_config_mini.json"
@@ -150,7 +150,7 @@ echo "   PASS: Gate G-M9-1 terverifikasi (Layer-by-layer, Fault Loc, 26 Shards O
 # ---------------------------------------------------------------------------
 echo "--> Stage 3: Gate G-M9-2 Full Forward & Peak Memory Ceiling (M_peak <= 7.5 GiB)"
 
-FWD_OUT=$("$KIMO" forward-port \
+FWD_OUT=$("$DISMOEN" forward-port \
     --architecture qwen3.6 \
     --model-dir "$MINI_CONFIG" \
     --tokens "$TOKENS_FIXTURE" \
@@ -189,14 +189,14 @@ DEC_TOKENS="${TEST_DIR}/dec_single.json"
 echo '{"tokens": [100], "seq_len": 1}' > "$DEC_TOKENS"
 
 # Prefill 8 token
-"$KIMO" forward-port \
+"$DISMOEN" forward-port \
     --architecture qwen3.6 \
     --model-dir "$MINI_CONFIG" \
     --tokens "$TOKENS_FIXTURE" \
     --save-session "$SESS1" > /dev/null
 
 # Decode continuation 1 token
-DEC_OUT=$("$KIMO" forward-port \
+DEC_OUT=$("$DISMOEN" forward-port \
     --architecture qwen3.6 \
     --model-dir "$MINI_CONFIG" \
     --tokens "$DEC_TOKENS" \

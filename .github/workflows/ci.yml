@@ -31,8 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        # Manifest Rust di subdir (bukan root)
-        working-directory: tools/kimo-tools
+        working-directory: tools/dismoen-tools
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

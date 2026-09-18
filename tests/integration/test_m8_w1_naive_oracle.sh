@@ -19,10 +19,10 @@
 
 set -euo pipefail
 
-KIMO="${KIMO:-./dismoen}"
-KIMO_TOOLS="${KIMO_TOOLS:-target/debug/dismoen-tools}"
-if [ ! -f "$KIMO_TOOLS" ]; then
-    KIMO_TOOLS="target/release/dismoen-tools"
+DISMOEN="${DISMOEN:-./dismoen}"
+DISMOEN_TOOLS="${DISMOEN_TOOLS:-target/debug/dismoen-tools}"
+if [ ! -f "$DISMOEN_TOOLS" ]; then
+    DISMOEN_TOOLS="target/release/dismoen-tools"
 fi
 PYTHON="${PYTHON:-.venv/bin/python}"
 if [ ! -x "$PYTHON" ]; then
@@ -129,7 +129,7 @@ sha256sum -c "$ASYM_HASH"
 
 # Compare asimetris vs itself
 REPORT_ASYM="$WORKDIR/report_asym.json"
-"$KIMO_TOOLS" compare \
+"$DISMOEN_TOOLS" compare \
     --reference "$ASYM_STATE" \
     --candidate "$ASYM_STATE" \
     --tolerance 1e-3 \
@@ -153,7 +153,7 @@ echo "--> Test 4: Compare Contract Happy Path (Gate G-M8-1)"
 
 # 4a: dismoen-tools compare binary
 REPORT_HAPPY_A="$WORKDIR/report_happy_a.json"
-"$KIMO_TOOLS" compare \
+"$DISMOEN_TOOLS" compare \
     --reference "$STATE_FILE" \
     --candidate "$STATE_FILE" \
     --tolerance 1e-3 \
@@ -173,7 +173,7 @@ assert m['epsilon_rel'] <= 1e-4
 
 # 4b: dismoen CLI compare subcommand
 REPORT_HAPPY_B="$WORKDIR/report_happy_b.json"
-"$KIMO" compare \
+"$DISMOEN" compare \
     --reference "$STATE_FILE" \
     --candidate "$STATE_FILE" \
     --tolerance 1e-3 \
@@ -229,7 +229,7 @@ with open('$MUTATED_STATE', 'wb') as f:
 
 REPORT_FAIL="$WORKDIR/report_fail.json"
 set +e
-"$KIMO_TOOLS" compare \
+"$DISMOEN_TOOLS" compare \
     --reference "$STATE_FILE" \
     --candidate "$MUTATED_STATE" \
     --tolerance 1e-3 \
@@ -270,7 +270,7 @@ with open('$CORRUPT_CHECKSUM_STATE', 'wb') as f:
 
 ERR_CORRUPT="$WORKDIR/err_corrupt.txt"
 set +e
-"$KIMO_TOOLS" compare \
+"$DISMOEN_TOOLS" compare \
     --reference "$STATE_FILE" \
     --candidate "$CORRUPT_CHECKSUM_STATE" > /dev/null 2> "$ERR_CORRUPT"
 status=$?
@@ -292,7 +292,7 @@ head -c 100 "$STATE_FILE" > "$TRUNCATED_STATE"
 
 ERR_TRUNC="$WORKDIR/err_trunc.txt"
 set +e
-"$KIMO_TOOLS" compare \
+"$DISMOEN_TOOLS" compare \
     --reference "$STATE_FILE" \
     --candidate "$TRUNCATED_STATE" > /dev/null 2> "$ERR_TRUNC"
 status=$?
@@ -311,7 +311,7 @@ echo "PASS: Test 7 (File terpotong ditolak dengan Exit 2)"
 echo "--> Test 8: Deteksi File Not Found (Exit 2, FILE_NOT_FOUND)"
 ERR_FNF="$WORKDIR/err_fnf.txt"
 set +e
-"$KIMO_TOOLS" compare \
+"$DISMOEN_TOOLS" compare \
     --reference "$STATE_FILE" \
     --candidate "$WORKDIR/nonexistent.bin" > /dev/null 2> "$ERR_FNF"
 status=$?

@@ -10,7 +10,7 @@
 #    dan hash SHA-256 terpin (.sha256).
 # 4. Routing dump Tier-1 untuk ke-5 prompt: direktori m4_prompt{1..5}_routing
 #    berisi tepat 24 file routing_L0..23.json format {"selected_experts": [[4 ID] x 16]}.
-# 5. Ekivalensi numerik G-M4-1: kimo forward (Mojo) vs oracle_full (PyTorch)
+# 5. Ekivalensi numerik G-M4-1: dismoen forward (Mojo) vs oracle_full (PyTorch)
 #    menghasilkan MATCH pada loose gate G-M4-1 dan SET equality routing Tier-1.
 # ==============================================================================
 
@@ -19,7 +19,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-KIMO="${KIMO:-./dismoen}"
+DISMOEN="${DISMOEN:-./dismoen}"
 COMPARE_BIN="${COMPARE_BIN:-target/debug/dismoen-tools}"
 MODEL_DIR="${MODEL_DIR:-/home/will/models/qwen1.5-moe-a2.7b-chat}"
 FIXTURE_DIR="tools/fixtures"
@@ -34,7 +34,7 @@ if [ ! -f "$COMPARE_BIN" ]; then
     cargo build --manifest-path tools/dismoen-tools/Cargo.toml --bin dismoen-tools
 fi
 
-if [ ! -f "$KIMO" ]; then
+if [ ! -f "$DISMOEN" ]; then
     echo ">> Membangun engine dismoen..."
     pixi run build
 fi
@@ -154,7 +154,7 @@ echo "   PASS: 5 prompt memiliki tepat 24 routing dump Tier-1 terstruktur"
 # 5. Ekivalensi Numerik F10 (Gate G-M4-1) & Routing Equality Check
 # ----------------------------------------------------------------------
 echo ">> [5/5] Menjalankan forward engine Mojo pada Prompt 1 dan mengevaluasi Gate G-M4-1..."
-"$KIMO" forward \
+"$DISMOEN" forward \
     --model-dir "$MODEL_DIR" \
     --tokens "$FIXTURE_DIR/m4_prompt1_tokens.json" \
     --output "$OUT_LOGITS" \

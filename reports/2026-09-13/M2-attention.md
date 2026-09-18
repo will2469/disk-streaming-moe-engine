@@ -67,7 +67,7 @@ Pengujian performa dieksekusi menggunakan script `tools/bench/bench_m2_real.py` 
 
 Rangkaian uji integrasi dijalankan via `cargo test --test integration_m2`:
 
-1. **`test_1_happy_path`**: Layer 0, 12, 23 lolos verifikasi terhadap oracle PyTorch menggunakan `kimo-tools compare`. Status: `MATCH`, Verdict: `PASS`, exit code 0.
+1. **`test_1_happy_path`**: Layer 0, 12, 23 lolos verifikasi terhadap oracle PyTorch menggunakan `dismoen-tools compare`. Status: `MATCH`, Verdict: `PASS`, exit code 0.
 2. **`test_2_layer_validation`**: Layer invalid (5, 24, -1, missing argument) ditolak secara deterministik dengan exit code 2 dan error JSON `LAYER_INVALID`.
 3. **`test_3_activation_load_failure`**: File aktivasi tidak ditemukan (`FILE_NOT_FOUND`), terpotong, mengandung NaN/Inf, atau nilai di luar batas ($> 10^6$) ditolak dengan exit code 2 dan error `ACT_LOAD_FAILED`.
 4. **`test_4_rope_invariant_verification`**: Isometri rotasi RoPE ($\|R_m q\|_2 = \|q\|_2$) terverifikasi dengan selisih relatif $< 10^{-7}$.

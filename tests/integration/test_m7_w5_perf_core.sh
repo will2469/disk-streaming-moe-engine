@@ -9,7 +9,7 @@
 #
 # Pengujian:
 # 1. Kepatuhan formatting Mojo & Python
-# 2. Kompilasi binary kimo dan io_benchmark
+# 2. Kompilasi binary dismoen dan io_benchmark
 # 3. Eksekusi runner bench_m7_real.py (mode validasi integritas)
 # 4. Verifikasi seluruh 5 Gate Scorecard (G-M7-1 s.d. G-M7-5)
 # 5. Verifikasi F13 model cache (rho_B byte-level, e_T <= 30%)
@@ -62,12 +62,12 @@ fi
 echo "   PASS: Formatting Mojo bersih 100%."
 
 # -----------------------------------------------------------------------------
-# 2. Kompilasi Binary kimo dan io_benchmark
+# 2. Kompilasi Binary dismoen dan io_benchmark
 # -----------------------------------------------------------------------------
-echo ">> [2/6] Membangun binary kimo dan io_benchmark via pixi build..."
+echo ">> [2/6] Membangun binary dismoen dan io_benchmark via pixi build..."
 pixi run build
 pixi run bash -c 'PATH="/usr/bin:$PATH" mojo build -I src tools/bench/io_benchmark.mojo -o io_benchmark'
-echo "   PASS: Binary kimo dan io_benchmark siap dijalankan."
+echo "   PASS: Binary dismoen dan io_benchmark siap dijalankan."
 
 # -----------------------------------------------------------------------------
 # 3. Pengujian Direct Decode CLI dengan Flag --cache-stats

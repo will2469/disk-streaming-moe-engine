@@ -1,5 +1,5 @@
 #!/bin/bash
-# E2E test suite for kimo decode CLI (M5-W3: Decode CLI + Error + Rollback + Sampling)
+# E2E test suite for dismoen decode CLI (M5-W3: Decode CLI + Error + Rollback + Sampling)
 #
 # Covers:
 # 1. Formatting compliance: mojo format check
@@ -26,7 +26,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-KIMO="${KIMO:-./dismoen}"
+DISMOEN="${DISMOEN:-./dismoen}"
 TEST_DIR="/tmp/test_m5_w3_cli_$$"
 WORKDIR="$TEST_DIR/workdir"
 MODEL_DIR="$TEST_DIR/model"
@@ -64,28 +64,28 @@ echo "== 2. Testing USAGE and CLI option validation =="
 ERR_OUT="$TEST_DIR/err_usage.txt"
 
 # Empty decode args -> exit 1, M5_ERR_INPUT
-if "$KIMO" decode > "$ERR_OUT" 2>&1; then
+if "$DISMOEN" decode > "$ERR_OUT" 2>&1; then
     echo "FAIL: expected failure on empty decode command"
     exit 1
 fi
 grep -q '"code":"M5_ERR_INPUT"' "$ERR_OUT" || { echo "FAIL: error code not M5_ERR_INPUT on empty decode"; exit 1; }
 
 # Unknown flag -> exit 1, M5_ERR_INPUT
-if "$KIMO" decode --unknown-flag > "$ERR_OUT" 2>&1; then
+if "$DISMOEN" decode --unknown-flag > "$ERR_OUT" 2>&1; then
     echo "FAIL: expected failure on unknown flag"
     exit 1
 fi
 grep -q '"code":"M5_ERR_INPUT"' "$ERR_OUT" || { echo "FAIL: error code not M5_ERR_INPUT on unknown flag"; exit 1; }
 
 # Missing model-dir -> exit 1
-if "$KIMO" decode --prompt "Test" > "$ERR_OUT" 2>&1; then
+if "$DISMOEN" decode --prompt "Test" > "$ERR_OUT" 2>&1; then
     echo "FAIL: expected failure on missing --model-dir"
     exit 1
 fi
 grep -q '"code":"M5_ERR_INPUT"' "$ERR_OUT" || { echo "FAIL: error code not M5_ERR_INPUT on missing model-dir"; exit 1; }
 
 # Invalid max-tokens = 0 -> exit 1
-if "$KIMO" decode --mock-decode --model-dir "$MODEL_DIR" --prompt "Test" --max-tokens 0 > "$ERR_OUT" 2>&1; then
+if "$DISMOEN" decode --mock-decode --model-dir "$MODEL_DIR" --prompt "Test" --max-tokens 0 > "$ERR_OUT" 2>&1; then
     echo "FAIL: expected failure on max-tokens=0"
     exit 1
 fi
@@ -96,7 +96,7 @@ echo "== 3. Testing context bounds chain enforcement =="
 
 # IT-M5-4: Context size > s_max (8192 > 4096) -> exit 2
 set +e
-"$KIMO" decode \
+"$DISMOEN" decode \
   --mock-decode \
   --model-dir "$MODEL_DIR" \
   --prompt "Test" \
@@ -115,7 +115,7 @@ echo "PASS: IT-M5-4 context size > s_max rejected with exit 2."
 # IT-M5-11: S + N > ctx overflow before KV alloc -> exit 2
 BIG_PROMPT=$(python3 -c "print('hello ' * 5000)")
 set +e
-"$KIMO" decode \
+"$DISMOEN" decode \
   --mock-decode \
   --model-dir "$MODEL_DIR" \
   --prompt "$BIG_PROMPT" \
@@ -147,7 +147,7 @@ for err_type in M5_ERR_INPUT M5_ERR_CONTEXT_SIZE M5_ERR_KV_ALLOC M5_ERR_PREFILL 
     STDERR_ERR="$TEST_DIR/stderr_${err_type}.txt"
 
     set +e
-    "$KIMO" decode \
+    "$DISMOEN" decode \
       --mock-decode \
       --mock-error "$err_type" \
       --model-dir "$MODEL_DIR" \
@@ -187,7 +187,7 @@ done
 # Step 5: Sampling honesty: greedy seed null vs sample seed recorded
 echo "== 5. Testing sampling honesty =="
 STDOUT_GREEDY="$TEST_DIR/stdout_greedy.json"
-"$KIMO" decode \
+"$DISMOEN" decode \
   --mock-decode \
   --model-dir "$MODEL_DIR" \
   --prompt "The quick brown fox" \
@@ -209,7 +209,7 @@ assert d['sampling']['seed'] is None, f'greedy seed must be null, got {d[\"sampl
 echo "PASS: Greedy mode ignores --seed and records 'seed': null."
 
 STDOUT_SAMPLE="$TEST_DIR/stdout_sample.json"
-"$KIMO" decode \
+"$DISMOEN" decode \
   --mock-decode \
   --model-dir "$MODEL_DIR" \
   --prompt "The quick brown fox" \
@@ -235,7 +235,7 @@ echo "PASS: Sample mode records effective seed."
 echo "== 6. Testing atomic rollback on output failure =="
 UNWRITABLE_OUTPUT="$TEST_DIR/non_existent_dir/tokens.json"
 set +e
-"$KIMO" decode \
+"$DISMOEN" decode \
   --mock-decode \
   --model-dir "$MODEL_DIR" \
   --prompt "Test rollback" \
@@ -260,7 +260,7 @@ echo "== 7. Testing reproducibility A (IT-M5-8: run-sama -> byte-sama) =="
 TOKENS_RUN1="$WORKDIR/tokens_run1.json"
 TOKENS_RUN2="$WORKDIR/tokens_run2.json"
 
-"$KIMO" decode \
+"$DISMOEN" decode \
   --mock-decode \
   --model-dir "$MODEL_DIR" \
   --prompt "Deterministic Test Prompt" \
@@ -271,7 +271,7 @@ TOKENS_RUN2="$WORKDIR/tokens_run2.json"
   --threads 1 \
   --seed 42 > /dev/null 2>&1
 
-"$KIMO" decode \
+"$DISMOEN" decode \
   --mock-decode \
   --model-dir "$MODEL_DIR" \
   --prompt "Deterministic Test Prompt" \
@@ -296,7 +296,7 @@ echo "== 8. Testing happy path stdout JSON schema and tokens file formatting =="
 STDOUT_FINAL="$TEST_DIR/stdout_final.json"
 FINAL_TOKENS="$WORKDIR/tokens_final.json"
 
-"$KIMO" decode \
+"$DISMOEN" decode \
   --mock-decode \
   --model-dir "$MODEL_DIR" \
   --prompt "What is the capital of France?" \

@@ -79,12 +79,12 @@ uvx ruff@0.8.4 format --check \
 echo "   PASS: Formatting Mojo dan Python bersih 100%."
 
 # ----------------------------------------------------------------------
-# 2. Build Kimo Executable
+# 2. Build Dismoen Executable
 # ----------------------------------------------------------------------
 echo ">> [2/8] Membangun binary dismoen via pixi build..."
 pixi run build
-KIMO="./dismoen"
-[ -x "$KIMO" ] || { echo "FAIL: binary dismoen tidak ditemukan"; exit 1; }
+DISMOEN="./dismoen"
+[ -x "$DISMOEN" ] || { echo "FAIL: binary dismoen tidak ditemukan"; exit 1; }
 echo "   PASS: Binary dismoen siap dijalankan (0 warnings, 0 errors)."
 
 # ----------------------------------------------------------------------
@@ -201,7 +201,7 @@ echo ">> [4/8] Menjalankan Test Matrix CLI (IT-M6-1 .. 6, 8, 9, 11)..."
 
 # IT-M6-1: Happy path quantize BF16 -> 4-bit
 expect_rc 0 "IT-M6-1 happy path quantize" \
-    "$KIMO" quantize \
+    "$DISMOEN" quantize \
     --input-dir "$INPUT_DIR" \
     --output-dir "$OUTPUT_DIR" \
     --group-size 128 \
@@ -220,7 +220,7 @@ EOF
 
 # IT-M6-2: Input-dir tidak ada
 expect_rc 1 "IT-M6-2 input-dir hilang ditolak" \
-    "$KIMO" quantize \
+    "$DISMOEN" quantize \
     --input-dir "/nonexistent_dir_xyz" \
     --output-dir "$OUTPUT_DIR" \
     --workdir "$WORKDIR"
@@ -228,7 +228,7 @@ expect_error_code M6_ERR_INPUT
 
 # IT-M6-3: Invalid group-size (notin {32, 64, 128, 256})
 expect_rc 1 "IT-M6-3 group-size 100 ditolak" \
-    "$KIMO" quantize \
+    "$DISMOEN" quantize \
     --input-dir "$INPUT_DIR" \
     --output-dir "$OUTPUT_DIR" \
     --group-size 100 \
@@ -237,7 +237,7 @@ expect_error_code M6_ERR_INPUT
 
 # IT-M6-4: Quantization fail (NaN in scale)
 expect_rc 2 "IT-M6-4 tensor NaN ditolak" \
-    "$KIMO" quantize \
+    "$DISMOEN" quantize \
     --input-dir "$INPUT_NAN" \
     --output-dir "$OUTPUT_DIR" \
     --workdir "$WORKDIR"
@@ -251,7 +251,7 @@ raw[-1] = (raw[-1] & 0x0F) | 0x80  # inject 0b1000 (-8 reserved)
 open(sys.argv[2], "wb").write(bytes(raw))
 EOF
 expect_rc 2 "IT-M6-5 nibble reserved 0x8 ditolak" \
-    "$KIMO" quantize \
+    "$DISMOEN" quantize \
     --check "$OUTPUT_DIR/quant_corrupt.bin" \
     --workdir "$WORKDIR"
 expect_error_code M6_ERR_DEQUANT
@@ -260,14 +260,14 @@ expect_error_code M6_ERR_DEQUANT
 cp "$OUTPUT_DIR/quant_model.bin" "$OUTPUT_DIR/quant_trunc.bin"
 truncate -s -1 "$OUTPUT_DIR/quant_trunc.bin"
 expect_rc 4 "IT-M6-6 file terpotong ditolak" \
-    "$KIMO" quantize \
+    "$DISMOEN" quantize \
     --check "$OUTPUT_DIR/quant_trunc.bin" \
     --workdir "$WORKDIR"
 expect_error_code M6_ERR_VALIDATION
 
 # IT-M6-11: Tail group N % G != 0 ditolak
 expect_rc 1 "IT-M6-11 tail group N % G != 0 ditolak" \
-    "$KIMO" quantize \
+    "$DISMOEN" quantize \
     --input-dir "$INPUT_TAIL" \
     --output-dir "$OUTPUT_DIR" \
     --group-size 128 \
@@ -275,16 +275,16 @@ expect_rc 1 "IT-M6-11 tail group N % G != 0 ditolak" \
 expect_error_code M6_ERR_INPUT
 
 # IT-M6-8: Determinisme bit-identical (SHA-256 match di 2 run)
-"$KIMO" quantize --input-dir "$INPUT_DIR" --output-dir "$OUTPUT_DIR" --group-size 128 --workdir "$WORKDIR" > /dev/null
+"$DISMOEN" quantize --input-dir "$INPUT_DIR" --output-dir "$OUTPUT_DIR" --group-size 128 --workdir "$WORKDIR" > /dev/null
 SHA1=$(sha256sum "$OUTPUT_DIR/quant_model.bin" | cut -d' ' -f1)
-"$KIMO" quantize --input-dir "$INPUT_DIR" --output-dir "$OUTPUT_DIR" --group-size 128 --workdir "$WORKDIR" > /dev/null
+"$DISMOEN" quantize --input-dir "$INPUT_DIR" --output-dir "$OUTPUT_DIR" --group-size 128 --workdir "$WORKDIR" > /dev/null
 SHA2=$(sha256sum "$OUTPUT_DIR/quant_model.bin" | cut -d' ' -f1)
 [ "$SHA1" = "$SHA2" ] || { echo "FAIL: IT-M6-8 output tidak deterministik"; exit 1; }
 echo "   PASS: IT-M6-8 determinisme bit-identical terverifikasi (SHA: $SHA1)."
 
 # IT-M6-9 & G-M6-2: Custom group-size 64 & validasi ukuran file F11b
 expect_rc 0 "IT-M6-9 custom group-size 64" \
-    "$KIMO" quantize \
+    "$DISMOEN" quantize \
     --input-dir "$INPUT_DIR" \
     --output-dir "$OUTPUT_GS64" \
     --group-size 64 \
@@ -432,7 +432,7 @@ echo ">> [8/8] Memverifikasi SEC-4, SEC-6, read-only model dir, dan atomic rollb
 # Cek bahwa kegagalan (mis. input tail) tidak meninggalkan file sementara di workdir
 BEFORE_COUNT=$(find "$WORKDIR" -type f | wc -l)
 set +e
-"$KIMO" quantize --input-dir "$INPUT_TAIL" --output-dir "$OUTPUT_DIR" --group-size 128 --workdir "$WORKDIR" > /dev/null 2>&1
+"$DISMOEN" quantize --input-dir "$INPUT_TAIL" --output-dir "$OUTPUT_DIR" --group-size 128 --workdir "$WORKDIR" > /dev/null 2>&1
 set -e
 AFTER_COUNT=$(find "$WORKDIR" -type f | wc -l)
 [ "$BEFORE_COUNT" -eq "$AFTER_COUNT" ] || { echo "FAIL: orphan files terdeteksi di workdir setelah failure"; exit 1; }
@@ -440,7 +440,7 @@ echo "   PASS: Atomic rollback terverifikasi (0 orphan files di workdir)."
 
 # 8b. Model dir read-only enforcement
 chmod -R a-w "$INPUT_DIR"
-"$KIMO" quantize --input-dir "$INPUT_DIR" --output-dir "$OUTPUT_RO" --group-size 128 --workdir "$WORKDIR" > /dev/null
+"$DISMOEN" quantize --input-dir "$INPUT_DIR" --output-dir "$OUTPUT_RO" --group-size 128 --workdir "$WORKDIR" > /dev/null
 chmod -R u+w "$INPUT_DIR"
 echo "   PASS: Model directory strictly read-only dihormati."
 

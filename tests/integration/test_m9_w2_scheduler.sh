@@ -9,7 +9,7 @@
 #
 # Pengujian:
 # Stage 1: Pre-commit formatting & zero-suppression hygiene (Mojo format, no noqa/allow)
-# Stage 2: Binary compilation check (kimo binary siap)
+# Stage 2: Binary compilation check (dismoen binary siap)
 # Stage 3: Unit test execution (GQA 16Q/2KV, KMSS v1 serialization, Macro Scheduler)
 # Stage 4: CLI forward-port fresh execution + session save
 # Stage 5: CLI forward-port session load continuation (recompute_tokens == 0)
@@ -22,7 +22,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-KIMO="${KIMO:-./dismoen}"
+DISMOEN="${DISMOEN:-./dismoen}"
 TEST_DIR="/tmp/test_m9_w2_$$"
 MINI_CONFIG="fixtures/m9_port_config_mini.json"
 TOKENS_FIXTURE="fixtures/m9_port_tokens.json"
@@ -69,15 +69,15 @@ fi
 echo "   PASS: Formatting bersih, zero-suppression terverifikasi."
 
 # -----------------------------------------------------------------------------
-# Stage 2: Kompilasi Binary kimo
+# Stage 2: Kompilasi Binary dismoen
 # -----------------------------------------------------------------------------
-echo ">> [2/7] Memeriksa kompilasi binary kimo..."
+echo ">> [2/7] Memeriksa kompilasi binary dismoen..."
 pixi run build >/dev/null 2>&1 || {
     echo "FAIL: Gagal melakukan build binary dismoen!"
     exit 1
 }
-if [[ ! -x "$KIMO" ]]; then
-    echo "FAIL: Binary dismoen tidak ditemukan atau tidak executable: $KIMO"
+if [[ ! -x "$DISMOEN" ]]; then
+    echo "FAIL: Binary dismoen tidak ditemukan atau tidak executable: $DISMOEN"
     exit 1
 fi
 echo "   PASS: Binary dismoen siap eksekusi."
@@ -104,7 +104,7 @@ echo "   PASS: Seluruh unit test (11/11) lolos."
 # Stage 4: CLI forward-port Fresh Execution + Session Save
 # -----------------------------------------------------------------------------
 echo ">> [4/7] Menguji forward-port fresh execution dan penyimpanan KMSS v1..."
-OUT_STAGE4=$("$KIMO" forward-port \
+OUT_STAGE4=$("$DISMOEN" forward-port \
     --architecture qwen3.6 \
     --model-dir "$MINI_CONFIG" \
     --tokens "$TOKENS_FIXTURE" \
@@ -145,7 +145,7 @@ echo "   PASS: Fresh forward pass berhasil, session tersimpan ($SESSION_SIZE byt
 # Stage 5: CLI forward-port Session Continuation (recompute_tokens == 0)
 # -----------------------------------------------------------------------------
 echo ">> [5/7] Menguji session continuation tanpa recompute (recompute_tokens == 0)..."
-OUT_STAGE5=$("$KIMO" forward-port \
+OUT_STAGE5=$("$DISMOEN" forward-port \
     --architecture qwen3.6 \
     --model-dir "$MINI_CONFIG" \
     --tokens "$TOKENS_FIXTURE" \
@@ -183,7 +183,7 @@ cp "$SESSION_FILE" "$CORRUPT_SESSION"
 printf '\xff' | dd of="$CORRUPT_SESSION" bs=1 seek=200 count=1 conv=notrunc 2>/dev/null
 
 set +e
-OUT_CORRUPT=$("$KIMO" forward-port \
+OUT_CORRUPT=$("$DISMOEN" forward-port \
     --architecture qwen3.6 \
     --model-dir "$MINI_CONFIG" \
     --tokens "$TOKENS_FIXTURE" \
@@ -202,8 +202,8 @@ echo "   PASS: Korupsi berkas session berhasil ditolak secara deterministik."
 # Stage 7: Determinisme Eksekusi
 # -----------------------------------------------------------------------------
 echo ">> [7/7] Menguji determinisme eksekusi antar run..."
-RUN1=$("$KIMO" forward-port --architecture qwen3.6 --model-dir "$MINI_CONFIG" --tokens "$TOKENS_FIXTURE")
-RUN2=$("$KIMO" forward-port --architecture qwen3.6 --model-dir "$MINI_CONFIG" --tokens "$TOKENS_FIXTURE")
+RUN1=$("$DISMOEN" forward-port --architecture qwen3.6 --model-dir "$MINI_CONFIG" --tokens "$TOKENS_FIXTURE")
+RUN2=$("$DISMOEN" forward-port --architecture qwen3.6 --model-dir "$MINI_CONFIG" --tokens "$TOKENS_FIXTURE")
 
 if [[ "$RUN1" != "$RUN2" ]]; then
     echo "FAIL: Output JSON forward-port tidak deterministik antar run!"

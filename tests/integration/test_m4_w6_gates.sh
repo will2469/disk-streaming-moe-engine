@@ -16,7 +16,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-KIMO="${KIMO:-./dismoen}"
+DISMOEN="${DISMOEN:-./dismoen}"
 COMPARE_BIN="${COMPARE_BIN:-target/debug/dismoen-tools}"
 MODEL_DIR="${MODEL_DIR:-/home/will/models/qwen1.5-moe-a2.7b-chat}"
 FIXTURE_DIR="tools/fixtures"
@@ -36,7 +36,7 @@ if [ ! -f "$COMPARE_BIN" ]; then
     cargo build --manifest-path tools/dismoen-tools/Cargo.toml --bin dismoen-tools
 fi
 
-if [ ! -f "$KIMO" ]; then
+if [ ! -f "$DISMOEN" ]; then
     echo ">> Membangun engine dismoen..."
     pixi run build
 fi
@@ -89,7 +89,7 @@ for p in $PROMPT_LIST; do
     if [ "${M4_REUSE_LOGITS:-0}" -eq 1 ] && [ -f "$OUTPUT" ] && [ "$(stat -c%s "$OUTPUT")" -eq 9723904 ]; then
         echo "   (Menggunakan logits terkomputasi sebelumnya: $OUTPUT)"
     else
-        $CGROUP_PREFIX "$KIMO" forward \
+        $CGROUP_PREFIX "$DISMOEN" forward \
             --model-dir "$MODEL_DIR" \
             --tokens "$TOKENS" \
             --output "$OUTPUT" \
@@ -216,7 +216,7 @@ DET_RUN2="$WORKDIR/prompt1_det2.bin"
 if [ -f "$WORKDIR/prompt1_logits.bin" ]; then
     cp "$WORKDIR/prompt1_logits.bin" "$DET_RUN1"
 else
-    "$KIMO" forward \
+    "$DISMOEN" forward \
         --model-dir "$MODEL_DIR" \
         --tokens "$FIXTURE_DIR/m4_prompt1_tokens.json" \
         --output "$DET_RUN1" \
@@ -227,7 +227,7 @@ fi
 if [ "${M4_REUSE_LOGITS:-0}" -eq 1 ] && [ -f "$DET_RUN2" ] && [ "$(stat -c%s "$DET_RUN2")" -eq 9723904 ]; then
     echo "   (Menggunakan logits determinisme Run 2 terkomputasi sebelumnya: $DET_RUN2)"
 else
-    "$KIMO" forward \
+    "$DISMOEN" forward \
         --model-dir "$MODEL_DIR" \
         --tokens "$FIXTURE_DIR/m4_prompt1_tokens.json" \
         --output "$DET_RUN2" \

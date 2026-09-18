@@ -1,5 +1,5 @@
 #!/bin/bash
-# E2E test suite for kimo head CLI (M1-W3)
+# E2E test suite for dismoen head CLI (M1-W3)
 # Covers:
 # 1. Happy path (--model-dir)
 # 2. Happy path (positional shards)
@@ -30,7 +30,7 @@
 
 set -u
 
-KIMO="${KIMO:-./dismoen}"
+DISMOEN="${DISMOEN:-./dismoen}"
 TEST_DIR="/tmp/test_m1_head_cli_$$"
 FX_DIR="$TEST_DIR/fixture"
 WORKDIR="$TEST_DIR/workdir"
@@ -118,7 +118,7 @@ with open('$TOKENS_VALID', 'w') as f:
 echo "== 1. Happy path: --model-dir =="
 OUT_BIN="$OUT_DIR/logits_model_dir.bin"
 STDOUT_JSON="$TEST_DIR/out_m1.json"
-"$KIMO" head "$TOKENS_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" --output "$OUT_BIN" > "$STDOUT_JSON" 2>&1
+"$DISMOEN" head "$TOKENS_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" --output "$OUT_BIN" > "$STDOUT_JSON" 2>&1
 status=$?
 if [ $status -ne 0 ]; then
     echo "FAIL: happy path --model-dir returned exit code $status"
@@ -150,7 +150,7 @@ fi
 
 echo "== 2. Happy path: positional shards =="
 OUT_BIN_POS="$OUT_DIR/logits_pos.bin"
-"$KIMO" head "$TOKENS_VALID" "$FX_DIR/fixture-00001-of-00003.safetensors" "$FX_DIR/fixture-00002-of-00003.safetensors" --workdir "$WORKDIR" --output "$OUT_BIN_POS" > /dev/null 2>&1
+"$DISMOEN" head "$TOKENS_VALID" "$FX_DIR/fixture-00001-of-00003.safetensors" "$FX_DIR/fixture-00002-of-00003.safetensors" --workdir "$WORKDIR" --output "$OUT_BIN_POS" > /dev/null 2>&1
 status=$?
 if [ $status -ne 0 ]; then
     echo "FAIL: happy path positional shards returned exit code $status"
@@ -164,7 +164,7 @@ fi
 
 echo "== 3. Allowlist: missing required shard in positional mode =="
 ERR_TXT="$TEST_DIR/err_allowlist.txt"
-"$KIMO" head "$TOKENS_VALID" "$FX_DIR/fixture-00001-of-00003.safetensors" --workdir "$WORKDIR" --output "$OUT_DIR/out_bad.bin" > "$ERR_TXT" 2>&1
+"$DISMOEN" head "$TOKENS_VALID" "$FX_DIR/fixture-00001-of-00003.safetensors" --workdir "$WORKDIR" --output "$OUT_DIR/out_bad.bin" > "$ERR_TXT" 2>&1
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2 on allowlist violation, got $status"
@@ -176,7 +176,7 @@ grep -q 'fixture-00002-of-00003\.safetensors' "$ERR_TXT" || { echo "FAIL: expect
 
 echo "== 4. Missing shard file on disk =="
 ERR_TXT="$TEST_DIR/err_missing_disk.txt"
-"$KIMO" head "$TOKENS_VALID" "$FX_DIR/fixture-00001-of-00003.safetensors" "$FX_DIR/nonexistent.safetensors" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+"$DISMOEN" head "$TOKENS_VALID" "$FX_DIR/fixture-00001-of-00003.safetensors" "$FX_DIR/nonexistent.safetensors" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2 on missing disk shard, got $status"
@@ -194,7 +194,7 @@ with open('$TOKENS_BAD_ID', 'w') as f:
     json.dump(tokens, f)
 "
 ERR_TXT="$TEST_DIR/err_bad_id.txt"
-"$KIMO" head "$TOKENS_BAD_ID" --model-dir "$FX_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+"$DISMOEN" head "$TOKENS_BAD_ID" --model-dir "$FX_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2 on token ID out of bounds, got $status"
@@ -215,7 +215,7 @@ with open('$TOKENS_NEG', 'w') as f:
     json.dump(tokens, f)
 "
 ERR_TXT="$TEST_DIR/err_neg.txt"
-"$KIMO" head "$TOKENS_NEG" --model-dir "$FX_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+"$DISMOEN" head "$TOKENS_NEG" --model-dir "$FX_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2 on negative token ID, got $status"
@@ -233,7 +233,7 @@ with open('$TOKENS_SHORT', 'w') as f:
     json.dump(tokens, f)
 "
 ERR_TXT="$TEST_DIR/err_short.txt"
-"$KIMO" head "$TOKENS_SHORT" --model-dir "$FX_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+"$DISMOEN" head "$TOKENS_SHORT" --model-dir "$FX_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2 on prompt length != 16, got $status"
@@ -250,7 +250,7 @@ with open('$TOKENS_COUNT', 'w') as f:
     json.dump(tokens, f)
 "
 ERR_TXT="$TEST_DIR/err_count.txt"
-"$KIMO" head "$TOKENS_COUNT" --model-dir "$FX_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+"$DISMOEN" head "$TOKENS_COUNT" --model-dir "$FX_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2 on prompt count != 3, got $status"
@@ -260,7 +260,7 @@ grep -q '"error_type":"TOKEN_INVALID"' "$ERR_TXT" || { echo "FAIL: error_type no
 
 echo "== 9. Missing tokens file =="
 ERR_TXT="$TEST_DIR/err_no_tokens.txt"
-"$KIMO" head "$TEST_DIR/no_such_file.json" --model-dir "$FX_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+"$DISMOEN" head "$TEST_DIR/no_such_file.json" --model-dir "$FX_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2 on missing tokens file, got $status"
@@ -271,7 +271,7 @@ grep -q '"error_type":"FILE_NOT_FOUND"' "$ERR_TXT" || { echo "FAIL: error_type n
 echo "== 10. Config error: missing rms_norm_eps =="
 # fixtures/m0 lacks rms_norm_eps
 ERR_TXT="$TEST_DIR/err_cfg_missing.txt"
-"$KIMO" head "$TOKENS_VALID" --model-dir "fixtures/m0" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+"$DISMOEN" head "$TOKENS_VALID" --model-dir "fixtures/m0" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2 on missing rms_norm_eps, got $status"
@@ -292,7 +292,7 @@ d['rms_norm_eps'] = 0.0
 with open(p, 'w') as f: json.dump(d, f)
 "
 ERR_TXT="$TEST_DIR/err_cfg_zero.txt"
-"$KIMO" head "$TOKENS_VALID" --model-dir "$BAD_CFG_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+"$DISMOEN" head "$TOKENS_VALID" --model-dir "$BAD_CFG_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2 on zero rms_norm_eps, got $status"
@@ -302,7 +302,7 @@ grep -q '"error_type":"CONFIG_ERROR"' "$ERR_TXT" || { echo "FAIL: error_type not
 
 echo "== 12. Workdir confinement: escape via ../ =="
 ERR_TXT="$TEST_DIR/err_escape.txt"
-"$KIMO" head "$TOKENS_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" --output "$WORKDIR/../escaped.bin" > "$ERR_TXT" 2>&1
+"$DISMOEN" head "$TOKENS_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" --output "$WORKDIR/../escaped.bin" > "$ERR_TXT" 2>&1
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2 on workdir escape, got $status"
@@ -319,7 +319,7 @@ echo "== 13. Workdir confinement: escape via symlink =="
 mkdir -p "$WORKDIR/sub"
 ln -s /tmp "$WORKDIR/sub/sym_link"
 ERR_TXT="$TEST_DIR/err_symlink.txt"
-"$KIMO" head "$TOKENS_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" --output "sub/sym_link/escaped.bin" > "$ERR_TXT" 2>&1
+"$DISMOEN" head "$TOKENS_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" --output "sub/sym_link/escaped.bin" > "$ERR_TXT" 2>&1
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2 on symlink escape, got $status"
@@ -332,7 +332,7 @@ RO_DIR="$WORKDIR/readonly_dir"
 mkdir -p "$RO_DIR"
 chmod 555 "$RO_DIR"
 ERR_TXT="$TEST_DIR/err_ro.txt"
-"$KIMO" head "$TOKENS_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" --output "$RO_DIR/out.bin" > "$ERR_TXT" 2>&1
+"$DISMOEN" head "$TOKENS_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" --output "$RO_DIR/out.bin" > "$ERR_TXT" 2>&1
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2 on unwritable output path, got $status"
@@ -357,7 +357,7 @@ assert '1e-06' in raw
 open(p, 'w').write(raw.replace('1e-06', 'NaN'))
 "
 ERR_TXT="$TEST_DIR/err_cfg_nan.txt"
-"$KIMO" head "$TOKENS_VALID" --model-dir "$NAN_CFG_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+"$DISMOEN" head "$TOKENS_VALID" --model-dir "$NAN_CFG_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2 on NaN rms_norm_eps, got $status"
@@ -377,7 +377,7 @@ assert '1e-06' in raw
 open(p, 'w').write(raw.replace('1e-06', '1e999'))
 "
 ERR_TXT="$TEST_DIR/err_cfg_inf.txt"
-"$KIMO" head "$TOKENS_VALID" --model-dir "$INF_CFG_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+"$DISMOEN" head "$TOKENS_VALID" --model-dir "$INF_CFG_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2 on overflow rms_norm_eps, got $status"
@@ -396,7 +396,7 @@ assert '1e-06' in raw
 open(p, 'w').write(raw.replace('1e-06', '1.0garbage'))
 "
 ERR_TXT="$TEST_DIR/err_cfg_garb.txt"
-"$KIMO" head "$TOKENS_VALID" --model-dir "$GARB_CFG_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+"$DISMOEN" head "$TOKENS_VALID" --model-dir "$GARB_CFG_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2 on garbage rms_norm_eps, got $status"
@@ -415,7 +415,7 @@ d = {'foo': {'hidden_size': 123}, 'vocab_size': 512, 'rms_norm_eps': 1e-6}
 json.dump(d, open(p, 'w'))
 "
 ERR_TXT="$TEST_DIR/err_cfg_nest.txt"
-"$KIMO" head "$TOKENS_VALID" --model-dir "$NEST_CFG_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+"$DISMOEN" head "$TOKENS_VALID" --model-dir "$NEST_CFG_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2 on nested hidden_size, got $status"
@@ -432,7 +432,7 @@ p = '$DUP_CFG_DIR/model_config.json'
 open(p, 'w').write('{\"hidden_size\": 64, \"hidden_size\": 999999, \"vocab_size\": 512, \"rms_norm_eps\": 1e-6}')
 "
 ERR_TXT="$TEST_DIR/err_cfg_dup.txt"
-"$KIMO" head "$TOKENS_VALID" --model-dir "$DUP_CFG_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+"$DISMOEN" head "$TOKENS_VALID" --model-dir "$DUP_CFG_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2 on duplicate key, got $status"
@@ -452,7 +452,7 @@ d['num_hidden_layers'] = 'garbage'
 json.dump(d, open(p, 'w'))
 "
 ERR_TXT="$TEST_DIR/err_cfg_bopt.txt"
-"$KIMO" head "$TOKENS_VALID" --model-dir "$BOPT_CFG_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+"$DISMOEN" head "$TOKENS_VALID" --model-dir "$BOPT_CFG_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2 on garbage optional field, got $status"
@@ -468,7 +468,7 @@ with open('$TOKENS_VALID') as f: s = f.read()
 open('$TOK_GARB', 'w').write(s + 'GARBAGE')
 "
 ERR_TXT="$TEST_DIR/err_tok_garb.txt"
-"$KIMO" head "$TOK_GARB" --model-dir "$FX_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+"$DISMOEN" head "$TOK_GARB" --model-dir "$FX_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2 on tokens trailing garbage, got $status"
@@ -480,7 +480,7 @@ echo "== 22. Tokens error: truncated input without panic =="
 TOK_TRUNC="$TEST_DIR/tokens_trunc.json"
 printf '[' > "$TOK_TRUNC"
 ERR_TXT="$TEST_DIR/err_tok_trunc.txt"
-"$KIMO" head "$TOK_TRUNC" --model-dir "$FX_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+"$DISMOEN" head "$TOK_TRUNC" --model-dir "$FX_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2 on truncated tokens, got $status (panic?)"
@@ -495,7 +495,7 @@ with open('$TOKENS_VALID') as f: s = f.read()
 open('$TOK_ZERO', 'w').write(s.replace('[0,', '[00,', 1))
 "
 ERR_TXT="$TEST_DIR/err_tok_zero.txt"
-"$KIMO" head "$TOK_ZERO" --model-dir "$FX_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
+"$DISMOEN" head "$TOK_ZERO" --model-dir "$FX_DIR" --workdir "$WORKDIR" > "$ERR_TXT" 2>&1
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2 on leading zero token, got $status"
@@ -506,7 +506,7 @@ grep -q '"error_type":"JSON_PARSE_ERROR"' "$ERR_TXT" || { echo "FAIL: error_type
 echo "== 24. Error channel contract: stdout sterile, stderr newline =="
 CHAN_OUT="$TEST_DIR/chan_stdout.txt"
 ERR_TXT="$TEST_DIR/err_chan.txt"
-"$KIMO" head "$TOKENS_VALID" --model-dir "$NAN_CFG_DIR" --workdir "$WORKDIR" > "$CHAN_OUT" 2> "$ERR_TXT"
+"$DISMOEN" head "$TOKENS_VALID" --model-dir "$NAN_CFG_DIR" --workdir "$WORKDIR" > "$CHAN_OUT" 2> "$ERR_TXT"
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2, got $status"
@@ -524,7 +524,7 @@ fi
 
 echo "== 25. Ambiguous invocation: --model-dir + positional shards =="
 ERR_TXT="$TEST_DIR/err_ambig.txt"
-"$KIMO" head "$TOKENS_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" "$FX_DIR/fixture-00001-of-00003.safetensors" > "$ERR_TXT" 2>&1
+"$DISMOEN" head "$TOKENS_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" "$FX_DIR/fixture-00001-of-00003.safetensors" > "$ERR_TXT" 2>&1
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit 2 on ambiguous invocation, got $status"
@@ -534,7 +534,7 @@ grep -q '"error_type":"USAGE"' "$ERR_TXT" || { echo "FAIL: error_type not USAGE"
 
 echo "== 26. Same directory via different lexical spellings =="
 OUT_SPELL="$OUT_DIR/logits_spell.bin"
-"$KIMO" head "$TOKENS_VALID" "$FX_DIR/fixture-00001-of-00003.safetensors" "$FX_DIR/../fixture/fixture-00002-of-00003.safetensors" --workdir "$WORKDIR" --output "$OUT_SPELL" > /dev/null 2>&1
+"$DISMOEN" head "$TOKENS_VALID" "$FX_DIR/fixture-00001-of-00003.safetensors" "$FX_DIR/../fixture/fixture-00002-of-00003.safetensors" --workdir "$WORKDIR" --output "$OUT_SPELL" > /dev/null 2>&1
 status=$?
 if [ $status -ne 0 ]; then
     echo "FAIL: same directory different spelling rejected, exit $status"

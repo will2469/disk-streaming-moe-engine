@@ -6,7 +6,7 @@
 # Master Integration Test Suite untuk Milestone M10 Wave 1 (M10-W1: Rebranding & Toolchain Integrity).
 # Menguji Gate G-M10-1:
 #   1. Kompilasi dismoen bersih tanpa warning
-#   2. Validitas symlink kimo -> dismoen
+#   2. Verifikasi kimo tereliminasi total
 #   3. CLI banner dan usage string menampilkan DISMOEN
 #   4. Subcommand help (--help, -h, help) keluar dengan kode 0
 #   5. Subcommand tidak dikenal menghasilkan JSON USAGE dengan kode 2
@@ -19,7 +19,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 DISMOEN="${DISMOEN:-$ROOT_DIR/dismoen}"
-KIMO="${KIMO:-$ROOT_DIR/kimo}"
+LEGACY_KIMO="$ROOT_DIR/kimo"
 
 TEST_DIR="/tmp/test_m10_w1_$$"
 mkdir -p "$TEST_DIR"
@@ -43,8 +43,8 @@ if [ ! -x "$DISMOEN" ]; then
     exit 1
 fi
 
-if [ -e "$KIMO" ]; then
-    echo "FAIL: Sisa artefak kimo ditemukan: $KIMO (seharusnya sudah dieliminasi total)"
+if [ -e "$LEGACY_KIMO" ]; then
+    echo "FAIL: Sisa artefak kimo ditemukan: $LEGACY_KIMO (seharusnya sudah dieliminasi total)"
     exit 1
 fi
 
@@ -176,7 +176,7 @@ scorecard = {
     'verdict': 'PASS',
     'checks': {
         'binary_executable': '$DISMOEN',
-        'kimo_eliminated': True,
+        'legacy_kimo_eliminated': True,
         'dismoen_tools_physical': True,
         'banner_verified': True,
         'usage_contract_rc2': True,

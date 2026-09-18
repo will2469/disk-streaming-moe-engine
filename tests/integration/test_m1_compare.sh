@@ -1,7 +1,7 @@
 #!/bin/bash
 # Integration test suite for dismoen-tools compare & F10 verdict (M1-W4)
 # Covers:
-# 1. Happy path: kimo head output vs oracle logits_ref.bin (exit 0, MATCH, PASS)
+# 1. Happy path: dismoen head output vs oracle logits_ref.bin (exit 0, MATCH, PASS)
 # 2. Positional shards head output vs oracle logits_ref.bin (exit 0, MATCH, PASS)
 # 3. Numeric mismatch detection (exit 1, MISMATCH, FAIL)
 # 4. Layout mismatch detection (exit 2, LAYOUT_MISMATCH)
@@ -9,8 +9,8 @@
 
 set -u
 
-KIMO="${KIMO:-./dismoen}"
-KIMO_TOOLS="${KIMO_TOOLS:-target/debug/dismoen-tools}"
+DISMOEN="${DISMOEN:-./dismoen}"
+DISMOEN_TOOLS="${DISMOEN_TOOLS:-target/debug/dismoen-tools}"
 TEST_DIR="/tmp/test_m1_compare_$$"
 WORKDIR="$TEST_DIR/workdir"
 OUT_BIN="$WORKDIR/logits_mojo.bin"
@@ -19,7 +19,7 @@ REF_BIN="fixtures/m1/logits_ref.bin"
 fail=0
 
 # Ensure dismoen-tools binary exists
-if [ ! -f "$KIMO_TOOLS" ]; then
+if [ ! -f "$DISMOEN_TOOLS" ]; then
     cargo build --manifest-path tools/dismoen-tools/Cargo.toml --bin dismoen-tools > /dev/null 2>&1
 fi
 
@@ -33,15 +33,15 @@ trap cleanup EXIT
 mkdir -p "$WORKDIR"
 
 echo "== 1. Happy path: Mojo head vs PyTorch oracle (G-M1-1) =="
-"$KIMO" head fixtures/m1/tokens.json --model-dir fixtures/m1 --output "$OUT_BIN" --workdir "$WORKDIR" > /dev/null 2>&1
+"$DISMOEN" head fixtures/m1/tokens.json --model-dir fixtures/m1 --output "$OUT_BIN" --workdir "$WORKDIR" > /dev/null 2>&1
 status=$?
 if [ $status -ne 0 ]; then
-    echo "FAIL: kimo head failed with exit code $status"
+    echo "FAIL: dismoen head failed with exit code $status"
     fail=1
 fi
 
 REPORT_JSON="$TEST_DIR/report_happy.json"
-"$KIMO_TOOLS" compare "$REF_BIN" "$OUT_BIN" --gate G-M1-1 > "$REPORT_JSON" 2> "$TEST_DIR/err_happy.txt"
+"$DISMOEN_TOOLS" compare "$REF_BIN" "$OUT_BIN" --gate G-M1-1 > "$REPORT_JSON" 2> "$TEST_DIR/err_happy.txt"
 status=$?
 if [ $status -ne 0 ]; then
     echo "FAIL: compare returned non-zero ($status) on identical oracle/mojo logits"
@@ -62,15 +62,15 @@ fi
 
 echo "== 2. Positional shards head output vs oracle =="
 OUT_POS="$WORKDIR/logits_pos.bin"
-"$KIMO" head fixtures/m1/tokens.json fixtures/m1/fixture-00001-of-00003.safetensors fixtures/m1/fixture-00002-of-00003.safetensors --output "$OUT_POS" --workdir "$WORKDIR" > /dev/null 2>&1
+"$DISMOEN" head fixtures/m1/tokens.json fixtures/m1/fixture-00001-of-00003.safetensors fixtures/m1/fixture-00002-of-00003.safetensors --output "$OUT_POS" --workdir "$WORKDIR" > /dev/null 2>&1
 status=$?
 if [ $status -ne 0 ]; then
-    echo "FAIL: kimo head positional shards failed with exit code $status"
+    echo "FAIL: dismoen head positional shards failed with exit code $status"
     fail=1
 fi
 
 REPORT_POS="$TEST_DIR/report_pos.json"
-"$KIMO_TOOLS" compare "$REF_BIN" "$OUT_POS" --gate G-M1-1 > "$REPORT_POS" 2> "$TEST_DIR/err_pos.txt"
+"$DISMOEN_TOOLS" compare "$REF_BIN" "$OUT_POS" --gate G-M1-1 > "$REPORT_POS" 2> "$TEST_DIR/err_pos.txt"
 status=$?
 if [ $status -ne 0 ]; then
     echo "FAIL: compare returned non-zero ($status) on positional shards"
@@ -90,7 +90,7 @@ with open('$MUTATED_BIN', 'wb') as f:
     f.write(data)
 "
 REPORT_MUT="$TEST_DIR/report_mutated.json"
-"$KIMO_TOOLS" compare "$REF_BIN" "$MUTATED_BIN" --gate G-M1-1 > "$REPORT_MUT" 2> "$TEST_DIR/err_mut.txt"
+"$DISMOEN_TOOLS" compare "$REF_BIN" "$MUTATED_BIN" --gate G-M1-1 > "$REPORT_MUT" 2> "$TEST_DIR/err_mut.txt"
 status=$?
 if [ $status -ne 1 ]; then
     echo "FAIL: expected exit code 1 on mismatch, got $status"
@@ -115,7 +115,7 @@ with open('$TRUNCATED_BIN', 'wb') as f:
     f.write(data)
 "
 ERR_LAYOUT="$TEST_DIR/err_layout.txt"
-"$KIMO_TOOLS" compare "$REF_BIN" "$TRUNCATED_BIN" > /dev/null 2> "$ERR_LAYOUT"
+"$DISMOEN_TOOLS" compare "$REF_BIN" "$TRUNCATED_BIN" > /dev/null 2> "$ERR_LAYOUT"
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit code 2 on layout mismatch, got $status"
@@ -125,7 +125,7 @@ grep -q '"error_type":"LAYOUT_MISMATCH"' "$ERR_LAYOUT" || { echo "FAIL: expected
 
 echo "== 5. File not found detection (exit 2, FILE_NOT_FOUND) =="
 ERR_FNF="$TEST_DIR/err_fnf.txt"
-"$KIMO_TOOLS" compare "$REF_BIN" "$WORKDIR/nonexistent.bin" > /dev/null 2> "$ERR_FNF"
+"$DISMOEN_TOOLS" compare "$REF_BIN" "$WORKDIR/nonexistent.bin" > /dev/null 2> "$ERR_FNF"
 status=$?
 if [ $status -ne 2 ]; then
     echo "FAIL: expected exit code 2 on missing file, got $status"

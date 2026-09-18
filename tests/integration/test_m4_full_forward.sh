@@ -25,7 +25,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-KIMO="${KIMO:-./dismoen}"
+DISMOEN="${DISMOEN:-./dismoen}"
 COMPARE_BIN="${COMPARE_BIN:-target/debug/dismoen-tools}"
 MODEL_DIR="${MODEL_DIR:-/home/will/models/qwen1.5-moe-a2.7b-chat}"
 FIXTURE_DIR="tools/fixtures"
@@ -45,7 +45,7 @@ if [ ! -f "$COMPARE_BIN" ]; then
     cargo build --manifest-path tools/dismoen-tools/Cargo.toml --bin dismoen-tools
 fi
 
-if [ ! -f "$KIMO" ]; then
+if [ ! -f "$DISMOEN" ]; then
     echo ">> Membangun engine dismoen..."
     pixi run build
 fi
@@ -85,7 +85,7 @@ $PYTHON_BIN -c "import json; json.dump([0, 10, 151936, 50], open('$TOKENS_OOB', 
 
 ERR_IT4="$TEST_DIR/err_it4.txt"
 set +e
-"$KIMO" forward \
+"$DISMOEN" forward \
     --model-dir "$MODEL_DIR" \
     --tokens "$TOKENS_OOB" \
     --output "$WORKDIR/out_it4.bin" \
@@ -115,7 +115,7 @@ echo "[]" > "$TOKENS_EMPTY"
 
 ERR_IT5="$TEST_DIR/err_it5.txt"
 set +e
-"$KIMO" forward \
+"$DISMOEN" forward \
     --model-dir "$MODEL_DIR" \
     --tokens "$TOKENS_EMPTY" \
     --output "$WORKDIR/out_it5.bin" \
@@ -145,7 +145,7 @@ $PYTHON_BIN -c "import json; json.dump(list(range(1025)), open('$TOKENS_OVERCOUN
 
 ERR_IT12A="$TEST_DIR/err_it12a.txt"
 set +e
-"$KIMO" forward \
+"$DISMOEN" forward \
     --model-dir "$MODEL_DIR" \
     --tokens "$TOKENS_OVERCOUNT" \
     --output "$WORKDIR/out_it12a.bin" \
@@ -172,7 +172,7 @@ with open('$TOKENS_OVERSIZE', 'w') as f:
 "
 ERR_IT12B="$TEST_DIR/err_it12b.txt"
 set +e
-"$KIMO" forward \
+"$DISMOEN" forward \
     --model-dir "$MODEL_DIR" \
     --tokens "$TOKENS_OVERSIZE" \
     --output "$WORKDIR/out_it12b.bin" \
@@ -200,7 +200,7 @@ ERR_IT11="$TEST_DIR/err_it11.txt"
 
 # 1. Path traversal '..' ke luar workdir
 set +e
-"$KIMO" forward \
+"$DISMOEN" forward \
     --model-dir "$MODEL_DIR" \
     --tokens "$FIXTURE_DIR/m4_prompt1_tokens.json" \
     --output "$WORKDIR/../escape.bin" \
@@ -212,7 +212,7 @@ set -e
 
 # 2. Path absolut di luar workdir
 set +e
-"$KIMO" forward \
+"$DISMOEN" forward \
     --model-dir "$MODEL_DIR" \
     --tokens "$FIXTURE_DIR/m4_prompt1_tokens.json" \
     --output "/tmp/absolute_escape_$$.bin" \
@@ -226,7 +226,7 @@ set -e
 mkdir -p "$TEST_DIR/outside"
 ln -s "$TEST_DIR/outside" "$WORKDIR/symlink_out"
 set +e
-"$KIMO" forward \
+"$DISMOEN" forward \
     --model-dir "$MODEL_DIR" \
     --tokens "$FIXTURE_DIR/m4_prompt1_tokens.json" \
     --output "$WORKDIR/symlink_out/escaped.bin" \
@@ -247,7 +247,7 @@ chmod 555 "$UNWRITABLE_WORKDIR"
 
 ERR_IT8="$TEST_DIR/err_it8.txt"
 set +e
-"$KIMO" forward \
+"$DISMOEN" forward \
     --model-dir "$MODEL_DIR" \
     --tokens "$FIXTURE_DIR/m4_prompt1_tokens.json" \
     --output "$UNWRITABLE_WORKDIR/out.bin" \
@@ -277,7 +277,7 @@ chmod 000 "$UNREADABLE_MODEL"
 
 ERR_IT9="$TEST_DIR/err_it9.txt"
 set +e
-"$KIMO" forward \
+"$DISMOEN" forward \
     --model-dir "$UNREADABLE_MODEL" \
     --tokens "$FIXTURE_DIR/m4_prompt1_tokens.json" \
     --output "$WORKDIR/out_it9.bin" \
@@ -306,7 +306,7 @@ rm -f "$MODEL_MISSING/model-00002-of-00008.safetensors"
 
 ERR_IT2="$TEST_DIR/err_it2.txt"
 set +e
-"$KIMO" forward \
+"$DISMOEN" forward \
     --model-dir "$MODEL_MISSING" \
     --tokens "$FIXTURE_DIR/m4_prompt1_tokens.json" \
     --output "$WORKDIR/out_it2.bin" \
@@ -346,7 +346,7 @@ with open('$MODEL_CORRUPT/model-00002-of-00008.safetensors', 'wb') as f:
 
 ERR_IT3="$TEST_DIR/err_it3.txt"
 set +e
-"$KIMO" forward \
+"$DISMOEN" forward \
     --model-dir "$MODEL_CORRUPT" \
     --tokens "$FIXTURE_DIR/m4_prompt1_tokens.json" \
     --output "$WORKDIR/out_it3.bin" \
@@ -374,7 +374,7 @@ echo ">> [IT-M4-13] Menguji isolasi cleanup workdir bersama..."
 OUT_ISO_A="$WORKDIR/iso_a.bin"
 OUT_ISO_B="$WORKDIR/iso_b.bin"
 
-"$KIMO" forward \
+"$DISMOEN" forward \
     --mock-forward \
     --model-dir "$MODEL_DIR" \
     --tokens "$FIXTURE_DIR/m4_prompt1_tokens.json" \
@@ -382,7 +382,7 @@ OUT_ISO_B="$WORKDIR/iso_b.bin"
     --workdir "$WORKDIR" \
     --run-id "M4-20260916-101" >/dev/null
 
-"$KIMO" forward \
+"$DISMOEN" forward \
     --mock-forward \
     --model-dir "$MODEL_DIR" \
     --tokens "$FIXTURE_DIR/m4_prompt1_tokens.json" \
@@ -410,7 +410,7 @@ for code_num in 1 2 3 4 5 6; do
 
     err_file="$TEST_DIR/err_code_${code_num}.txt"
     set +e
-    "$KIMO" forward \
+    "$DISMOEN" forward \
         --mock-error "$err_name" \
         --model-dir "$MODEL_DIR" \
         --tokens "$FIXTURE_DIR/m4_prompt1_tokens.json" \
@@ -453,7 +453,7 @@ create_isolated_model_dir "$MODEL_RO"
 chmod -R 555 "$MODEL_RO"
 
 OUT_SEC5="$WORKDIR/sec5_out.bin"
-"$KIMO" forward \
+"$DISMOEN" forward \
     --mock-forward \
     --model-dir "$MODEL_RO" \
     --tokens "$FIXTURE_DIR/m4_prompt1_tokens.json" \
@@ -466,7 +466,7 @@ echo "   PASS: SEC-5 model directory read-only lolos tanpa mutasi"
 # SEC-4: RLIMIT_FSIZE aman (50 MB limit cukup untuk 9.7 MB file)
 (
     ulimit -f 100000 2>/dev/null || true
-    "$KIMO" forward \
+    "$DISMOEN" forward \
         --mock-forward \
         --model-dir "$MODEL_DIR" \
         --tokens "$FIXTURE_DIR/m4_prompt1_tokens.json" \
@@ -503,7 +503,7 @@ for p in $PROMPT_LIST; do
     if [ "${M4_REUSE_LOGITS:-0}" -eq 1 ] && [ -f "$OUTPUT" ] && [ "$(stat -c%s "$OUTPUT")" -eq 9723904 ]; then
         echo "   (Menggunakan logits terkomputasi sebelumnya: $OUTPUT)"
     else
-        $CGROUP_PREFIX "$KIMO" forward \
+        $CGROUP_PREFIX "$DISMOEN" forward \
             --model-dir "$MODEL_DIR" \
             --tokens "$TOKENS" \
             --output "$OUTPUT" \
@@ -576,7 +576,7 @@ OUT_DET_1="$WORKDIR/prompt1_logits.bin"
 OUT_DET_2="$WORKDIR/prompt1_run2.bin"
 
 if [ ! -f "$OUT_DET_1" ]; then
-    "$KIMO" forward \
+    "$DISMOEN" forward \
         --model-dir "$MODEL_DIR" \
         --tokens "$FIXTURE_DIR/m4_prompt1_tokens.json" \
         --output "$OUT_DET_1" \
@@ -585,7 +585,7 @@ if [ ! -f "$OUT_DET_1" ]; then
 fi
 
 # Run 2 dengan threads 1
-"$KIMO" forward \
+"$DISMOEN" forward \
     --model-dir "$MODEL_DIR" \
     --tokens "$FIXTURE_DIR/m4_prompt1_tokens.json" \
     --output "$OUT_DET_2" \

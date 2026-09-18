@@ -65,7 +65,7 @@ Pada total $n = 5 \times 16 = 80$ token:
 
 Pengujian routing dilakukan secara definitif menggunakan kesetaraan himpunan (order-insensitive SET equality) terhadap dumps routing oracle pada layer kunci 0, 12, dan 23:
 
-1. **0 Routing Flips**: Seluruh token pada layer 0, 12, dan 23 memilih tepat himpunan 4 expert yang identik antara implementasi Mojo `kimo` dan PyTorch oracle.
+1. **0 Routing Flips**: Seluruh token pada layer 0, 12, dan 23 memilih tepat himpunan 4 expert yang identik antara implementasi Mojo `dismoen` dan PyTorch oracle.
 2. **Unrenormalized Probability**: Softmax pada router gate mempertahankan properti normatif tanpa renormalisasi (`norm_topk_prob=false`), di mana bobot seleksi expert tidak dipaksa berjumlah 1.0.
 3. **Shared Expert Sigmoid Invariant**: Bobot shared expert diskalakan oleh fungsi sigmoid terisolasi $\sigma(W_{sh\_gate} x)$, menjamin kontribusi shared expert proporsional secara deterministik.
 

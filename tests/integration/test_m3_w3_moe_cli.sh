@@ -1,5 +1,5 @@
 #!/bin/bash
-# E2E test suite for kimo layer CLI part MoE (M3-W3)
+# E2E test suite for dismoen layer CLI part MoE (M3-W3)
 # Covers:
 # 1. Happy path (--model-dir) for layer 0, 12, 23 with --part moe
 # 2. Happy path (positional shards)
@@ -19,7 +19,7 @@
 
 set -u
 
-KIMO="${KIMO:-./dismoen}"
+DISMOEN="${DISMOEN:-./dismoen}"
 TEST_DIR="/tmp/test_m3_w3_moe_cli_$$"
 FX_DIR="$TEST_DIR/fixture"
 WORKDIR="$TEST_DIR/workdir"
@@ -150,7 +150,7 @@ with open('$ACT_VALID', 'wb') as f:
 echo "=== 1. Happy path: Layer 0, 12, 23 with --model-dir and --part moe ==="
 for lyr in 0 12 23; do
     out_file="moe_out_${lyr}.bin"
-    res=$("$KIMO" layer --layer "$lyr" --part moe "$ACT_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" --output "$out_file")
+    res=$("$DISMOEN" layer --layer "$lyr" --part moe "$ACT_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" --output "$out_file")
     rc=$?
     if [ $rc -ne 0 ]; then
         echo "FAIL: layer $lyr returned exit code $rc"
@@ -197,7 +197,7 @@ done
 
 echo "=== 2. Happy path: Positional shards ==="
 out_file_pos="moe_out_pos.bin"
-res=$("$KIMO" layer --layer 0 --part moe "$ACT_VALID" \
+res=$("$DISMOEN" layer --layer 0 --part moe "$ACT_VALID" \
     "$FX_DIR/model-00001-of-00002.safetensors" \
     "$FX_DIR/model-00002-of-00002.safetensors" \
     --workdir "$WORKDIR" --output "$out_file_pos")
@@ -210,7 +210,7 @@ else
 fi
 
 echo "=== 3. Part validation ==="
-err_out=$("$KIMO" layer --layer 0 --part invalid "$ACT_VALID" --model-dir "$FX_DIR" 2>&1 >/dev/null)
+err_out=$("$DISMOEN" layer --layer 0 --part invalid "$ACT_VALID" --model-dir "$FX_DIR" 2>&1 >/dev/null)
 rc=$?
 if [ $rc -ne 2 ]; then
     echo "FAIL: invalid part returned exit code $rc (expected 2)"
@@ -222,10 +222,10 @@ fi
 echo "=== 4. Layer validation ==="
 for bad_lyr in 5 -1 24 abc ""; do
     if [ -z "$bad_lyr" ]; then
-        cmd=("$KIMO" layer --part moe "$ACT_VALID" --model-dir "$FX_DIR")
+        cmd=("$DISMOEN" layer --part moe "$ACT_VALID" --model-dir "$FX_DIR")
         desc="missing --layer"
     else
-        cmd=("$KIMO" layer --layer "$bad_lyr" --part moe "$ACT_VALID" --model-dir "$FX_DIR")
+        cmd=("$DISMOEN" layer --layer "$bad_lyr" --part moe "$ACT_VALID" --model-dir "$FX_DIR")
         desc="layer $bad_lyr"
     fi
     err_out=$("${cmd[@]}" 2>&1 >/dev/null)
@@ -240,7 +240,7 @@ done
 
 echo "=== 5. Activation validation ==="
 # Missing path
-err_out=$("$KIMO" layer --layer 0 --part moe --model-dir "$FX_DIR" 2>&1 >/dev/null)
+err_out=$("$DISMOEN" layer --layer 0 --part moe --model-dir "$FX_DIR" 2>&1 >/dev/null)
 rc=$?
 if [ $rc -ne 2 ]; then
     echo "FAIL: missing activation argument returned exit code $rc (expected 2)"
@@ -250,7 +250,7 @@ else
 fi
 
 # Nonexistent activation
-err_out=$("$KIMO" layer --layer 0 --part moe "$TEST_DIR/nonexistent.bin" --model-dir "$FX_DIR" 2>&1 >/dev/null)
+err_out=$("$DISMOEN" layer --layer 0 --part moe "$TEST_DIR/nonexistent.bin" --model-dir "$FX_DIR" 2>&1 >/dev/null)
 rc=$?
 if [ $rc -ne 2 ]; then
     echo "FAIL: nonexistent activation returned exit code $rc (expected 2)"
@@ -262,7 +262,7 @@ fi
 # Truncated activation
 ACT_TRUNC="$TEST_DIR/activation_truncated.bin"
 head -c 100 "$ACT_VALID" > "$ACT_TRUNC"
-err_out=$("$KIMO" layer --layer 0 --part moe "$ACT_TRUNC" --model-dir "$FX_DIR" 2>&1 >/dev/null)
+err_out=$("$DISMOEN" layer --layer 0 --part moe "$ACT_TRUNC" --model-dir "$FX_DIR" 2>&1 >/dev/null)
 rc=$?
 if [ $rc -ne 2 ]; then
     echo "FAIL: truncated activation returned exit code $rc (expected 2)"
@@ -273,7 +273,7 @@ fi
 
 echo "=== 6. Inline routing check vs oracle (--oracle-routing) ==="
 # Get baseline routing output from layer 0
-res_base=$("$KIMO" layer --layer 0 --part moe "$ACT_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" --output "base_moe.bin")
+res_base=$("$DISMOEN" layer --layer 0 --part moe "$ACT_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" --output "base_moe.bin")
 ORACLE_MATCH="$TEST_DIR/oracle_match.json"
 ORACLE_MISMATCH="$TEST_DIR/oracle_mismatch.json"
 
@@ -292,7 +292,7 @@ with open('$ORACLE_MISMATCH', 'w') as f:
 "
 
 # 6a. Match test
-res_m=$("$KIMO" layer --layer 0 --part moe "$ACT_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" --output "match_out.bin" --oracle-routing "$ORACLE_MATCH")
+res_m=$("$DISMOEN" layer --layer 0 --part moe "$ACT_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" --output "match_out.bin" --oracle-routing "$ORACLE_MATCH")
 rc=$?
 if [ $rc -ne 0 ]; then
     echo "FAIL: oracle match check failed with exit code $rc"
@@ -304,7 +304,7 @@ fi
 # 6b. Mismatch test
 stdout_mismatch=$(mktemp)
 stderr_mismatch=$(mktemp)
-"$KIMO" layer --layer 0 --part moe "$ACT_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" --output "mismatch_out.bin" --oracle-routing "$ORACLE_MISMATCH" >"$stdout_mismatch" 2>"$stderr_mismatch"
+"$DISMOEN" layer --layer 0 --part moe "$ACT_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" --output "mismatch_out.bin" --oracle-routing "$ORACLE_MISMATCH" >"$stdout_mismatch" 2>"$stderr_mismatch"
 rc=$?
 if [ $rc -ne 1 ]; then
     echo "FAIL: oracle mismatch check returned exit code $rc (expected 1)"
@@ -339,7 +339,7 @@ assert d['token_index'] == 0, f'expected token_index 0, got {d}'
 
 echo "=== 7. Workdir Containment & Atomic Rollback ==="
 # Workdir escape
-err_out=$("$KIMO" layer --layer 0 --part moe "$ACT_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" --output "../escape.bin" 2>&1 >/dev/null)
+err_out=$("$DISMOEN" layer --layer 0 --part moe "$ACT_VALID" --model-dir "$FX_DIR" --workdir "$WORKDIR" --output "../escape.bin" 2>&1 >/dev/null)
 rc=$?
 if [ $rc -ne 2 ]; then
     echo "FAIL: workdir escape returned exit code $rc (expected 2)"
@@ -349,7 +349,7 @@ else
 fi
 
 # Ambiguous invocation
-err_out=$("$KIMO" layer --layer 0 --part moe "$ACT_VALID" "$FX_DIR/model-00001-of-00002.safetensors" --model-dir "$FX_DIR" 2>&1 >/dev/null)
+err_out=$("$DISMOEN" layer --layer 0 --part moe "$ACT_VALID" "$FX_DIR/model-00001-of-00002.safetensors" --model-dir "$FX_DIR" 2>&1 >/dev/null)
 rc=$?
 if [ $rc -ne 2 ]; then
     echo "FAIL: ambiguous invocation returned exit code $rc (expected 2)"
@@ -371,7 +371,7 @@ with open('$REAL_ACT', 'wb') as f:
         f.write(struct.pack('<f', v))
 "
     for rlyr in 0 12 23; do
-        res=$("$KIMO" layer --layer "$rlyr" --part moe "$REAL_ACT" --model-dir "$REAL_MODEL" --workdir "$WORKDIR" --output "real_moe_${rlyr}.bin")
+        res=$("$DISMOEN" layer --layer "$rlyr" --part moe "$REAL_ACT" --model-dir "$REAL_MODEL" --workdir "$WORKDIR" --output "real_moe_${rlyr}.bin")
         rc=$?
         if [ $rc -eq 0 ]; then
             echo "PASS: real model layer $rlyr succeeded (exit 0)"

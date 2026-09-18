@@ -12,7 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 
-KIMO="./dismoen"
+DISMOEN="./dismoen"
 TMP_DIR="$(mktemp -d -t dismoen_m8_w4_XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -21,7 +21,7 @@ echo "=== M8-W4 Master Test Suite: Long-Seq, Determinism, Fuzz, & Security ==="
 echo "======================================================================="
 
 # Pastikan binary dismoen siap
-if [ ! -f "$KIMO" ]; then
+if [ ! -f "$DISMOEN" ]; then
     echo "Binary dismoen tidak ditemukan, mengompilasi via pixi build..."
     pixi run build
 fi
@@ -47,7 +47,7 @@ echo ">> [3/5] Menguji determinisme bitwise 5x ulangan identik (threads=1)..."
 REF_HASH=""
 for run in 1 2 3 4 5; do
     RUN_OUT="$TMP_DIR/det_run_${run}.bin"
-    "$KIMO" gdn \
+    "$DISMOEN" gdn \
         --model-dir "fixtures" \
         --tokens "fixtures/m8_tokens.json" \
         --output "$RUN_OUT" \
@@ -82,7 +82,7 @@ echo ">> [5/5] Memverifikasi perimeter keamanan SEC-4, SEC-5, dan SEC-6..."
 
 # 5a. SEC-4: Checked arithmetic overflow guard (ceiling <= 100 MB)
 set +e
-ERR_SEC4=$("$KIMO" gdn \
+ERR_SEC4=$("$DISMOEN" gdn \
     --model-dir "fixtures" \
     --tokens "fixtures/m8_tokens.json" \
     --output "$TMP_DIR/sec4_dummy.bin" \
@@ -112,7 +112,7 @@ chmod 444 "$RO_MODEL_DIR/m8_gdn_weights.safetensors"
 chmod 555 "$RO_MODEL_DIR"
 
 OUT_SEC5="$TMP_DIR/sec5_out.bin"
-"$KIMO" gdn \
+"$DISMOEN" gdn \
     --model-dir "$RO_MODEL_DIR" \
     --tokens "fixtures/m8_tokens.json" \
     --output "$OUT_SEC5" \
@@ -130,7 +130,7 @@ RO_OUT_DIR="$TMP_DIR/sec5_ro_out"
 mkdir -p "$RO_OUT_DIR"
 chmod 555 "$RO_OUT_DIR"
 set +e
-"$KIMO" gdn \
+"$DISMOEN" gdn \
     --model-dir "fixtures" \
     --tokens "fixtures/m8_tokens.json" \
     --output "$RO_OUT_DIR/state.bin" \

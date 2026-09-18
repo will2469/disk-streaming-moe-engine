@@ -18,9 +18,9 @@
 
 set -euo pipefail
 
-KIMO_TOOLS="${KIMO_TOOLS:-target/debug/dismoen-tools}"
-if [ ! -f "$KIMO_TOOLS" ]; then
-    KIMO_TOOLS="target/release/dismoen-tools"
+DISMOEN_TOOLS="${DISMOEN_TOOLS:-target/debug/dismoen-tools}"
+if [ ! -f "$DISMOEN_TOOLS" ]; then
+    DISMOEN_TOOLS="target/release/dismoen-tools"
 fi
 PYTHON="${PYTHON:-.venv/bin/python}"
 if [ ! -x "$PYTHON" ]; then
@@ -61,7 +61,7 @@ pixi run mojo run -I src tests/integration/run_gdn_scan_test.mojo \
     --output "$CAND_SYM" \
     --layers 2 --dk 32 --dv 32 --chunk-size 8 > /dev/null
 
-"$KIMO_TOOLS" compare "$STATE_REF_SYM" "$CAND_SYM" --gate G-M8-1 > "$REPORT_SYM"
+"$DISMOEN_TOOLS" compare "$STATE_REF_SYM" "$CAND_SYM" --gate G-M8-1 > "$REPORT_SYM"
 
 "$PYTHON" -c "
 import json
@@ -92,7 +92,7 @@ pixi run mojo run -I src tests/integration/run_gdn_scan_test.mojo \
     --output "$CAND_ASYM" \
     --layers 2 --dk 32 --dv 48 --chunk-size 8 > /dev/null
 
-"$KIMO_TOOLS" compare "$STATE_REF_ASYM" "$CAND_ASYM" --gate G-M8-1 > "$REPORT_ASYM"
+"$DISMOEN_TOOLS" compare "$STATE_REF_ASYM" "$CAND_ASYM" --gate G-M8-1 > "$REPORT_ASYM"
 
 "$PYTHON" -c "
 import json
@@ -138,7 +138,7 @@ pixi run mojo run -I src tests/integration/run_gdn_scan_test.mojo \
     --output "$CAND_REM" \
     --layers 2 --dk 32 --dv 32 --chunk-size 8 > /dev/null
 
-"$KIMO_TOOLS" compare "$STATE_REF_REM" "$CAND_REM" --gate G-M8-1 > "$REPORT_REM"
+"$DISMOEN_TOOLS" compare "$STATE_REF_REM" "$CAND_REM" --gate G-M8-1 > "$REPORT_REM"
 
 "$PYTHON" -c "
 import json
@@ -165,7 +165,7 @@ pixi run mojo run -I src tests/integration/run_gdn_scan_test.mojo \
     --output "$CAND_C16" \
     --layers 2 --dk 32 --dv 32 --chunk-size 16 > /dev/null
 
-"$KIMO_TOOLS" compare "$CAND_SYM" "$CAND_C16" --gate G-M8-1 > "$REPORT_SWEEP"
+"$DISMOEN_TOOLS" compare "$CAND_SYM" "$CAND_C16" --gate G-M8-1 > "$REPORT_SWEEP"
 
 "$PYTHON" -c "
 import json

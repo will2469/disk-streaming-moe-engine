@@ -10,7 +10,7 @@ staged=$(git diff --cached --name-only)
 [ -z "$staged" ] && { echo "tidak ada staged changes (git add dulu)"; exit 1; }
 # shellcheck disable=SC2086
 for round in 1 2 3; do
-    if pre-commit run --files $staged >/tmp/kimo-commit-hook.log 2>&1; then
+    if pre-commit run --files $staged >/tmp/dismoen-commit-hook.log 2>&1; then
         git commit -m "$msg"
         exit $?
     fi
@@ -25,11 +25,11 @@ for round in 1 2 3; do
         fi
     done
     if [ -z "$restaged" ]; then
-        cat /tmp/kimo-commit-hook.log
+        cat /tmp/dismoen-commit-hook.log
         exit 1
     fi
     echo "[ronde $round] terformat ulang:$restaged"
 done
-cat /tmp/kimo-commit-hook.log
+cat /tmp/dismoen-commit-hook.log
 echo "gagal setelah 3 ronde"
 exit 1

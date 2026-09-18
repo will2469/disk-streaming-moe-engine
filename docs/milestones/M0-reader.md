@@ -64,13 +64,13 @@ Ground truth: `model_config.json` + `model.safetensors.index.json` (`../01-archi
 
 ```bash
 # contoh fixture synthetic (3 shard); checkpoint asli 8 shard: model-00001-of-00008 s/d 00008
-kimo check-index shard-00001-of-00003.safetensors shard-00002-of-00003.safetensors shard-00003-of-00003.safetensors
+dismoen check-index shard-00001-of-00003.safetensors shard-00002-of-00003.safetensors shard-00003-of-00003.safetensors
 ```
 
 Contoh checkpoint asli (8 shard, N penuh):
 
 ```bash
-kimo check-index \
+dismoen check-index \
   model-00001-of-00008.safetensors \
   model-00002-of-00008.safetensors \
   model-00003-of-00008.safetensors \

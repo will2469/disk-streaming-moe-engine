@@ -69,10 +69,10 @@ Kalibrasi $e_T$: target ≤ 20% di M9 (lebih ketat dari trial 30%).
 
 ## CLI Contract
 
-### Command: `kimo forward-port`
+### Command: `dismoen forward-port`
 
 ```bash
-kimo forward-port \
+dismoen forward-port \
   --model-dir /models/qwen3.6-35b \
   --architecture qwen3.6 \
   --tokens /data/prompt1_tokens.json \
@@ -83,7 +83,7 @@ kimo forward-port \
   --quantization q3
 ```
 
-### Arguments (`kimo forward-port`)
+### Arguments (`dismoen forward-port`)
 
 | Argument           | Type   | Default  | Description                                                                                           |
 | ------------------ | ------ | -------- | ----------------------------------------------------------------------------------------------------- |
@@ -157,13 +157,13 @@ kimo forward-port \
 - `7`: Error quantization (GGUF quantization error, dtype conversion error).
 - `8`: Error output (gagal atomic write logits).
 
-### Command: `kimo decode` (Streaming Port Decode & KV Reuse)
+### Command: `dismoen decode` (Streaming Port Decode & KV Reuse)
 
 Subcommand `decode` menjalankan autoregressive token decoding dengan me-reuse KV cache (10 layer Gated Attention) dan state rekuren GDN (30 layer) dari sesi prefill sebelumnya tanpa recomputing.
 
 ```bash
 # Decode melanjutkan dari session prefill
-kimo decode \
+dismoen decode \
   --model-dir /models/qwen3.6-35b-gguf \
   --architecture qwen3.6 \
   --session /work/prompt1.session \
@@ -174,7 +174,7 @@ kimo decode \
   --quantization q3
 ```
 
-#### Arguments (`kimo decode`)
+#### Arguments (`dismoen decode`)
 
 | Argument           | Type   | Default    | Description                                                                            |
 | ------------------ | ------ | ---------- | -------------------------------------------------------------------------------------- |
@@ -193,7 +193,7 @@ kimo decode \
 | `--seed`           | int    | 42         | Random seed sampling (hanya efektif bila temperature > 0)                              |
 | `--quantization`   | string | none       | Quantization mode: `none`, `q3`, `iq3`                                                 |
 
-#### Output JSON (`kimo decode`)
+#### Output JSON (`dismoen decode`)
 
 Wajib menyertakan blok audit `kv_reuse` untuk verifikasi integritas Gate G-M9-3:
 
@@ -259,7 +259,7 @@ Untuk menjamin kelanjutan autoregressive state tanpa kehilangan informasi dan ta
 
 ```bash
 # Happy path: port dengan GGUF quant
-kimo forward-port \
+dismoen forward-port \
   --model-dir /models/qwen3.6-35b-gguf \
   --architecture qwen3.6 \
   --tokens /data/prompt1_tokens.json \
@@ -267,7 +267,7 @@ kimo forward-port \
   --quantization q3
 
 # Port dengan BF16 oracle (untuk accuracy baseline)
-kimo forward-port \
+dismoen forward-port \
   --model-dir /models/qwen3.6-35b-bf16 \
   --architecture qwen3.6 \
   --tokens /data/prompt1_tokens.json \
@@ -276,7 +276,7 @@ kimo forward-port \
 
 # Cgroup boundary test (enforce Gate G-M9-2: MemoryMax=7.5G)
 systemd-run --scope -p MemoryMax=7.5G \
-  kimo forward-port \
+  dismoen forward-port \
   --model-dir /models/qwen3.6-35b-gguf \
   --architecture qwen3.6 \
   --tokens /data/prompt1_tokens.json \
@@ -421,14 +421,14 @@ Logits **SELALU** disimpan sebagai raw little-endian IEEE-754 `float32` (FP32), 
 - Shape: `[seq_len, vocab_size]` (row-major).
 - Total bytes: `seq_len * vocab_size * 4`.
 - Contoh untuk port: `4 * 248320 * 4 = 3,973,120 bytes` (untuk 4 token); `128 * 248320 * 4 = 127,139,840 bytes` (untuk 128 token).
-- Standardisasi FP32 biner ini menjamin `kimo compare` mengevaluasi metrik F10 ($\Delta_{\max}, \epsilon_{rel}, \cos \theta$) secara deterministik tanpa distorsi konversi dtype.
+- Standardisasi FP32 biner ini menjamin `dismoen compare` mengevaluasi metrik F10 ($\Delta_{\max}, \epsilon_{rel}, \cos \theta$) secara deterministik tanpa distorsi konversi dtype.
 
 ### Compare Contract
 
 Rust `compare` tool membaca dua logits binary (Engine port vs Oracle port):
 
 ```bash
-kimo compare \
+dismoen compare \
   --reference /work/prompt1_logits_oracle.bin \
   --candidate /work/prompt1_logits.bin \
   --tolerance 1e-2 \
@@ -1160,7 +1160,7 @@ $$M_{peak}^{M9} = W_{res} + M_{cache} + M_{expert} + M_{KV} + M_{GDN} + M_{scrat
 ```bash
 # GGUF streaming runtime (Batas Keras Cgroup Gate G-M9-2)
 systemd-run --scope -p MemoryMax=7.5G \
-  kimo forward-port \
+  dismoen forward-port \
   --model-dir /models/qwen3.6-35b-gguf \
   --architecture qwen3.6 \
   --tokens /data/prompt1_tokens.json \
@@ -1169,7 +1169,7 @@ systemd-run --scope -p MemoryMax=7.5G \
 
 # Catatan Oracle BF16 Baseline:
 # Verifikasi oracle FP32 unstreamed (tools/oracle/oracle_port.py) memerlukan mesin workstation/server
-# dengan RAM besar (~70 GB model, MemoryMax=50G). Namun, engine kimo forward-port pada runtime
+# dengan RAM besar (~70 GB model, MemoryMax=50G). Namun, engine dismoen forward-port pada runtime
 # selalu menggunakan streaming layer-by-layer dan diisolasi di bawah MemoryMax=7.5G.
 ```
 
@@ -1229,7 +1229,7 @@ systemd-run --scope -p MemoryMax=7.5G \
 **Test command**:
 
 ```bash
-kimo forward-port \
+dismoen forward-port \
   --model-dir fixtures/m9_synthetic_port \
   --architecture qwen3.6 \
   --tokens fixtures/m9_port_tokens.json \
@@ -1243,7 +1243,7 @@ kimo forward-port \
 - KV cache di-update dengan benar setelah 1 GatedAttn layer.
 - Output logits MATCH oracle dengan F10 threshold:
   ```bash
-  kimo compare fixtures/m9_port_logits_naive.bin /work/m9_block_logits.bin --gate G-M9-1
+  dismoen compare fixtures/m9_port_logits_naive.bin /work/m9_block_logits.bin --gate G-M9-1
   ```
 
 ### Integration GQA + KV Cache
@@ -1259,7 +1259,7 @@ kimo forward-port \
 **Test command**:
 
 ```bash
-kimo forward-port \
+dismoen forward-port \
   --model-dir /models/qwen3.6-35b-gguf \
   --architecture qwen3.6 \
   --tokens /data/seq_4k_tokens.json \
@@ -1286,7 +1286,7 @@ kimo forward-port \
 **Test command**:
 
 ```bash
-kimo forward-port \
+dismoen forward-port \
   --model-dir /models/qwen3.6-35b-gguf \
   --architecture qwen3.6 \
   --tokens /data/prompt1_tokens.json \
@@ -1316,7 +1316,7 @@ kimo forward-port \
 
 ```bash
 # 1. Prefill 32 tokens dan simpan state/session lengkap (KV cache + GDN states + token IDs)
-kimo forward-port \
+dismoen forward-port \
   --model-dir /models/qwen3.6-35b-gguf \
   --architecture qwen3.6 \
   --tokens /data/prompt_prefill_tokens.json \
@@ -1325,7 +1325,7 @@ kimo forward-port \
   --quantization q3
 
 # 2. Decode 64 tokens melanjutkan dari session prefill (KV reuse tanpa recompute)
-kimo decode \
+dismoen decode \
   --model-dir /models/qwen3.6-35b-gguf \
   --architecture qwen3.6 \
   --session /work/prefill.session \
@@ -1367,7 +1367,7 @@ Verifikasi router dibagi secara tegas menjadi dua jalur independen:
 
 ```bash
 # Engine BF16 vs Oracle BF16
-kimo forward-port \
+dismoen forward-port \
   --model-dir /models/qwen3.6-35b-bf16 \
   --architecture qwen3.6 \
   --tokens /data/router_test_tokens.json \
@@ -1384,7 +1384,7 @@ kimo forward-port \
 
 ```bash
 # Engine Q3 vs Oracle BF16
-kimo forward-port \
+dismoen forward-port \
   --model-dir /models/qwen3.6-35b-gguf \
   --architecture qwen3.6 \
   --tokens /data/router_test_tokens.json \
@@ -1668,7 +1668,7 @@ Karena trade-off laju-distorsi ($R(D)$) berbeda untuk setiap format kuantisasi d
 
 #### 5. Prosedur Validasi & Format Laporan JSON
 
-Prosedur validasi kuantisasi dijalankan oleh skrip verifikasi offline (`tools/quant/verify_gguf_quant.py` atau subcommand `kimo-tools verify-quant`):
+Prosedur validasi kuantisasi dijalankan oleh skrip verifikasi offline (`tools/quant/verify_gguf_quant.py` atau subcommand `dismoen-tools verify-quant`):
 
 1. **Integritas Berkas**:
    - Memverifikasi checksum SHA-256 berkas `.gguf` terhadap `models.lock.json` (SEC-1).
@@ -1765,7 +1765,7 @@ Untuk mengumpulkan timing profile:
 
 ```bash
 # Enable detailed timing
-kimo forward-port \
+dismoen forward-port \
   --tokens /data/prompt1_tokens.json \
   --output /work/prompt1_logits.bin \
   --architecture qwen3.6 \

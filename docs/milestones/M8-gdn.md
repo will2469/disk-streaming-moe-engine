@@ -84,10 +84,10 @@ Akumulasi serial token-by-token pada oracle vs blok GEMM + tree reduction pada k
 
 ## CLI Contract
 
-### Command: `kimo gdn`
+### Command: `dismoen gdn`
 
 ```bash
-kimo gdn \
+dismoen gdn \
   --model-dir /models/qwen-moe \
   --tokens /data/prompt1_tokens.json \
   --output /work/prompt1_state.bin \
@@ -114,7 +114,7 @@ kimo gdn \
 | `--threads`    | int  | 1        | Jumlah thread (default 1 untuk determinisme verdict)                                                  |
 
 > [!NOTE] Determinisme Inferensi & Scope Random Seed
-> Runtime CLI `kimo gdn` tidak memerlukan argumen `--seed` karena seluruh proses forward inferensi bersifat deterministik murni: state selalu diinisialisasi nol ($S_0 = 0$), token IDs berasal dari input deterministik, dan bobot dibaca langsung dari file safetensors/fixture. Argumen `--seed` hanya berlaku pada skrip offline generator fixture (`generate_m8_fixtures.py --seed 42`) dan fuzzer pengujian.
+> Runtime CLI `dismoen gdn` tidak memerlukan argumen `--seed` karena seluruh proses forward inferensi bersifat deterministik murni: state selalu diinisialisasi nol ($S_0 = 0$), token IDs berasal dari input deterministik, dan bobot dibaca langsung dari file safetensors/fixture. Argumen `--seed` hanya berlaku pada skrip offline generator fixture (`generate_m8_fixtures.py --seed 42`) dan fuzzer pengujian.
 
 ### Input JSON
 
@@ -168,7 +168,7 @@ kimo gdn \
 
 ```bash
 # Happy path: 4 token, 30 layers, chunk size 512
-kimo gdn \
+dismoen gdn \
   --model-dir /models/qwen-moe \
   --tokens /data/prompt1_tokens.json \
   --output /work/prompt1_state.bin \
@@ -179,7 +179,7 @@ kimo gdn \
 
 # Cgroup boundary test
 systemd-run --scope -p MemoryMax=6G \
-  kimo gdn \
+  dismoen gdn \
   --model-dir /models/qwen-moe \
   --tokens /data/prompt1_tokens.json \
   --output /work/prompt1_state.bin \
@@ -189,7 +189,7 @@ systemd-run --scope -p MemoryMax=6G \
   --chunk-size 512
 
 # Long sequence (8K tokens) untuk bukti state fixed-size
-kimo gdn \
+dismoen gdn \
   --model-dir /models/qwen-moe \
   --tokens /data/prompt_long_tokens.json \
   --output /work/prompt_long_state.bin \
@@ -412,7 +412,7 @@ State disimpan dalam format biner framed kanonis **GDNS v1 (normatif)**:
 Rust `compare` tool membaca dua state binary (Mojo chunked vs Oracle naive):
 
 ```bash
-kimo compare \
+dismoen compare \
   --reference /work/prompt1_state_naive.bin \
   --candidate /work/prompt1_state.bin \
   --tolerance 1e-3 \
@@ -537,7 +537,7 @@ Target: G-M8-1 (chunked == naive) lulus dengan fixture synthetic sebelum testing
 
 ```bash
 # Full pipeline: M7 reader + M8 GDN
-kimo gdn \
+dismoen gdn \
   --model-dir /models/qwen-moe \
   --tokens /data/prompt1_tokens.json \
   --output /work/prompt1_state.bin \
@@ -568,7 +568,7 @@ kimo gdn \
 
 ```bash
 # Full M9 pipeline: 10 GatedAttn + 30 GDN
-kimo forward-port \
+dismoen forward-port \
   --model-dir /models/qwen3.6-35b \
   --tokens /data/prompt1_tokens.json \
   --output /work/prompt1_logits.bin \
@@ -618,26 +618,26 @@ for C in 64 128 256 512 1024; do
     S2=$2
 
     # 1. Jalankan Prefill seq1 -> simpan GDNS v1 state
-    kimo gdn \
+    dismoen gdn \
       --tokens /data/tokens_${S1}.json \
       --output /work/seq1_C${C}_S${S1}.bin \
       --layers 30 --dk 128 --dv 128 --chunk-size ${C}
 
     # 2. Jalankan Continuation seq2 dari seq1 state
-    kimo gdn \
+    dismoen gdn \
       --tokens /data/tokens_${S2}.json \
       --state-input /work/seq1_C${C}_S${S1}.bin \
       --output /work/seq2_cont_C${C}_S${S2}.bin \
       --layers 30 --dk 128 --dv 128 --chunk-size ${C}
 
     # 3. Jalankan Single-pass baseline (S1 + S2 gabungan)
-    kimo gdn \
+    dismoen gdn \
       --tokens /data/tokens_combined_1024.json \
       --output /work/combined_C${C}.bin \
       --layers 30 --dk 128 --dv 128 --chunk-size ${C}
 
     # 4. Verifikasi ekuivalensi numerik
-    kimo-tools compare \
+    dismoen-tools compare \
       --reference /work/combined_C${C}.bin \
       --candidate /work/seq2_cont_C${C}_S${S2}.bin \
       --gate G-M8-1
@@ -660,7 +660,7 @@ done
 
 ```bash
 for s in 1024 2048 4096 8192 16384 32768; do
-  kimo gdn \
+  dismoen gdn \
     --tokens /data/seq_${s}_tokens.json \
     --output /work/seq_${s}_state.bin \
     --layers 30 --dk 128 --dv 128
@@ -670,7 +670,7 @@ for s in 1024 2048 4096 8192 16384 32768; do
     --output /work/seq_${s}_state_naive.bin \
     --layers 30 --dk 128 --dv 128
 
-  kimo compare \
+  dismoen compare \
     --reference /work/seq_${s}_state_naive.bin \
     --candidate /work/seq_${s}_state.bin \
     --tolerance 1e-3
@@ -790,7 +790,7 @@ Untuk G-M8-3, sweep chunk size untuk menemukan optimal:
 ```bash
 for cs in 64 128 256 512 1024; do
   for i in {1..10}; do
-    kimo gdn \
+    dismoen gdn \
       --tokens /data/prompt1_tokens.json \
       --output /work/prompt1_state.bin \
       --layers 30 --dk 128 --dv 128 \
@@ -889,7 +889,7 @@ Untuk mengumpulkan timing profile:
 
 ```bash
 # Enable detailed timing
-kimo gdn \
+dismoen gdn \
   --tokens /data/prompt1_tokens.json \
   --output /work/prompt1_state.bin \
   --layers 30 --dk 128 --dv 128 \
@@ -965,7 +965,7 @@ State diserialisasi untuk continuation konteks, caching, atau verifikasi regresi
 
 ```bash
 # Save state
-kimo gdn \
+dismoen gdn \
   --tokens /data/prompt1_tokens.json \
   --output /work/prompt1_state.bin \
   --layers 30 --dk 128 --dv 128
@@ -975,7 +975,7 @@ kimo gdn \
 
 ```bash
 # Load state dan continue
-kimo gdn \
+dismoen gdn \
   --tokens /data/prompt2_tokens.json \
   --state-input /work/prompt1_state.bin \
   --output /work/prompt2_state.bin \
@@ -1516,11 +1516,11 @@ os.rename(temp_path, output_path)  # Atomic
 
 ### SEC-4: Resource Guard (Cgroup & Checked Alloc)
 
-**Cgroup enforcement (Hard OS Boundary)**: Run `kimo gdn` di bawah cgroup `MemoryMax=6G`:
+**Cgroup enforcement (Hard OS Boundary)**: Run `dismoen gdn` di bawah cgroup `MemoryMax=6G`:
 
 ```bash
 systemd-run --scope -p MemoryMax=6G \
-  kimo gdn \
+  dismoen gdn \
   --model-dir /models/qwen-moe \
   --tokens /data/prompt1_tokens.json \
   --output /work/prompt1_state.bin \
@@ -1613,7 +1613,7 @@ def compute_state_bytes_safe(layers: int, dv: int, dk: int) -> int:
 
 ### Determinisme
 
-**Test Fixture Seed vs Runtime Engine**: Test fixture generation offline menggunakan seed tetap (default 42). Runtime forward `kimo gdn` bersifat deterministik murni dari weights dan token inputs tanpa RNG state internal.
+**Test Fixture Seed vs Runtime Engine**: Test fixture generation offline menggunakan seed tetap (default 42). Runtime forward `dismoen gdn` bersifat deterministik murni dari weights dan token inputs tanpa RNG state internal.
 
 **Threads = 1**: Verdict numerik hanya sah pada `--threads 1`. Performance benchmark gunakan `--threads nproc` terpisah.
 
@@ -1759,7 +1759,7 @@ Run test untuk berbagai sequence length dengan chunk size konstan $C=512$:
 
 ```bash
 for s in 1024 2048 4096 8192 16384 32768; do
-  kimo gdn \
+  dismoen gdn \
     --tokens /data/seq_${s}_tokens.json \
     --output /work/seq_${s}_state.bin \
     --layers 30 --dk 128 --dv 128 \
@@ -1770,7 +1770,7 @@ for s in 1024 2048 4096 8192 16384 32768; do
     --output /work/seq_${s}_state_naive.bin \
     --layers 30 --dk 128 --dv 128
 
-  kimo compare \
+  dismoen compare \
     --reference /work/seq_${s}_state_naive.bin \
     --candidate /work/seq_${s}_state.bin \
     --tolerance 1e-3
@@ -1839,7 +1839,7 @@ Jika instability terdeteksi:
 
 ### Implementation-Specific Items
 
-- [x] CLI `kimo gdn` implementasi lengkap dengan semua flags dan exit codes
+- [x] CLI `dismoen gdn` implementasi lengkap dengan semua flags dan exit codes
 - [x] Oracle `tools/oracle/oracle_gdn.py` implementasi naive loop FP32
 - [x] Rust `compare` tool untuk state binary comparison dengan F10 metrics
 - [x] M8 fixture synthetic (`fixtures/m8_tokens.json`, `fixtures/m8_gdn_weights.safetensors`, `fixtures/m8_state_naive.bin`)

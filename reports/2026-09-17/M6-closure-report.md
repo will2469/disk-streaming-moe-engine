@@ -111,7 +111,7 @@ Seluruh komponen pendukung telah ter-commit dan terkunci secara kriptografis:
 | :-------------------------------------- | :-------------------------------------------------------------------- | :------------------: |
 | `src/engine/quantize.mojo`              | Engine kuantisasi Mojo (F11a, RNE, group packing, framing)            | Teruji & tervalidasi |
 | `src/engine/dequant.mojo`               | Kernel dekuantisasi SIMD Mojo (vectorized FP16 $\to$ FP32 $\to$ BF16) | Teruji & tervalidasi |
-| `src/tools/quantize_cli.mojo`           | CLI tool `kimo quantize` & subcommand handler                         | Teruji & tervalidasi |
+| `src/tools/quantize_cli.mojo`           | CLI tool `dismoen quantize` & subcommand handler                         | Teruji & tervalidasi |
 | `tools/oracle/oracle_quant.py`          | Reference oracle kuantisasi PyTorch & verifikator Q-domain            | Teruji & tervalidasi |
 | `tools/oracle/oracle_ppl.py`            | Runner evaluasi PPL & argmax agreement global                         | Teruji & tervalidasi |
 | `tools/fixtures/m6_ppl_corpus.json`     | Korpus teks terstandar 100 dokumen $\times$ 256 token ID              |   Terkunci SHA-256   |
