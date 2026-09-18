@@ -58,3 +58,9 @@ test-m10:
 
 test-m10-w1:
 	pixi run test-m10-w1
+
+test-m10-w2:
+	pixi run test-m10-w2
+
+test-m10-w3:
+	pixi run test-m10-w3

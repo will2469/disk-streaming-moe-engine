@@ -29,7 +29,7 @@ from core.security_port import (
     validate_disk_space_guard,
     validate_memory_budget_port,
     validate_vocab_size_port,
-    verify_models_lock_port_manifest,
+    verify_models_lock_manifest,
 )
 from format.file_io import read_small_file
 from format.format_detector import (
@@ -313,12 +313,22 @@ def cmd_forward(args: List[String]) raises:
     var quantization = String("none")
     var run_id = String("")
     var timing_profile = False
+    var lock_path_cli = String("")
 
     # 1. Parse Arguments
     var i = 2
     while i < len(args):
         var a = String(args[i])
-        if a == "--model-dir":
+        if a == "--lock" or a == "--models-lock":
+            if i + 1 >= len(args):
+                fail_m9(
+                    M9_ERR_INPUT,
+                    "INPUT_ERROR",
+                    "missing argument for --lock",
+                )
+            lock_path_cli = String(args[i + 1])
+            i += 2
+        elif a == "--model-dir":
             if i + 1 >= len(args):
                 fail_m9(
                     M9_ERR_INPUT,
@@ -617,10 +627,16 @@ def cmd_forward(args: List[String]) raises:
             fail_m9(M9_ERR_IO, "INSUFFICIENT_DISK_SPACE", String(e))
 
     if not is_gguf and cfg.vocab_size == 248320:
-        var lock_path = "models.lock.port.json"
+        var lock_path = lock_path_cli
+        if lock_path.byte_length() == 0:
+            lock_path = "models.lock.json"
+            if get_file_size(lock_path) <= 0:
+                var cand_lock = String(model_dir_canon, "/models.lock.json")
+                if get_file_size(cand_lock) > 0:
+                    lock_path = cand_lock
         if get_file_size(lock_path) > 0:
             try:
-                verify_models_lock_port_manifest(model_dir_canon, lock_path)
+                verify_models_lock_manifest(model_dir_canon, lock_path)
             except e:
                 fail_m9(M9_ERR_INPUT, "MODEL_LOCK_TAMPER_DETECTED", String(e))
 

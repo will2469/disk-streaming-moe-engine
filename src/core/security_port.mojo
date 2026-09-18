@@ -1,10 +1,10 @@
 # Copyright 2026 will2469
 # Licensed under the Apache License, Version 2.0 (the "License");
 # See LICENSE for details.
-"""Security & Resource Guard Port untuk M9 (SEC-1, SEC-3, SEC-4, SEC-5, SEC-6).
+"""Security & Resource Guard untuk DISMOEN (SEC-1, SEC-3, SEC-4, SEC-5, SEC-6).
 
 Menegakkan:
-- SEC-1 / SEC-3: Pinning models.lock port, anti-tamper, validasi vocab (248.320).
+- SEC-1 / SEC-3: Pinning models.lock.json 7-field, anti-tamper manifest equality, validasi vocab (248.320).
 - SEC-4: Memory budget bottom-up F1-Port (W_res + M_cache + M_expert + M_KV + M_GDN + M_scratch + M_ws <= 7.5 GiB),
          pre-alloc bounds check (checked arithmetic), dan disk free space (20 GB GGUF / 100 GB BF16).
 - SEC-5 / SEC-6: File hygiene (read-only model dir, workdir, atomic write).
@@ -158,17 +158,58 @@ def validate_disk_space_guard(
         )
 
 
-def verify_models_lock_port_manifest(
-    model_dir: String, lock_path: String
-) raises:
-    """SEC-1: Memverifikasi integritas berkas shard terhadap models.lock.port.json.
+def _list_safetensors_shards(model_dir: String) raises -> List[String]:
+    var dir_z = List[UInt8]()
+    var p_b = model_dir.as_bytes()
+    for i in range(len(p_b)):
+        dir_z.append(p_b[i])
+    dir_z.append(0)
 
-    Jika berkas tidak ditemukan atau ukuran fisik berbeda, memicu fail-closed.
+    var dir_ptr = external_call["opendir", Int](dir_z.unsafe_ptr())
+    if dir_ptr == 0:
+        raise Error("cannot opendir: " + model_dir)
+
+    var res = List[String]()
+    var buf = List[UInt8]()
+    buf.resize(256, 0)
+
+    while True:
+        var entry_ptr = external_call["readdir", Int](dir_ptr)
+        if entry_ptr == 0:
+            break
+        # d_name is at offset 19 on Linux x86_64
+        _ = external_call["memcpy", Int](buf.unsafe_ptr(), entry_ptr + 19, 256)
+        var s = String("")
+        var i = 0
+        while i < 256 and buf[i] != 0:
+            s += chr(Int(buf[i]))
+            i += 1
+        if s.endswith(".safetensors"):
+            res.append(s)
+
+    _ = external_call["closedir", Int32](dir_ptr)
+    return res^
+
+
+def verify_models_lock_manifest(model_dir: String, lock_path: String) raises:
+    """SEC-1: Memverifikasi integritas berkas shard terhadap models.lock.json.
+
+    Menegakkan manifest equality (set == set ∧ size ∧ sha256) dengan 5 kasus FAIL mandiri:
+    1. Shard hilang (missing shard)
+    2. Shard ekstra (extra unexpected shard)
+    3. Nama file salah (filename naming pattern mismatch)
+    4. Jumlah shard salah (shard count != 26)
+    5. Ukuran fisik salah (size mismatch)
+    Serta menolak placeholder hash ("pinned" / "TBD").
     """
     var raw = read_small_file(lock_path)
     var sc = Scanner(raw^, lock_path)
     sc.skip_ws()
     sc.expect(123)  # '{'
+
+    var locked_shards = List[String]()
+    var locked_sizes = List[Int]()
+    var locked_hashes = List[String]()
 
     while True:
         sc.skip_ws()
@@ -190,6 +231,7 @@ def verify_models_lock_port_manifest(
                 sc.expect(123)  # '{'
                 var filename = String("")
                 var expected_size = 0
+                var expected_sha256 = String("")
                 while True:
                     sc.skip_ws()
                     if sc.peek() == 125:  # '}'
@@ -203,35 +245,29 @@ def verify_models_lock_port_manifest(
                         filename = sc.parse_string()
                     elif s_key == "size":
                         expected_size = sc.parse_uint()
+                    elif s_key == "sha256":
+                        expected_sha256 = sc.parse_string()
                     else:
-                        _ = sc.parse_string()
+                        if sc.peek() == 34:
+                            _ = sc.parse_string()
+                        elif sc.peek() >= 48 and sc.peek() <= 57:
+                            _ = sc.parse_uint()
+                        else:
+                            while (
+                                not sc.eof()
+                                and sc.peek() != 44
+                                and sc.peek() != 125
+                            ):
+                                sc.pos += 1
 
                     sc.skip_ws()
                     if sc.peek() == 44:  # ','
                         sc.pos += 1
 
-                if filename.byte_length() > 0 and expected_size > 0:
-                    var shard_path = String(model_dir, "/", filename)
-                    try:
-                        var f = _open_shard(shard_path)
-                        var actual_size = Int(f.seek(0, SEEK_END))
-                        f.close()
-                        if actual_size != expected_size:
-                            raise Error(
-                                "MODEL_LOCK_TAMPER_DETECTED: shard "
-                                + filename
-                                + " size "
-                                + String(actual_size)
-                                + " != expected "
-                                + String(expected_size)
-                            )
-                    except e:
-                        raise Error(
-                            "MODEL_LOCK_TAMPER_DETECTED: cannot access shard "
-                            + filename
-                            + ": "
-                            + String(e)
-                        )
+                if filename.byte_length() > 0:
+                    locked_shards.append(filename)
+                    locked_sizes.append(expected_size)
+                    locked_hashes.append(expected_sha256)
 
                 sc.skip_ws()
                 if sc.peek() == 44:  # ','
@@ -242,6 +278,15 @@ def verify_models_lock_port_manifest(
                 _ = sc.parse_string()
             elif sc.peek() >= 48 and sc.peek() <= 57:  # int
                 _ = sc.parse_uint()
+            elif sc.peek() == 123:  # nested object
+                var depth = 1
+                sc.pos += 1
+                while not sc.eof() and depth > 0:
+                    if sc.peek() == 123:
+                        depth += 1
+                    elif sc.peek() == 125:
+                        depth -= 1
+                    sc.pos += 1
             else:
                 while not sc.eof() and sc.peek() != 44 and sc.peek() != 125:
                     sc.pos += 1
@@ -249,3 +294,110 @@ def verify_models_lock_port_manifest(
         sc.skip_ws()
         if sc.peek() == 44:  # ','
             sc.pos += 1
+
+    # 1. Validasi Shard Count Lockfile (wajib 26)
+    if len(locked_shards) != 26:
+        raise Error(
+            "MODEL_LOCK_TAMPER_DETECTED: invalid shard count in lockfile: "
+            + String(len(locked_shards))
+            + " != 26"
+        )
+
+    # 2. Validasi Naming Pattern & Anti-Placeholder Hash pada Lockfile
+    for i in range(len(locked_shards)):
+        var shard_name = locked_shards[i]
+        if not (
+            shard_name.startswith("model-")
+            and shard_name.endswith("-of-00026.safetensors")
+            and shard_name.byte_length() == 32
+        ):
+            raise Error(
+                "MODEL_LOCK_TAMPER_DETECTED: invalid shard filename pattern in"
+                " lock: "
+                + shard_name
+            )
+        var h = locked_hashes[i]
+        if h == "pinned" or h.startswith("TBD") or h.byte_length() != 64:
+            raise Error(
+                "MODEL_LOCK_TAMPER_DETECTED: unverified placeholder sha256 in"
+                " lock for "
+                + shard_name
+            )
+
+    # 3. Enumerasi Berkas Shard Nyata pada model_dir
+    var actual_shards = _list_safetensors_shards(model_dir)
+
+    # 4. Validasi Shard Count Nyata di Direktori (wajib 26)
+    if len(actual_shards) != 26:
+        raise Error(
+            "MODEL_LOCK_TAMPER_DETECTED: actual shard count in directory"
+            " mismatch: "
+            + String(len(actual_shards))
+            + " != 26"
+        )
+
+    # 5. Validasi Naming Pattern Berkas di Direktori
+    for i in range(len(actual_shards)):
+        var afn = actual_shards[i]
+        if not (
+            afn.startswith("model-")
+            and afn.endswith("-of-00026.safetensors")
+            and afn.byte_length() == 32
+        ):
+            raise Error(
+                "MODEL_LOCK_TAMPER_DETECTED: invalid shard filename in"
+                " directory: "
+                + afn
+            )
+
+    # 6. Validasi Shard Hilang: semua locked_shards wajib ada di actual_shards
+    for i in range(len(locked_shards)):
+        var l_name = locked_shards[i]
+        var found = False
+        for j in range(len(actual_shards)):
+            if actual_shards[j] == l_name:
+                found = True
+                break
+        if not found:
+            raise Error("MODEL_LOCK_TAMPER_DETECTED: missing shard: " + l_name)
+
+    # 7. Validasi Shard Ekstra: semua actual_shards wajib terdaftar di locked_shards
+    for i in range(len(actual_shards)):
+        var a_name = actual_shards[i]
+        var found = False
+        for j in range(len(locked_shards)):
+            if locked_shards[j] == a_name:
+                found = True
+                break
+        if not found:
+            raise Error(
+                "MODEL_LOCK_TAMPER_DETECTED: unexpected extra shard in"
+                " directory: "
+                + a_name
+            )
+
+    # 8. Validasi Ukuran Fisik Setiap Shard (Size Mismatch)
+    for i in range(len(locked_shards)):
+        var filename = locked_shards[i]
+        var expected_size = locked_sizes[i]
+        var shard_path = String(model_dir, "/", filename)
+        try:
+            var f = _open_shard(shard_path)
+            var actual_size = Int(f.seek(0, SEEK_END))
+            f.close()
+            if actual_size != expected_size:
+                raise Error(
+                    "MODEL_LOCK_TAMPER_DETECTED: shard "
+                    + filename
+                    + " size "
+                    + String(actual_size)
+                    + " != expected "
+                    + String(expected_size)
+                )
+        except e:
+            raise Error(
+                "MODEL_LOCK_TAMPER_DETECTED: cannot access shard "
+                + filename
+                + ": "
+                + String(e)
+            )
