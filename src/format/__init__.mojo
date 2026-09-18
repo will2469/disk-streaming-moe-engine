@@ -56,3 +56,28 @@ from format.types import (
 from format.gdns import read_gdns_v1, write_gdns_v1
 from format.kmss import KmssMetadata, read_kmss_v1, write_kmss_v1
 from format.sha256 import sha256
+from format.format_detector import (
+    FORMAT_GGUF,
+    FORMAT_SAFETENSORS,
+    FORMAT_UNKNOWN,
+    detect_file_format,
+    format_to_string,
+)
+from format.gguf import (
+    GGML_TYPE_BF16,
+    GGML_TYPE_F16,
+    GGML_TYPE_F32,
+    GGML_TYPE_IQ3_S,
+    GGML_TYPE_IQ3_XXS,
+    GGML_TYPE_Q3_K,
+    GGML_TYPE_Q4_K,
+    GGML_TYPE_Q8_0,
+    GGUFIndex,
+    GGUFTensorInfo,
+    dequantize_q3_k,
+    dequantize_q4_k,
+    dequantize_q8_0,
+    ggml_type_to_string,
+    parse_gguf_index,
+    stream_gguf_tensor_f32,
+)

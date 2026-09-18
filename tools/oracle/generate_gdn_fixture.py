@@ -166,8 +166,7 @@ def main():
     save_file(weights, args.output)
     size_mb = os.path.getsize(args.output) / (1024 * 1024)
     print(
-        f"Generated weights: {args.output} ({size_mb:.3f} MB, "
-        f"{len(weights)} tensors)"
+        f"Generated weights: {args.output} ({size_mb:.3f} MB, {len(weights)} tensors)"
     )
 
     # 2. Bangkitkan tokens JSON bila diminta
@@ -187,7 +186,7 @@ def main():
         with open(args.tokens_output, "w", encoding="utf-8") as f:
             json.dump(token_payload, f, indent=2)
             f.write("\n")
-        print(f"Generated tokens: {args.tokens_output} " f"({len(tokens_list)} tokens)")
+        print(f"Generated tokens: {args.tokens_output} ({len(tokens_list)} tokens)")
 
 
 if __name__ == "__main__":

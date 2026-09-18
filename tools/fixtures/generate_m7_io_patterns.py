@@ -80,7 +80,7 @@ def generate_expert_miss_offsets(file_size: int, seed: int = 42) -> list:
     for i in range(len(intervals) - 1):
         assert (
             intervals[i][1] <= intervals[i + 1][0]
-        ), f"Overlap terdeteksi antara {intervals[i]} dan {intervals[i+1]}"
+        ), f"Overlap terdeteksi antara {intervals[i]} dan {intervals[i + 1]}"
 
     return offsets
 
@@ -127,7 +127,7 @@ def main():
                 "offsets": expert_offsets,
                 "offsets_sha256": expert_sha,
                 "description": (
-                    "Read 10 MB blocks jumping between offsets (QD sweep) for" " G-M7-5"
+                    "Read 10 MB blocks jumping between offsets (QD sweep) for G-M7-5"
                 ),
             },
         ],

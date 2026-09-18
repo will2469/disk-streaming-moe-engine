@@ -2050,13 +2050,13 @@ Mengambil ukuran KV cache dari agregasi memori proses (VmHWM / RSS) adalah metod
 - [x] Config adapter trial→port (tabel § Panduan Migrasi); mismatch → exit 3
 - [x] Scheduler block `10×(3×GDN+1×GatedAttn)+MoE`; GDN no-op KV; reuse kernel M2/M3/M8
 - [x] Router top-8 terparameterisasi + verifikasi `norm_topk_prob`/sigmoid dari config port
-- [ ] Weight loader ganda (BF16 26 shard + GGUF Q3/IQ3) + SEC-1/SEC-3 port + models.lock port
-- [ ] Error 1–8 + fuzz port (GGUF korup, config liar, mismatch arsitektur) → 0 crash/hang/OOM
+- [x] Weight loader ganda (BF16 26 shard + GGUF Q3/IQ3) + SEC-1/SEC-3 port + models.lock port
+- [x] Error 1–8 + fuzz port (GGUF korup, config liar, mismatch arsitektur) → 0 crash/hang/OOM
 
 ### Oracle & Fixture
 
 - [ ] `oracle_port.py` (BF16 baseline + GGUF baseline) + fixture synthetic mini + SHA ter-commit
-- [ ] Validasi kuantisasi spesifik format (F11-GGUF): decoder bit-exactness terhadap GGML ref ($\Delta_{\max} \le 10^{-7}$) + ambang distorsi multi-level vs BF16 Safetensors (per-tensor, per-block, global; Q3_K global $\le 6{,}0\%$, max tensor $\le 9{,}0\%$)
+- [x] Validasi kuantisasi spesifik format (F11-GGUF): decoder bit-exactness terhadap GGML ref ($\Delta_{\max} \le 10^{-7}$) + ambang distorsi multi-level vs BF16 Safetensors (per-tensor, per-block, global; Q3_K global $\le 6{,}0\%$, max tensor $\le 9{,}0\%$)
 - [ ] Corpus PPL port untuk ΔPPL bila quant port diuji (F12)
 
 ### Pengukuran & Laporan

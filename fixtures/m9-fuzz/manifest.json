@@ -1,0 +1,379 @@
+{
+  "description": "M9-W3 Fuzzing Corpus (27 Adversarial Test Cases)",
+  "cases_count": 27,
+  "cases": [
+    {
+      "id": "FUZZ_01_CORRUPT_MAGIC",
+      "description": "GGUF magic diganti 'XXXX' -> ditolak di format detector",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/corrupt_magic.gguf",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 5,
+      "want_err": "FORMAT_ERROR"
+    },
+    {
+      "id": "FUZZ_02_UNSUPPORTED_VERSION",
+      "description": "GGUF version 99 tidak didukung",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/unsupported_version.gguf",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 5,
+      "want_err": "unsupported GGUF version"
+    },
+    {
+      "id": "FUZZ_03_TRUNCATED_HEADER",
+      "description": "GGUF file terpotong hanya 12 bytes",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/truncated_header.gguf",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 1,
+      "want_err": "GGUF_FILE_CORRUPT"
+    },
+    {
+      "id": "FUZZ_04_ZERO_BYTE",
+      "description": "File kosong 0 byte",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/zero_byte.gguf",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 5,
+      "want_err": "too short"
+    },
+    {
+      "id": "FUZZ_05_F11B_SIZE_MISMATCH",
+      "description": "GGUF file kelebihan 1 byte -> F11b delta != 0",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/f11b_size_mismatch.gguf",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 1,
+      "want_err": "GGUF_FILE_CORRUPT"
+    },
+    {
+      "id": "FUZZ_06_TRUNCATED_DATA",
+      "description": "GGUF data terpotong 500 bytes dari ukuran analitik",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/truncated_data.gguf",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 1,
+      "want_err": "GGUF_FILE_CORRUPT"
+    },
+    {
+      "id": "FUZZ_07_WILD_VOCAB_CONFIG",
+      "description": "Vocab liar 10M memicu CONFIG_MISMATCH",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/wild_vocab_config.json",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 3,
+      "want_err": "CONFIG_MISMATCH"
+    },
+    {
+      "id": "FUZZ_08_WILD_HIDDEN_CONFIG",
+      "description": "Dimensi tidak cocok memicu CONFIG_MISMATCH",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/wild_hidden_config.json",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 3,
+      "want_err": "CONFIG_MISMATCH"
+    },
+    {
+      "id": "FUZZ_09_ARCH_MISMATCH_TRIAL_TO_PORT",
+      "description": "Model trial dijalankan pada flag --architecture qwen3.6",
+      "args": [
+        "--model-dir",
+        "fixtures/m9_mismatch_layers.json",
+        "--architecture",
+        "qwen3.6",
+        "--check-config-only"
+      ],
+      "want_exit": 3,
+      "want_err": "CONFIG_MISMATCH"
+    },
+    {
+      "id": "FUZZ_10_EMPTY_TOKENS",
+      "description": "Array tokens kosong",
+      "args": [
+        "--model-dir",
+        "fixtures/m9_port_config_mini.json",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/empty_tokens.json"
+      ],
+      "want_exit": 1,
+      "want_err": "INPUT_ERROR"
+    },
+    {
+      "id": "FUZZ_11_MISSING_ARCH_FLAG",
+      "description": "Flag --architecture wajib tidak disertakan",
+      "args": [
+        "--model-dir",
+        "fixtures/m9_port_config_mini.json",
+        "--check-config-only"
+      ],
+      "want_exit": 2,
+      "want_err": "MISSING_ARCHITECTURE"
+    },
+    {
+      "id": "FUZZ_12_INVALID_ARCH_VALUE",
+      "description": "Nilai arsitektur tidak valid (--architecture llama)",
+      "args": [
+        "--model-dir",
+        "fixtures/m9_port_config_mini.json",
+        "--architecture",
+        "llama",
+        "--check-config-only"
+      ],
+      "want_exit": 2,
+      "want_err": "UNSUPPORTED_ARCHITECTURE"
+    },
+    {
+      "id": "FUZZ_13_MUTATION_CORRUPT_OFFSET_237",
+      "description": "Mutasi byte acak pada offset 237",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/mutation_13.gguf",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 1,
+      "want_err": "GGUF"
+    },
+    {
+      "id": "FUZZ_14_MUTATION_CORRUPT_OFFSET_254",
+      "description": "Mutasi byte acak pada offset 254",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/mutation_14.gguf",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 1,
+      "want_err": "GGUF"
+    },
+    {
+      "id": "FUZZ_15_MUTATION_CORRUPT_OFFSET_271",
+      "description": "Mutasi byte acak pada offset 271",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/mutation_15.gguf",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 1,
+      "want_err": "GGUF"
+    },
+    {
+      "id": "FUZZ_16_MUTATION_CORRUPT_OFFSET_288",
+      "description": "Mutasi byte acak pada offset 288",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/mutation_16.gguf",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 1,
+      "want_err": "GGUF"
+    },
+    {
+      "id": "FUZZ_17_MUTATION_CORRUPT_OFFSET_305",
+      "description": "Mutasi byte acak pada offset 305",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/mutation_17.gguf",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 1,
+      "want_err": "GGUF"
+    },
+    {
+      "id": "FUZZ_18_MUTATION_CORRUPT_OFFSET_322",
+      "description": "Mutasi byte acak pada offset 322",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/mutation_18.gguf",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 1,
+      "want_err": "GGUF"
+    },
+    {
+      "id": "FUZZ_19_MUTATION_CORRUPT_OFFSET_339",
+      "description": "Mutasi byte acak pada offset 339",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/mutation_19.gguf",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 1,
+      "want_err": "GGUF"
+    },
+    {
+      "id": "FUZZ_20_MUTATION_CORRUPT_OFFSET_356",
+      "description": "Mutasi byte acak pada offset 356",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/mutation_20.gguf",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 1,
+      "want_err": "GGUF"
+    },
+    {
+      "id": "FUZZ_21_MUTATION_CORRUPT_OFFSET_373",
+      "description": "Mutasi byte acak pada offset 373",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/mutation_21.gguf",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 1,
+      "want_err": "GGUF"
+    },
+    {
+      "id": "FUZZ_22_MUTATION_CORRUPT_OFFSET_390",
+      "description": "Mutasi byte acak pada offset 390",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/mutation_22.gguf",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 1,
+      "want_err": "GGUF"
+    },
+    {
+      "id": "FUZZ_23_MUTATION_CORRUPT_OFFSET_407",
+      "description": "Mutasi byte acak pada offset 407",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/mutation_23.gguf",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 1,
+      "want_err": "GGUF"
+    },
+    {
+      "id": "FUZZ_24_MUTATION_CORRUPT_OFFSET_424",
+      "description": "Mutasi byte acak pada offset 424",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/mutation_24.gguf",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 1,
+      "want_err": "GGUF"
+    },
+    {
+      "id": "FUZZ_25_MUTATION_CORRUPT_OFFSET_441",
+      "description": "Mutasi byte acak pada offset 441",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/mutation_25.gguf",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 1,
+      "want_err": "GGUF"
+    },
+    {
+      "id": "FUZZ_26_MUTATION_CORRUPT_OFFSET_458",
+      "description": "Mutasi byte acak pada offset 458",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/mutation_26.gguf",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 1,
+      "want_err": "GGUF"
+    },
+    {
+      "id": "FUZZ_27_MUTATION_CORRUPT_OFFSET_475",
+      "description": "Mutasi byte acak pada offset 475",
+      "args": [
+        "--model-dir",
+        "/home/will/Monorepo/disk-streaming-moe-engine/fixtures/m9-fuzz/mutation_27.gguf",
+        "--architecture",
+        "qwen3.6",
+        "--tokens",
+        "fixtures/m9_port_tokens.json"
+      ],
+      "want_exit": 1,
+      "want_err": "GGUF"
+    }
+  ]
+}

@@ -665,7 +665,7 @@ def main():
         io_bin, model_file, args.io_fixture, quick_mode=args.quick
     )
     print(f"   >> BW_seq (Trunk QD1 p50): {storage_io_res['bw_seq_gb_s_p50']:.3f} GB/s")
-    print(f"   >> Degradasi Sustained D_sus: {storage_io_res['d_sus']*100:.1f}%")
+    print(f"   >> Degradasi Sustained D_sus: {storage_io_res['d_sus'] * 100:.1f}%")
     print(f"   >> Operational Knee q*: {storage_io_res['q_star']}")
 
     # 3. 4-bit Decode Performance Baseline (G-M7-2 & G-M7-3)
@@ -772,8 +772,8 @@ def main():
                 "rho_b_p50": c_stats["cache"]["rho_b_p50"],
             }
             print(
-                f"   >> Core c={c:2d}: t_tok={t_tok_p50*1000:.3f} ms, "
-                f"throughput={tok_s_p50:.1f} tok/s, HR={hr_p50*100:.1f}%"
+                f"   >> Core c={c:2d}: t_tok={t_tok_p50 * 1000:.3f} ms, "
+                f"throughput={tok_s_p50:.1f} tok/s, HR={hr_p50 * 100:.1f}%"
             )
 
     finally:
@@ -898,8 +898,7 @@ def main():
     c_star_val = f16_fit["knee_operating_point_c_star"]
     r_star_val = f16_fit["safe_ratio_r_star"]
     print(
-        f"Operating Point Trial Ter-commit: c* = {c_star_val} "
-        f"(r* = {r_star_val:.3f})"
+        f"Operating Point Trial Ter-commit: c* = {c_star_val} (r* = {r_star_val:.3f})"
     )
     p50_tok = stats["tokens_per_sec"]["p50"]
     print(f"Throughput 4-bit Decode: {p50_tok:.1f} tok/s (Floor >= 2.0 tok/s)")
@@ -928,12 +927,14 @@ def _generate_markdown_report(md_path: Path, data: dict):
     p_fit = f16["p_parallel_fraction"]
     b_fit = f16["beta_overhead"]
     e_c_pct = f16["max_e_t_core"] * 100
-    rho_b_str = f"{data['f13_model_calibration']['rho_b_byte_level_measured']*100:.1f}%"
-    hr_diag_str = f"{data['f13_model_calibration']['hit_rate_diagnostic']*100:.1f}%"
-    e_t_str = f"{data['f13_model_calibration']['e_T_prediction_error']*100:.2f}%"
+    rho_b_str = (
+        f"{data['f13_model_calibration']['rho_b_byte_level_measured'] * 100:.1f}%"
+    )
+    hr_diag_str = f"{data['f13_model_calibration']['hit_rate_diagnostic'] * 100:.1f}%"
+    e_t_str = f"{data['f13_model_calibration']['e_T_prediction_error'] * 100:.2f}%"
     bw_seq_p50 = f"{s_io['bw_seq_gb_s_p50']:.3f} GB/s"
     bw_seq_p95 = f"{s_io['bw_seq_gb_s_p95']:.3f} GB/s"
-    d_sus_str = f"{s_io['d_sus']*100:.1f}%"
+    d_sus_str = f"{s_io['d_sus'] * 100:.1f}%"
     tok_s_p50 = f"{stats['tokens_per_sec']['p50']:.1f} tok/s"
     hwm_gib = f"{stats['vmhwm_bytes']['p50_gib']:.2f} GiB"
     dec_sec = f"{stats['decode_time_sec']['p50']:.4f} s"

@@ -155,8 +155,7 @@ def main():
             " (independent S[0..29])"
         )
         print(
-            f"Gated Attn Mixers:  {sched['attn_layer_count']} layers"
-            " (KV cache [0..9])"
+            f"Gated Attn Mixers:  {sched['attn_layer_count']} layers (KV cache [0..9])"
         )
         state_bytes = layout["state_payload_bytes"]
         state_mib = layout["state_payload_mib"]

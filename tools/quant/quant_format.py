@@ -135,8 +135,7 @@ def parse_quant_header(raw: bytes) -> dict[str, Any]:
     g_sz = q_spec.get("group_size", 0)
     if g_sz not in QUANT_ALLOWED_GROUP_SIZES:
         raise ValueError(
-            f"group_size must be one of {sorted(QUANT_ALLOWED_GROUP_SIZES)}, "
-            f"got {g_sz}"
+            f"group_size must be one of {sorted(QUANT_ALLOWED_GROUP_SIZES)}, got {g_sz}"
         )
     return data
 
@@ -200,8 +199,7 @@ def read_tensor_record(
     g_sz = meta.get("group_size", 0)
     if g_sz not in QUANT_ALLOWED_GROUP_SIZES:
         raise ValueError(
-            f"group_size must be one of {sorted(QUANT_ALLOWED_GROUP_SIZES)}, "
-            f"got {g_sz}"
+            f"group_size must be one of {sorted(QUANT_ALLOWED_GROUP_SIZES)}, got {g_sz}"
         )
     num_elem_check = 1
     for d in meta["shape"]:

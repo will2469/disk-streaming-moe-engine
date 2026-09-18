@@ -75,7 +75,7 @@ def run_random100_certification() -> int:
     kimo_bin = str(REPO_ROOT / "kimo")
     if not os.path.exists(kimo_bin):
         sys.stderr.write(
-            "ERROR: kimo binary tidak ditemukan." " Jalankan pixi run build!\n"
+            "ERROR: kimo binary tidak ditemukan. Jalankan pixi run build!\n"
         )
         return 1
 
@@ -84,9 +84,9 @@ def run_random100_certification() -> int:
     asym_weights_path = str(fixtures_dir / "m8_asym_weights.safetensors")
 
     print("=" * 72)
-    print("MILESTONE M8 WAVE 6: GATE G-M8-1" " RANDOM 100 SEQUENCES CERTIFICATION")
+    print("MILESTONE M8 WAVE 6: GATE G-M8-1 RANDOM 100 SEQUENCES CERTIFICATION")
     print("=" * 72)
-    print("Evaluating 100 random deterministic" " sequences under --threads 1...")
+    print("Evaluating 100 random deterministic sequences under --threads 1...")
 
     # Memuat bobot oracle sekali di memori
     w_sym = load_or_synthesize_weights(sym_weights_path, 2, 32, 32, 512, 42)
@@ -247,9 +247,7 @@ def run_random100_certification() -> int:
             " $\\epsilon_{\\text{rel}} \\le 10^{-4}$\n"
         )
         f.write(
-            "- **Konfigurasi**:"
-            " `--threads 1` (single-threaded invariant),"
-            " seed 42\n"
+            "- **Konfigurasi**: `--threads 1` (single-threaded invariant), seed 42\n"
         )
         f.write(f"- **Total Sekuens**: {total_tested}\n")
         f.write(f"- **Hasil**: {total_passed}/100 PASS\n")
@@ -285,8 +283,7 @@ def run_random100_certification() -> int:
             )
         else:
             f.write(
-                f"**GATE G-M8-1 VERDICT: [FAIL]**"
-                f" — {len(failed_cases)} kasus gagal.\n"
+                f"**GATE G-M8-1 VERDICT: [FAIL]** — {len(failed_cases)} kasus gagal.\n"
             )
 
     print(f"Laporan tersimpan di: {report_path}")

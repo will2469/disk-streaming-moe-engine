@@ -174,8 +174,7 @@ def write_gdns_v1(
 
     if len(payload) != state_bytes:
         sys.stderr.write(
-            f"ERROR: ukuran payload ({len(payload)}) != state_bytes "
-            f"({state_bytes})\n"
+            f"ERROR: ukuran payload ({len(payload)}) != state_bytes ({state_bytes})\n"
         )
         sys.exit(6)
 

@@ -530,9 +530,7 @@ def main():
             f"Streaming Pread BW   : {bw_pread_p50:.2f} GB/s "
             f"(pread time: {pread_sec_p50:.3f} s, floor: >= 10 GB/s)"
         )
-    print(
-        f"Pipeline BW (p50)    : {bw_p50_gb_s:.2f} GB/s " "(compute-bound prefill s=16)"
-    )
+    print(f"Pipeline BW (p50)    : {bw_p50_gb_s:.2f} GB/s (compute-bound prefill s=16)")
     print("-" * 72)
     print("PER-PHASE TIMING BREAKDOWN (p50):")
     for phase_name, p_sec in stats["phases_p50"].items():

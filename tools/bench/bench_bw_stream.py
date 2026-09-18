@@ -215,8 +215,7 @@ def main():
     print("-" * 72)
     print(f"Median Copy Time   : {results['median_time_sec'] * 1e3:.2f} ms")
     print(
-        f"Read-Equiv BW      : {med_bw:.2f} GB/s "
-        f"(Floor Gate: >= {floor_bw:.1f} GB/s)"
+        f"Read-Equiv BW      : {med_bw:.2f} GB/s (Floor Gate: >= {floor_bw:.1f} GB/s)"
     )
     print(f"Bi-Directional BW  : {results['measured_bidi_bw_gb_s']['median']:.2f} GB/s")
     print(f"Gate G-M5-6 Verdict: {verdict}")
