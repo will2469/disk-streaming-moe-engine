@@ -231,7 +231,11 @@ def load_layer_router_weights(
             + String(layer_idx)
             + "}"
         )
-    var tensor_name = "model.layers." + String(layer_idx) + ".mlp.gate.weight"
+    var pfx_lm = (
+        "model.language_model.layers." + String(layer_idx) + ".mlp.gate.weight"
+    )
+    var pfx_legacy = "model.layers." + String(layer_idx) + ".mlp.gate.weight"
+    var tensor_name = pfx_lm if pfx_lm in weight_map else pfx_legacy
     if tensor_name not in weight_map:
         raise Error(
             '{"error_type":"WEIGHT_LOAD_FAILED","detail":"required router gate'

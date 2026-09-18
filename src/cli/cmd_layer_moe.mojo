@@ -149,7 +149,11 @@ def run_layer_moe(
             layer_val,
         )
 
-    var r_gate = "model.layers." + String(layer_val) + ".mlp.gate.weight"
+    var pfx_lm = "model.language_model.layers." + String(layer_val) + ".mlp."
+    var pfx_legacy = "model.layers." + String(layer_val) + ".mlp."
+    var pfx = pfx_lm if (pfx_lm + "gate.weight") in weight_map else pfx_legacy
+
+    var r_gate = pfx + "gate.weight"
     if r_gate not in weight_map:
         fail_layer(
             "WEIGHT_LOAD_FAILED",
@@ -158,13 +162,11 @@ def run_layer_moe(
             layer_val,
         )
 
-    var sh_pfx = "model.layers." + String(layer_val) + ".mlp.shared_expert."
+    var sh_pfx = pfx + "shared_expert."
     var sh_gate_proj = sh_pfx + "gate_proj.weight"
     var sh_up_proj = sh_pfx + "up_proj.weight"
     var sh_down_proj = sh_pfx + "down_proj.weight"
-    var sh_gate = (
-        "model.layers." + String(layer_val) + ".mlp.shared_expert_gate.weight"
-    )
+    var sh_gate = pfx + "shared_expert_gate.weight"
 
     if (
         sh_gate_proj not in weight_map
@@ -186,23 +188,24 @@ def run_layer_moe(
         req_list.append(sh_up_proj)
         req_list.append(sh_down_proj)
         req_list.append(sh_gate)
-        for e in range(cfg.num_experts):
-            var exp_pfx = (
-                "model.layers."
-                + String(layer_val)
-                + ".mlp.experts."
-                + String(e)
-                + "."
-            )
-            var eg = exp_pfx + "gate_proj.weight"
-            var eu = exp_pfx + "up_proj.weight"
-            var ed = exp_pfx + "down_proj.weight"
-            if eg in weight_map:
-                req_list.append(eg)
-            if eu in weight_map:
-                req_list.append(eu)
-            if ed in weight_map:
-                req_list.append(ed)
+
+        var fused_gu = pfx + "experts.gate_up_proj"
+        var fused_d = pfx + "experts.down_proj"
+        if fused_gu in weight_map and fused_d in weight_map:
+            req_list.append(fused_gu)
+            req_list.append(fused_d)
+        else:
+            for e in range(cfg.num_experts):
+                var exp_pfx = pfx + "experts." + String(e) + "."
+                var eg = exp_pfx + "gate_proj.weight"
+                var eu = exp_pfx + "up_proj.weight"
+                var ed = exp_pfx + "down_proj.weight"
+                if eg in weight_map:
+                    req_list.append(eg)
+                if eu in weight_map:
+                    req_list.append(eu)
+                if ed in weight_map:
+                    req_list.append(ed)
         validate_shards_coverage(
             supplied_shards, req_list, weight_map, "experts", layer_val
         )

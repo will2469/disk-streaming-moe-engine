@@ -4,7 +4,11 @@
 """Loader bobot MoE expert (routed dan shared) dari safetensors shards."""
 
 from core.config import LoadMemoryTelemetry, ModelConfig
-from core.tensor_loader import ShardHeaderCache, _load_one_tensor_by_name
+from core.tensor_loader import (
+    ShardHeaderCache,
+    _load_one_tensor_by_name,
+    _load_tensor_slice_by_name,
+)
 from layers.swiglu import SwigluWeights
 from std.collections import Dict, List
 
@@ -35,13 +39,51 @@ def load_layer_routed_expert_weights(
             + String(layer_idx)
             + "}"
         )
-    var prefix = (
-        "model.layers."
-        + String(layer_idx)
-        + ".mlp.experts."
-        + String(expert_id)
-        + "."
-    )
+
+    var pfx_lm = "model.language_model.layers." + String(layer_idx) + ".mlp."
+    var pfx_legacy = "model.layers." + String(layer_idx) + ".mlp."
+    var pfx = pfx_lm if (pfx_lm + "gate.weight") in weight_map else pfx_legacy
+
+    var req_fused_gu = pfx + "experts.gate_up_proj"
+    var req_fused_d = pfx + "experts.down_proj"
+
+    if req_fused_gu in weight_map and req_fused_d in weight_map:
+        var hidden = cfg.hidden_size
+        var gu_raw = _load_tensor_slice_by_name(
+            cache,
+            model_root,
+            weight_map[req_fused_gu],
+            req_fused_gu,
+            expert_id,
+            2 * inter_dim,
+            hidden,
+            telemetry,
+        )
+        var gate_elements = inter_dim * hidden
+        var w_gate = List[Float32]()
+        w_gate.reserve(gate_elements)
+        var w_up = List[Float32]()
+        w_up.reserve(gate_elements)
+
+        var p_gu = gu_raw.unsafe_ptr()
+        for i in range(gate_elements):
+            w_gate.append(p_gu[unsafe_offset=i])
+        for i in range(gate_elements):
+            w_up.append(p_gu[unsafe_offset=gate_elements + i])
+
+        var w_down = _load_tensor_slice_by_name(
+            cache,
+            model_root,
+            weight_map[req_fused_d],
+            req_fused_d,
+            expert_id,
+            hidden,
+            inter_dim,
+            telemetry,
+        )
+        return SwigluWeights(w_gate^, w_up^, w_down^, hidden, inter_dim)
+
+    var prefix = pfx + "experts." + String(expert_id) + "."
     var req_gate = prefix + "gate_proj.weight"
     var req_up = prefix + "up_proj.weight"
     var req_down = prefix + "down_proj.weight"
@@ -111,13 +153,16 @@ def load_layer_shared_expert_weights(
             + String(layer_idx)
             + "}"
         )
-    var prefix = "model.layers." + String(layer_idx) + ".mlp.shared_expert."
+
+    var pfx_lm = "model.language_model.layers." + String(layer_idx) + ".mlp."
+    var pfx_legacy = "model.layers." + String(layer_idx) + ".mlp."
+    var pfx = pfx_lm if (pfx_lm + "gate.weight") in weight_map else pfx_legacy
+
+    var prefix = pfx + "shared_expert."
     var req_gate = prefix + "gate_proj.weight"
     var req_up = prefix + "up_proj.weight"
     var req_down = prefix + "down_proj.weight"
-    var req_sh_gate = (
-        "model.layers." + String(layer_idx) + ".mlp.shared_expert_gate.weight"
-    )
+    var req_sh_gate = pfx + "shared_expert_gate.weight"
     if (
         req_gate not in weight_map
         or req_up not in weight_map

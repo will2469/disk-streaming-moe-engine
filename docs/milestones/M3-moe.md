@@ -1,7 +1,7 @@
-# M3 — Satu Layer: MoE (Router Top-4, Shared Sigmoid Gate)
+# M3 — Satu Layer: MoE (Router Top-8, Shared Sigmoid Gate, 256 Experts)
 
 > Proyek: `disk-streaming-moe-engine`. Fase: **Trial**. Index: `../README.md`.
-> **Milestone paling kritis.**
+> **Milestone paling kritis.** Target SSOT: **Qwen3.6-35B-A3B**.
 
 | Field       | Nilai                                                 |
 | ----------- | ----------------------------------------------------- |
@@ -14,13 +14,13 @@
 
 ## Tujuan
 
-Membuktikan router + experts trial benar bit-perilaku: 60 routed (inter 1408, top-4 **tanpa renormalisasi**), shared besar (inter 5632, **sigmoid gate**), SwiGLU.
+Membuktikan router + experts benar bit-perilaku pada arsitektur Qwen3.6-35B-A3B: 256 routed experts (inter 512, top-8 **tanpa renormalisasi**), shared expert (inter 512, **sigmoid gate**), SwiGLU, dengan pemuatan irisan (slice loading) secara streaming dari disk tanpa memuat seluruh 1.5 GiB bobot layer ke RAM.
 
 ## Scope & Rumus (F8)
 
-$$p = \mathrm{softmax}(W_r x) \in \mathbb{R}^{60}\ \text{(fp32)} \tag{F8a}$$
-$$\mathcal{A} = \mathrm{Top\text{-}4}(p)\ \text{TANPA renormalisasi} \tag{F8b}$$
-$$y = \sum_{i\in\mathcal{A}} p_i E_i(x) + \sigma(g_{sh}) E_{sh}(x) \tag{F8c}$$
+$$p = \mathrm{softmax}(W_r x) \in \mathbb{R}^{256}\ \text{(fp32)} \tag{F8a}$$
+$$\mathcal{A} = \mathrm{Top\text{-}8}(p)\ \text{TANPA renormalisasi} \tag{F8b}$$
+$$y = \sum_{i\in\mathcal{A}} p_i E_i(x) + \sigma(g_{sh}) E_{sh}(x) + x \tag{F8c}$$
 $$E(x) = W_{down}(\mathrm{SiLU}(W_{gate}x)\odot W_{up}x) \tag{F8d}$$
 
 Dua invariant keras:
@@ -28,7 +28,11 @@ Dua invariant keras:
 1. **SET expert terpilih** ($\mathcal{A}$) identik oracle 100% — flip seleksi = FAIL `router-selection`, tidak boleh diselesaikan dengan menaikkan threshold.
 2. Gate shared = **sigmoid**, bukan softmax/linear (jebakan §2.3).
 
-Diagnostik F9 (analisis): $f_i, P_i, \mathcal{L}_{lb}=N_e\sum f_iP_i$, $CV=\sigma_f/\mu_f$ — untuk deteksi bias routing dan koreksi asumsi $\rho$ seragam di F5 (expert panas → pin page cache/LRU di M7).
+Disk-Streaming Invariant:
+
+- Hanya $k=8$ active experts per token yang di-stream irisannya dari disk ($8 \times 6\text{ MiB} = 48\text{ MiB}$ per forward pass per layer), mencegah alokasi 1.5 GiB bobot layer utuh ke RAM dan menjaga VmHWM di ~2–3 GB.
+
+Diagnostik F9 (analisis): $f_i, P_i, \mathcal{L}_{lb}=N_e\sum f_iP_i$, $CV=\sigma_f/\mu_f$ — untuk deteksi bias routing pada 256 experts dan koreksi asumsi $\rho$ seragam di F5 (expert panas → pin page cache/LRU di M7).
 
 ## Implementasi layer CLI (Part MoE)
 
@@ -162,15 +166,23 @@ dismoen layer --layer 0 --part moe activation.bin shard-00001-of-00003.safetenso
 
 - `activation.bin` (activation input, sama dengan input CLI)
 - Layer number: `--part moe --layer 0|12|23`
-- Model weights (PyTorch fp32, dari shard asli atau fixture)
+- Model weights (PyTorch fp32, dari checkpoint Qwen3.6-35B-A3B atau fixture)
 
 **Process:**
 
 1. Load activation input [16, 2048]
-2. Router softmax fp32: $p = \mathrm{softmax}(W_r x) \in \mathbb{R}^{60}$
-3. Top-4 selection TANPA renormalisasi: $\mathcal{A} = \mathrm{Top\text{-}4}(p)$
-4. Load routed experts weights (60 experts, inter 1408)
-5. Load shared expert weights (inter 5632)
+2. Router softmax fp32: $p = \mathrm{softmax}(W_r x) \in \mathbb{R}^{256}$
+3. Top-8 selection TANPA renormalisasi: $\mathcal{A} = \mathrm{Top\text{-}8}(p)$
+4. Load routed experts weights via slice streaming (256 experts, inter 512):
+   - Slice `gate_up_proj` [256, 1024, 2048] untuk tiap expert $e \in \mathcal{A}$:
+     - `gate_proj` [512, 2048] = baris 0..511
+     - `up_proj` [512, 2048] = baris 512..1023
+   - Slice `down_proj` [256, 2048, 512] untuk tiap expert $e \in \mathcal{A}$
+5. Load shared expert weights (inter 512):
+   - `shared_expert.gate_proj.weight` [512, 2048]
+   - `shared_expert.up_proj.weight` [512, 2048]
+   - `shared_expert.down_proj.weight` [2048, 512]
+   - `shared_expert_gate.weight` [1, 2048]
 6. Compute routed experts (SwiGLU): $E_i(x) = W_{down}(\mathrm{SiLU}(W_{gate}x)\odot W_{up}x)$
 7. Weighted sum routed: $y_{routed} = \sum_{i\in\mathcal{A}} p_i E_i(x)$
 8. Shared expert sigmoid gate: $g_{sh} = W_{gate\_sh} x$, $\sigma(g_{sh})$
@@ -188,7 +200,7 @@ dismoen layer --layer 0 --part moe activation.bin shard-00001-of-00003.safetenso
 
 - SHA-256 moe_ref.bin ter-commit ke repo
 - Oracle dan engine harus pakai config yang sama (norm_topk_prob=false, dtype fp32)
-- Softmax fp32 wajib: tidak ada renormalisasi setelah top-4
+- Softmax fp32 wajib: tidak ada renormalisasi setelah top-8
 - Sigmoid gate wajib: bukan softmax/linear untuk shared expert
 
 ## Fixture M3-Specific
@@ -201,32 +213,24 @@ dismoen layer --layer 0 --part moe activation.bin shard-00001-of-00003.safetenso
 
 **Activation input:**
 
-- Synthetic activation: [16, 2048] fp32 dengan seed 42
-- Atau ambil dari attention output M2 (untuk end-to-end testing)
+- `fixtures/m2/activation.bin` (48 tokens, 2048 dim, FP32 LE binary) atau batch 16 token [16, 2048]
 - Format: binary fp32, row-major
 
 **Expected output:**
 
-- `moe_ref.bin` dari oracle untuk tiap layer (precomputed, commit ke repo)
+- `moe_ref_{lyr}.bin` dari oracle untuk tiap layer probe
 - SHA-256 hash untuk regression testing (level R)
 - Routing info: selected experts dan router probabilities (untuk F9 baseline)
 
 **Tujuan:**
 
-- Testing router softmax fp32 implementation
-- Testing top-4 selection tanpa renormalisasi
-- Testing routed experts SwiGLU implementation
+- Testing router softmax fp32 implementation pada 256 router logits
+- Testing top-8 selection tanpa renormalisasi
+- Testing routed experts SwiGLU implementation via 3D tensor slice loading
 - Testing shared expert sigmoid gate
 - Testing weighted sum dan residual
 - Testing end-to-end MoE layer (activation → activation)
 - Testing routing invariant (SET expert terpilih identik 100%)
-
-**Generasi:**
-
-- Script: `tools/fixtures/generate_m3_activation.py`
-- Input: seed 42, layer numbers [0, 12, 23]
-- Output: activation.bin + moe_ref.bin + routing_info.json untuk tiap layer
-- Verifikasi: SHA-256 ter-commit ke repo
 
 ## SwiGLU Specification
 
@@ -240,26 +244,28 @@ $$\mathrm{SiLU}(z) = z \cdot \sigma(z) = z \cdot \frac{1}{1 + e^{-z}}$$
 
 **Implementation per expert:**
 
-1. Gate projection: $g = W_{gate} x$ (inter 1408 → 1408)
-2. Up projection: $u = W_{up} x$ (inter 1408 → 1408)
+1. Gate projection: $g = W_{gate} x$ (inter 512 → 512)
+2. Up projection: $u = W_{up} x$ (inter 512 → 512)
 3. SiLU activation: $g' = \mathrm{SiLU}(g) = g \cdot \sigma(g)$
 4. Element-wise multiplication: $h = g' \odot u$
-5. Down projection: $y = W_{down} h$ (1408 → 2048)
+5. Down projection: $y = W_{down} h$ (512 → 2048)
 
-**Dimensions (per routed expert):**
+**Dimensions (per routed expert — Qwen3.6-35B-A3B):**
 
 - Input: [16, 2048]
-- Gate: $W_{gate}$ [1408, 2048], $b_{gate}$ [1408]
-- Up: $W_{up}$ [1408, 2048], $b_{up}$ [1408]
-- Down: $W_{down}$ [2048, 1408], $b_{down}$ [2048]
+- Gate: $W_{gate}$ [512, 2048], 0 bias
+- Up: $W_{up}$ [512, 2048], 0 bias
+- Down: $W_{down}$ [2048, 512], 0 bias
 - Output: [16, 2048]
+- Storage layout: iris slice dari `experts.gate_up_proj` [256, 1024, 2048] dan `experts.down_proj` [256, 2048, 512]
 
-**Dimensions (shared expert):**
+**Dimensions (shared expert — Qwen3.6-35B-A3B):**
 
 - Input: [16, 2048]
-- Gate: $W_{gate\_sh}$ [5632, 2048], $b_{gate\_sh}$ [5632]
-- Up: $W_{up\_sh}$ [5632, 2048], $b_{up\_sh}$ [5632]
-- Down: $W_{down\_sh}$ [2048, 5632], $b_{down\_sh}$ [2048]
+- Gate: $W_{gate\_sh}$ [512, 2048], 0 bias
+- Up: $W_{up\_sh}$ [512, 2048], 0 bias
+- Down: $W_{down\_sh}$ [2048, 512], 0 bias
+- Gate Score: $W_{gate\_sh\_score}$ [1, 2048], 0 bias
 - Output: [16, 2048]
 
 **Verification:**
@@ -267,13 +273,13 @@ $$\mathrm{SiLU}(z) = z \cdot \sigma(z) = z \cdot \frac{1}{1 + e^{-z}}$$
 - SiLU function: $\mathrm{SiLU}(z) = z \cdot \sigma(z)$
 - Element-wise multiplication: $g' \odot u$ (bukan concatenation)
 - Matrix multiplication order: gate → SiLU → up → down
-- Bias handling: bias ditambahkan setelah projection, sebelum activation
+- Zero bias: tidak ada penambahan bias tensor pada language model Qwen3.6
 
 **Oracle vs engine:**
 
 - Oracle PyTorch: `nn.SiLU()` atau manual implementation
 - Engine Mojo: manual SiLU implementation
-- Wajib identik behavior untuk semua experts (60 routed + 1 shared)
+- Wajib identik behavior untuk semua experts (256 routed + 1 shared)
 
 ## Error Handling M3
 
@@ -582,25 +588,22 @@ let moe_output = Array2::from_shape_vec((16, 2048), moe_output)?;
 {
   "layer": 0,
   "num_tokens": 16,
-  "num_experts": 60,
-  "top_k": 4,
+  "num_experts": 256,
+  "top_k": 8,
   "routing_info": {
     "selected_experts": [
-      [5, 12, 23, 45],
-      [3, 8, 15, 29],
-      [11, 18, 27, 33],
-      [7, 14, 22, 38]
+      [5, 12, 23, 45, 67, 89, 120, 201],
+      [3, 8, 15, 29, 78, 102, 144, 250],
+      ...
     ],
     "router_probs": [
-      [0.23, 0.15, 0.31, 0.08],
-      [0.19, 0.25, 0.21, 0.12],
-      [0.28, 0.18, 0.24, 0.11],
-      [0.22, 0.2, 0.26, 0.09]
+      [0.23, 0.15, 0.11, 0.08, 0.06, 0.05, 0.04, 0.03],
+      ...
     ]
   },
   "statistics": {
-    "expert_frequencies": [0.067, 0.083, 0.05, 0.1, ...],
-    "avg_probabilities": [0.065, 0.08, 0.052, 0.095, ...],
+    "expert_frequencies": [0.007, 0.003, ...],
+    "avg_probabilities": [0.006, 0.002, ...],
     "load_balance_loss": 0.123,
     "coefficient_of_variation": 0.234
   }
@@ -618,15 +621,15 @@ let moe_output = Array2::from_shape_vec((16, 2048), moe_output)?;
 
 - Sum frequencies: $\sum f_i = 1.0$ (normalisasi)
 - Sum router probs per token: $\sum p_i \le 1.0$ (tanpa renorm)
-- Top-4 check: exactly 4 experts per token
-- Expert range: expert IDs dalam [0, 59]
+- Top-8 check: exactly 8 experts per token
+- Expert range: expert IDs dalam [0, 255]
 
 ## Gate
 
 | Gate   | Kriteria              | Threshold                                                       | Metode          |
 | ------ | --------------------- | --------------------------------------------------------------- | --------------- |
 | G-M3-1 | MATCH strict part moe | $\Delta_{max} \le 10^{-3} \wedge \varepsilon_{rel} \le 10^{-4}$ | layer 0, 12, 23 |
-| G-M3-2 | invariant F8          | SET top-4 identik 100% + sigmoid shared gate, 256 input acak    | oracle + engine |
+| G-M3-2 | invariant F8          | SET top-8 identik 100% + sigmoid shared gate, 256 input acak    | oracle + engine |
 
 ## Testing
 

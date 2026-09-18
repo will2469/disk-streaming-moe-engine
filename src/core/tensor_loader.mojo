@@ -179,6 +179,147 @@ def load_tensor_f32_chunked(
     return out^
 
 
+def load_tensor_slice_f32(
+    shard_path: String,
+    data_base: Int,
+    meta: TensorMeta,
+    slice_idx: Int,
+    slice_elements: Int,
+    mut telemetry: LoadMemoryTelemetry,
+) raises -> List[Float32]:
+    """Pemuatan irisan (slice) tensor 3D tanpa memuat seluruh tensor ke RAM.
+    Offset slice: meta.begin + slice_idx * (slice_elements * element_size).
+    """
+    var element_size: Int
+    if meta.dtype == "BF16":
+        element_size = 2
+    elif meta.dtype == "F32":
+        element_size = 4
+    else:
+        raise Error(
+            error_json(
+                "UNKNOWN_DTYPE",
+                String("unsupported dtype: ", meta.dtype),
+                shard_path,
+                meta.name,
+            )
+        )
+
+    var f = open(shard_path, "r")
+    var filesize = Int(f.seek(0, SEEK_END))
+    if meta.begin < 0 or meta.end < meta.begin:
+        f.close()
+        raise Error(
+            error_json(
+                "OFFSET_OVERFLOW",
+                String("BEGIN/END invalid: ", meta.begin, "..", meta.end),
+                shard_path,
+                meta.name,
+            )
+        )
+    if data_base < 0 or data_base > filesize:
+        f.close()
+        raise Error(
+            error_json(
+                "OFFSET_OVERFLOW",
+                "data_base di luar filesize",
+                shard_path,
+                meta.name,
+            )
+        )
+
+    var slice_bytes = slice_elements * element_size
+    var slice_begin = meta.begin + slice_idx * slice_bytes
+    var slice_end = slice_begin + slice_bytes
+
+    if slice_idx < 0 or slice_begin < meta.begin or slice_end > meta.end:
+        f.close()
+        raise Error(
+            error_json(
+                "OFFSET_OVERFLOW",
+                String("slice range invalid: ", slice_begin, "..", slice_end),
+                shard_path,
+                meta.name,
+            )
+        )
+
+    if slice_end > filesize - data_base:
+        f.close()
+        raise Error(
+            error_json(
+                "OFFSET_OVERFLOW",
+                "akhir slice buffer + data_base melebihi filesize",
+                shard_path,
+                meta.name,
+            )
+        )
+
+    telemetry.logical_bytes_read += slice_bytes
+
+    var out = List[Float32]()
+    out.reserve(slice_elements)
+
+    _ = f.seek(data_base + slice_begin, SEEK_SET)
+
+    var bytes_remaining = slice_bytes
+    while bytes_remaining > 0:
+        var to_read = (
+            min(bytes_remaining, CHUNK_MAX_BYTES) // element_size
+        ) * element_size
+        if to_read == 0:
+            f.close()
+            raise Error(
+                error_json(
+                    "LAYOUT_MISMATCH",
+                    "chunk tak-selaras: invariant kelipatan element_size jebol",
+                    shard_path,
+                    meta.name,
+                )
+            )
+
+        var chunk_bytes = f.read_bytes(to_read)
+        if len(chunk_bytes) < to_read:
+            f.close()
+            raise Error(
+                error_json(
+                    "INVALID_HEADER",
+                    "truncated tensor data in slice",
+                    shard_path,
+                    meta.name,
+                )
+            )
+
+        if len(chunk_bytes) > telemetry.source_buffer_bytes:
+            telemetry.source_buffer_bytes = len(chunk_bytes)
+
+        var chunk_elements = len(chunk_bytes) // element_size
+        var conv_bytes = chunk_elements * 4
+        if conv_bytes > telemetry.conversion_buffer_bytes:
+            telemetry.conversion_buffer_bytes = conv_bytes
+
+        if meta.dtype == "BF16":
+            for i in range(chunk_elements):
+                var o = i * 2
+                out.append(decode_bf16_le(chunk_bytes[o], chunk_bytes[o + 1]))
+        else:
+            for i in range(chunk_elements):
+                var o = i * 4
+                out.append(
+                    decode_f32_le(
+                        chunk_bytes[o],
+                        chunk_bytes[o + 1],
+                        chunk_bytes[o + 2],
+                        chunk_bytes[o + 3],
+                    )
+                )
+
+        bytes_remaining -= len(chunk_bytes)
+
+    telemetry.resident_target_bytes += len(out) * 4
+    f.close()
+    return out^
+
+
 struct ShardHeaderCache(Movable):
     """Header shard yang sudah dibaca: satu file dibaca+parse sekali lalu
     dipakai N tensor (anti IO amplification untuk disk-streaming engine).
@@ -296,4 +437,71 @@ def _load_one_tensor_by_name(
             )
     return load_tensor_f32_chunked(
         shard_path, hdr.data_base, meta.copy(), telemetry
+    )
+
+
+def _load_tensor_slice_by_name(
+    mut cache: ShardHeaderCache,
+    model_root: String,
+    shard_file: String,
+    tensor_name: String,
+    slice_idx: Int,
+    slice_dim0: Int,
+    slice_dim1: Int,
+    mut telemetry: LoadMemoryTelemetry,
+) raises -> List[Float32]:
+    """Helper pemuatan irisan satu expert dari tensor 3D [num_experts, slice_dim0, slice_dim1].
+    """
+    var shard_path = resolve_within_root(model_root, shard_file)
+    var idx = cache.get_or_read(shard_path)
+    ref hdr = cache.headers[idx]
+    ref pos = cache.maps[idx]
+    if tensor_name not in pos:
+        raise Error(
+            error_json(
+                "WEIGHT_LOAD_FAILED",
+                String("tensor ", tensor_name, " not found in shard header"),
+                shard_path,
+                tensor_name,
+            )
+        )
+    var gi = pos[tensor_name]
+    ref meta = hdr.entries[gi]
+    if (
+        len(meta.shape) != 3
+        or meta.shape[1] != slice_dim0
+        or meta.shape[2] != slice_dim1
+    ):
+        raise Error(
+            error_json(
+                "WEIGHT_LOAD_FAILED",
+                String(
+                    "3D tensor shape mismatch: expected [N, ",
+                    slice_dim0,
+                    ", ",
+                    slice_dim1,
+                    "] got length ",
+                    len(meta.shape),
+                ),
+                shard_path,
+                tensor_name,
+            )
+        )
+    if slice_idx < 0 or slice_idx >= meta.shape[0]:
+        raise Error(
+            error_json(
+                "WEIGHT_LOAD_FAILED",
+                String("slice index out of bounds: ", slice_idx),
+                shard_path,
+                tensor_name,
+            )
+        )
+    var slice_elements = slice_dim0 * slice_dim1
+    return load_tensor_slice_f32(
+        shard_path,
+        hdr.data_base,
+        meta.copy(),
+        slice_idx,
+        slice_elements,
+        telemetry,
     )

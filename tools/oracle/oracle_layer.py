@@ -615,60 +615,86 @@ def compute_swiglu(
     return y
 
 
-def forward_layer_moe_oracle(
-    act: torch.Tensor,
+def _load_fused_3d_expert_weights(
     model_dir: str,
     weight_map: dict[str, str],
+    pfx: str,
+    unique_experts: list[int],
+    inter_routed: int,
+    hidden_dim: int,
     layer: int,
-    cfg: dict,
-) -> tuple[torch.Tensor, dict]:
-    """11-step reference MoE pipeline (F8)."""
-    seq_len, hidden_dim = act.shape
-    num_experts = cfg["num_experts"]
-    top_k = cfg["num_experts_per_tok"]
-    inter_routed = cfg["moe_intermediate_size"]
-    inter_shared = cfg["shared_expert_intermediate_size"]
-    shards_cache = {}
-
-    # 2. Router softmax fp32
-    router_name = f"model.layers.{layer}.mlp.gate.weight"
-    w_router = _load_tensor_from_shard(
-        model_dir, weight_map, router_name, shards_cache, layer, "router"
-    )
-    if w_router.shape != torch.Size([num_experts, hidden_dim]):
+) -> tuple[dict, dict, dict]:
+    fused_gu_name = f"{pfx}mlp.experts.gate_up_proj"
+    fused_d_name = f"{pfx}mlp.experts.down_proj"
+    gu_shard = weight_map[fused_gu_name]
+    d_shard = weight_map[fused_d_name]
+    gu_path = os.path.join(model_dir, gu_shard)
+    d_path = os.path.join(model_dir, d_shard)
+    if not os.path.exists(gu_path):
         fail(
-            "WEIGHT_LOAD_FAILED",
-            f"router shape {w_router.shape} != [{num_experts}, {hidden_dim}]",
-            stage="router",
+            "FILE_NOT_FOUND",
+            f"shard file not found: {gu_path}",
+            stage="experts",
             layer=layer,
         )
+    if not os.path.exists(d_path):
+        fail(
+            "FILE_NOT_FOUND",
+            f"shard file not found: {d_path}",
+            stage="experts",
+            layer=layer,
+        )
+    routed_gates = {}
+    routed_ups = {}
+    routed_downs = {}
+    with (
+        safe_open(gu_path, framework="pt") as sf_gu,
+        safe_open(d_path, framework="pt") as sf_d,
+    ):
+        slice_gu = sf_gu.get_slice(fused_gu_name)
+        slice_d = sf_d.get_slice(fused_d_name)
+        for exp_id in unique_experts:
+            w_gu = slice_gu[exp_id, :, :].float()
+            if w_gu.shape != torch.Size([2 * inter_routed, hidden_dim]):
+                fail(
+                    "WEIGHT_LOAD_FAILED",
+                    f"expert {exp_id} gate_up slice shape mismatch: {w_gu.shape}",
+                    stage="experts",
+                    layer=layer,
+                )
+            routed_gates[exp_id] = w_gu[:inter_routed, :]
+            routed_ups[exp_id] = w_gu[inter_routed:, :]
+            w_d = slice_d[exp_id, :, :].float()
+            if w_d.shape != torch.Size([hidden_dim, inter_routed]):
+                fail(
+                    "WEIGHT_LOAD_FAILED",
+                    f"expert {exp_id} down slice shape mismatch: {w_d.shape}",
+                    stage="experts",
+                    layer=layer,
+                )
+            routed_downs[exp_id] = w_d
+    return routed_gates, routed_ups, routed_downs
 
-    logits = torch.nn.functional.linear(act, w_router)
-    probs = torch.nn.functional.softmax(logits, dim=-1, dtype=torch.float32)
 
-    # 3. Top-4 selection TANPA renormalisasi (sorted descending, tie-break by index)
-    topk_probs, topk_indices = torch.topk(probs, k=top_k, dim=-1, sorted=True)
-
-    selected_experts = []
-    router_probs = []
-    for t in range(seq_len):
-        row_exp = [int(topk_indices[t, k].item()) for k in range(top_k)]
-        row_prob = [float(topk_probs[t, k].item()) for k in range(top_k)]
-        selected_experts.append(row_exp)
-        router_probs.append(row_prob)
-
-    unique_experts = sorted(list({e for row in selected_experts for e in row}))
-
-    # 4. Load routed experts weights
+def _load_legacy_2d_expert_weights(
+    model_dir: str,
+    weight_map: dict[str, str],
+    pfx: str,
+    unique_experts: list[int],
+    inter_routed: int,
+    hidden_dim: int,
+    layer: int,
+    shards_cache: dict,
+) -> tuple[dict, dict, dict]:
     routed_gates = {}
     routed_ups = {}
     routed_downs = {}
     for exp_id in unique_experts:
-        pfx = f"model.layers.{layer}.mlp.experts.{exp_id}."
+        pfx_exp = f"{pfx}mlp.experts.{exp_id}."
         w_g = _load_tensor_from_shard(
             model_dir,
             weight_map,
-            pfx + "gate_proj.weight",
+            pfx_exp + "gate_proj.weight",
             shards_cache,
             layer,
             "experts",
@@ -676,7 +702,7 @@ def forward_layer_moe_oracle(
         w_u = _load_tensor_from_shard(
             model_dir,
             weight_map,
-            pfx + "up_proj.weight",
+            pfx_exp + "up_proj.weight",
             shards_cache,
             layer,
             "experts",
@@ -684,7 +710,7 @@ def forward_layer_moe_oracle(
         w_d = _load_tensor_from_shard(
             model_dir,
             weight_map,
-            pfx + "down_proj.weight",
+            pfx_exp + "down_proj.weight",
             shards_cache,
             layer,
             "experts",
@@ -713,9 +739,53 @@ def forward_layer_moe_oracle(
         routed_gates[exp_id] = w_g
         routed_ups[exp_id] = w_u
         routed_downs[exp_id] = w_d
+    return routed_gates, routed_ups, routed_downs
 
-    # 5. Load shared expert weights
-    pfx_sh = f"model.layers.{layer}.mlp.shared_expert."
+
+def _load_routed_expert_weights(
+    model_dir: str,
+    weight_map: dict[str, str],
+    pfx: str,
+    unique_experts: list[int],
+    inter_routed: int,
+    hidden_dim: int,
+    layer: int,
+    shards_cache: dict,
+) -> tuple[dict, dict, dict]:
+    fused_gu_name = f"{pfx}mlp.experts.gate_up_proj"
+    fused_d_name = f"{pfx}mlp.experts.down_proj"
+    if fused_gu_name in weight_map and fused_d_name in weight_map:
+        return _load_fused_3d_expert_weights(
+            model_dir,
+            weight_map,
+            pfx,
+            unique_experts,
+            inter_routed,
+            hidden_dim,
+            layer,
+        )
+    return _load_legacy_2d_expert_weights(
+        model_dir,
+        weight_map,
+        pfx,
+        unique_experts,
+        inter_routed,
+        hidden_dim,
+        layer,
+        shards_cache,
+    )
+
+
+def _load_shared_expert_weights(
+    model_dir: str,
+    weight_map: dict[str, str],
+    pfx: str,
+    inter_shared: int,
+    hidden_dim: int,
+    layer: int,
+    shards_cache: dict,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    pfx_sh = f"{pfx}mlp.shared_expert."
     w_sh_gate_proj = _load_tensor_from_shard(
         model_dir,
         weight_map,
@@ -743,7 +813,7 @@ def forward_layer_moe_oracle(
     w_sh_gate = _load_tensor_from_shard(
         model_dir,
         weight_map,
-        f"model.layers.{layer}.mlp.shared_expert_gate.weight",
+        f"{pfx}mlp.shared_expert_gate.weight",
         shards_cache,
         layer,
         "shared",
@@ -777,7 +847,86 @@ def forward_layer_moe_oracle(
             stage="shared",
             layer=layer,
         )
-    w_sh_gate = w_sh_gate.reshape(1, hidden_dim)
+    return (
+        w_sh_gate_proj,
+        w_sh_up_proj,
+        w_sh_down_proj,
+        w_sh_gate.reshape(1, hidden_dim),
+    )
+
+
+def forward_layer_moe_oracle(
+    act: torch.Tensor,
+    model_dir: str,
+    weight_map: dict[str, str],
+    layer: int,
+    cfg: dict,
+) -> tuple[torch.Tensor, dict]:
+    """11-step reference MoE pipeline (F8)."""
+    seq_len, hidden_dim = act.shape
+    num_experts = cfg["num_experts"]
+    top_k = cfg["num_experts_per_tok"]
+    inter_routed = cfg["moe_intermediate_size"]
+    inter_shared = cfg["shared_expert_intermediate_size"]
+    shards_cache = {}
+
+    pfx_lm = f"model.language_model.layers.{layer}."
+    pfx_legacy = f"model.layers.{layer}."
+    pfx = pfx_lm if f"{pfx_lm}mlp.gate.weight" in weight_map else pfx_legacy
+
+    # 2. Router softmax fp32
+    router_name = f"{pfx}mlp.gate.weight"
+    w_router = _load_tensor_from_shard(
+        model_dir, weight_map, router_name, shards_cache, layer, "router"
+    )
+    if w_router.shape != torch.Size([num_experts, hidden_dim]):
+        fail(
+            "WEIGHT_LOAD_FAILED",
+            f"router shape {w_router.shape} != [{num_experts}, {hidden_dim}]",
+            stage="router",
+            layer=layer,
+        )
+
+    logits = torch.nn.functional.linear(act, w_router)
+    probs = torch.nn.functional.softmax(logits, dim=-1, dtype=torch.float32)
+
+    # 3. Top-k selection TANPA renormalisasi (sorted descending, tie-break by index)
+    topk_probs, topk_indices = torch.topk(probs, k=top_k, dim=-1, sorted=True)
+
+    selected_experts = []
+    router_probs = []
+    for t in range(seq_len):
+        row_exp = [int(topk_indices[t, k].item()) for k in range(top_k)]
+        row_prob = [float(topk_probs[t, k].item()) for k in range(top_k)]
+        selected_experts.append(row_exp)
+        router_probs.append(row_prob)
+
+    unique_experts = sorted(list({e for row in selected_experts for e in row}))
+
+    # 4. Load routed experts weights (3D slice streaming / 2D legacy)
+    routed_gates, routed_ups, routed_downs = _load_routed_expert_weights(
+        model_dir,
+        weight_map,
+        pfx,
+        unique_experts,
+        inter_routed,
+        hidden_dim,
+        layer,
+        shards_cache,
+    )
+
+    # 5. Load shared expert weights
+    w_sh_gate_proj, w_sh_up_proj, w_sh_down_proj, w_sh_gate = (
+        _load_shared_expert_weights(
+            model_dir,
+            weight_map,
+            pfx,
+            inter_shared,
+            hidden_dim,
+            layer,
+            shards_cache,
+        )
+    )
 
     # 6 & 7. Routed experts SwiGLU + weighted sum
     y_routed = torch.zeros_like(act)
