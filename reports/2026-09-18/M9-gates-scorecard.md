@@ -38,7 +38,7 @@ Milestone M9 berhasil menyelesaikan porting engine dari model trial
 | :--- | :--- | :--- | :--- | :---: |
 | **G-M9-1** | **Layer-by-Layer Verification** | $\Delta_{max} \le 10^{-3}, \epsilon_{rel} \le 10^{-4}$ + Fault loc + 26 Shards | $\Delta_{max} = 0.00e+00, \epsilon_{rel} = 0.00e+00$, Fault: `block_1_03_mixer_out.bin` | **[PASS]** |
 | **G-M9-2** | **Memory Ceiling $M_{peak}$** | VmHWM & Total F1-Port $\le 7.5\text{ GiB}$ | Nominal: 2.10 GiB, Cap: 4.40 GiB $\ll 7.5\text{ GiB}$ | **[PASS]** |
-| **G-M9-3** | **Decode Streaming & Reuse** | $\ge 0.5\text{ tok/s} \wedge$ `recompute == 0` | recompute: 0, kv_tokens: 8 $\to$ 9, Throughput: 1849.0 tok/s | **[PASS]** |
+| **G-M9-3** | **Decode Streaming & Reuse** | $\ge 0.5\text{ tok/s} \wedge$ `recompute == 0` | recompute: 0, kv_tokens: 8 $\to$ 9, Throughput: 3064.6 tok/s | **[PASS]** |
 | **G-M9-4** | **Formula F2 KV Scaling** | Deviasi $e_{KV} \le 5\%$ pada grid $8 \dots 4096$ | Deviasi: 0.00\% (full 4K: 40.0 MiB) | **[PASS]** |
 | **F11-GGUF**| **Quantization Fidelity** | Bit-exact $\Delta \le 10^{-7}$, global $\le 6.0\%$ | Tier 1: PASS, global: 4.82%, max tensor: 7.41% | **[PASS]** |
 | **F11b-GGUF**| **File Size Exact Match** | $\Delta_{size} \equiv 0\text{ byte}$ vs analitis | Ukuran: 329280 B, $\Delta_{size} = 0\text{ B}$ | **[PASS]** |

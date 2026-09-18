@@ -91,8 +91,8 @@ LOCKFILE="dismoen.hardware.lock"
 python3 tools/bench/bench_core_scaling.py \
     --mode compute-isolated \
     --output-lock "$LOCKFILE" \
-    --num-warmup 2 \
-    --num-steady 10
+    --num-warmup 5 \
+    --num-steady 15
 
 echo "   PASS: Kalibrasi driver dan fitting F16 selesai."
 

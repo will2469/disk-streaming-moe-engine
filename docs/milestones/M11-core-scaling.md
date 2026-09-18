@@ -475,11 +475,11 @@ worker pool mematuhi keempat invariant berikut:
 
 ## 6. Definisi Selesai (DoD M11)
 
-- [ ] Worker threadpool terintegrasi ke dalam subperintah `dismoen forward` dan `dismoen decode` via parameter `--threads <c>` serta mode otomatis `--auto`.
-- [ ] Subperintah `dismoen tune` berfungsi menginspeksi topologi hardware lokal secara dinamis via Linux sysfs (CPU cores, SMT siblings, L3 domains, RAM available) dan mengkalkulasi parameter optimal host tanpa hardcoding absolut.
-- [ ] Pipeline asynchronous double-buffering I/O terbukti menyembunyikan komputasi dengan efisiensi overlap $\mathcal{E}_{overlap} \ge 80\%$ (Gate G-M11-2).
-- [ ] Kurva kalibrasi core scaling F16 ter-fit dengan galat $e_{T,core} \le 20\%$ (knee $c^*_{compute}$), dan titik operasi $c^*_{system}$ serta rasio $r^*_{system}$ ter-commit **per hardware profile** $(M_{budget}, BW_{eff}, h)$ di `dismoen.hardware.lock` (Gate G-M11-1).
-- [ ] Rasio variabilitas tail latency memenuhi **Project SLO** $p95 / p50 \le 1{,}35$ atas $N \ge 100$ run (persentil interpolasi-linear + bootstrap CI diagnostik) tanpa degradasi akibat saturasi core, dan alokasi memori mematuhi plafon dinamis $\mathcal{R}_{RAM} = \text{VmHWM} / M_{budget} \le 0{,}95$ (Gate G-M11-3).
-- [ ] Paritas numerik multi-core terbukti 100% bit-exact terhadap baseline single-threaded ($\Delta_{\max} = 0$) di bawah kontrak determinisme tunggal §3.2, tanpa fallback toleransi (Gate G-M11-4).
-- [ ] Seluruh suite pengujian regresi (`validate-m10`, `validate-m9`, `validate-m8`) dan 13 hook `pre-commit` 100% hijau tanpa supresi (`# noqa`, `#[allow]`).
-- [ ] Scorecard formal sertifikasi M11 ter-commit di `reports/YYYY-MM-DD/M11-gates-scorecard.md`.
+- [x] Worker threadpool terintegrasi ke dalam subperintah `dismoen forward` dan `dismoen decode` via parameter `--threads <c>` serta mode otomatis `--auto`.
+- [x] Subperintah `dismoen tune` berfungsi menginspeksi topologi hardware lokal secara dinamis via Linux sysfs (CPU cores, SMT siblings, L3 domains, RAM available) dan mengkalkulasi parameter optimal host tanpa hardcoding absolut.
+- [x] Pipeline asynchronous double-buffering I/O terbukti menyembunyikan komputasi dengan efisiensi overlap $\mathcal{E}_{overlap} \ge 80\%$ (Gate G-M11-2).
+- [x] Kurva kalibrasi core scaling F16 ter-fit dengan galat $e_{T,core} \le 20\%$ (knee $c^*_{compute}$), dan titik operasi $c^*_{system}$ serta rasio $r^*_{system}$ ter-commit **per hardware profile** $(M_{budget}, BW_{eff}, h)$ di `dismoen.hardware.lock` (Gate G-M11-1).
+- [x] Rasio variabilitas tail latency memenuhi **Project SLO** $p95 / p50 \le 1{,}35$ atas $N \ge 100$ run (persentil interpolasi-linear + bootstrap CI diagnostik) tanpa degradasi akibat saturasi core, dan alokasi memori mematuhi plafon dinamis $\mathcal{R}_{RAM} = \text{VmHWM} / M_{budget} \le 0{,}95$ (Gate G-M11-3).
+- [x] Paritas numerik multi-core terbukti 100% bit-exact terhadap baseline single-threaded ($\Delta_{\max} = 0$) di bawah kontrak determinisme tunggal §3.2, tanpa fallback toleransi (Gate G-M11-4).
+- [x] Seluruh suite pengujian regresi (`validate-m10`, `validate-m9`, `validate-m8`) dan 13 hook `pre-commit` 100% hijau tanpa supresi (`# noqa`, `#[allow]`).
+- [x] Scorecard formal sertifikasi M11 ter-commit di `reports/YYYY-MM-DD/M11-gates-scorecard.md`.

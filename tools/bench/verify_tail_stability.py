@@ -554,7 +554,6 @@ def main() -> None:
             f"- [x] Verifikasi Tanpa Kebocoran Memori (Leak-Free): **{v_lk}**",
             f"- [x] Stabilitas Bandwidth Storage $E_{{BW}} \\le 5\\%$: **{v_bw}**",
             f"- **OVERALL VERDICT**: **{v_all}**",
-            "",
         ]
     )
 

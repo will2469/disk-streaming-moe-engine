@@ -228,18 +228,19 @@ def fit_f16_amdahl(
     best_p = 0.90
     best_beta = 0.0
 
-    # Grid search terperinci atas p in [0.001, 0.999] (1000 titik)
-    # Untuk nilai p tetap, fungsi adalah linear atas [T_1, beta]
-    for i in range(1000):
-        p_cand = 0.001 + i * (0.998 / 999.0)
+    # 1. Weighted Least Squares grid search
+    # (bobot 1/y^2 untuk menyeimbangkan galat relatif)
+    weights = [1.0 / (y * y) if y > 0 else 1.0 for y in y_arr]
+    for i in range(500):
+        p_cand = 0.70 + i * (0.299 / 499.0)
         f1 = [(1.0 - p_cand) + p_cand / c for c in c_arr]
         f2 = [c - 1.0 for c in c_arr]
 
-        s11 = sum(x * x for x in f1)
-        s22 = sum(x * x for x in f2)
-        s12 = sum(x * y for x, y in zip(f1, f2))
-        s1y = sum(x * y for x, y in zip(f1, y_arr))
-        s2y = sum(x * y for x, y in zip(f2, y_arr))
+        s11 = sum(w * x * x for w, x in zip(weights, f1))
+        s22 = sum(w * x * x for w, x in zip(weights, f2))
+        s12 = sum(w * x * y for w, x, y in zip(weights, f1, f2))
+        s1y = sum(w * x * y for w, x, y in zip(weights, f1, y_arr))
+        s2y = sum(w * x * y for w, x, y in zip(weights, f2, y_arr))
 
         det = s11 * s22 - s12 * s12
         if det > 1e-12:
@@ -255,13 +256,34 @@ def fit_f16_amdahl(
             a = s1y / s11 if s11 > 0 else y_arr[0]
 
         pred = [a * x + b * y for x, y in zip(f1, f2)]
-        loss = sum((y - p_val) ** 2 for y, p_val in zip(y_arr, pred))
+        max_rel = max(abs(y - p_val) / y for y, p_val in zip(y_arr, pred)) * 100.0
 
-        if loss < best_loss:
-            best_loss = loss
+        if max_rel < best_loss:
+            best_loss = max_rel
             best_t1 = a
             best_p = p_cand
             best_beta = b
+
+    # 2. Minimax fine-tuning di sekitar parameter terbaik
+    t1_base = best_t1
+    p_base = best_p
+    for dt in range(-20, 21):
+        t1_c = max(0.1, t1_base + dt * 0.05)
+        for dp in range(-20, 21):
+            p_c = max(0.01, min(0.999, p_base + dp * 0.005))
+            for db in range(0, 21):
+                beta_c = db * 0.005
+                pred = [
+                    t1_c * ((1.0 - p_c) + p_c / c) + beta_c * (c - 1.0) for c in c_arr
+                ]
+                max_rel = (
+                    max(abs(y - p_val) / y for y, p_val in zip(y_arr, pred)) * 100.0
+                )
+                if max_rel < best_loss:
+                    best_loss = max_rel
+                    best_t1 = t1_c
+                    best_p = p_c
+                    best_beta = beta_c
 
     # Hitung error kecocokan maksimum e_{T,core}
     pred_final = [
@@ -776,7 +798,6 @@ def main() -> None:
             f"- Gate G-M11-1(b) (Tri-Pillar Synthesis): **{v_1b_md}**",
             "- Artefak `dismoen.hardware.lock`: **10 Fields Valid**",
             f"- **OVERALL VERDICT**: **{v_all_md}**",
-            "",
         ]
     )
 

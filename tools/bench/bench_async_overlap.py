@@ -337,6 +337,7 @@ def main():
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     with open(args.output_json, "w") as f:
         json.dump(report_data, f, indent=2)
+        f.write("\n")
     print(f"\n[Saved JSON]: {args.output_json}")
 
     # Generate Markdown Report
@@ -350,11 +351,11 @@ def main():
     md_lines = [
         "# Benchmark Report: Rezim 2 Steady-State Async Overlap (Gate G-M11-2)",
         "",
-        f"**Date**: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  ",
-        f"**Host CPU**: `{get_cpu_model()}`  ",
-        f"**CPU Governor**: `{get_cpu_governor()}`  ",
-        f"**Engine Property $N_{{in\\_flight}}$**: `{args.n_in_flight}` chunks  ",
-        f"**Rezim 2 Protocol**: Warm-up={args.num_warmup}, Steady={args.num_steady}  ",
+        f"- **Date**: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        f"- **Host CPU**: `{get_cpu_model()}`",
+        f"- **CPU Governor**: `{get_cpu_governor()}`",
+        f"- **Engine Property $N_{{in\\_flight}}$**: `{args.n_in_flight}` chunks",
+        f"- **Rezim 2 Protocol**: Warm-up={args.num_warmup}, Steady={args.num_steady}",
         "",
         "---",
         "",

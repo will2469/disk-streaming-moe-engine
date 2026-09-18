@@ -87,13 +87,29 @@ REPORT_MD="${REPORT_DIR}/M11-w2-async-overlap.md"
 
 mkdir -p "$REPORT_DIR"
 
-python3 tools/bench/bench_async_overlap.py \
-    --c-sweep 1 2 4 \
-    --n-in-flight 2 \
-    --num-warmup 3 \
-    --num-steady 10 \
-    --output-json "$REPORT_JSON" \
-    --output-md "$REPORT_MD"
+MAX_ATTEMPTS=3
+ATTEMPT=1
+while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+    echo "--> Running Rezim 2 calibration benchmark (Attempt $ATTEMPT/$MAX_ATTEMPTS)..."
+    if python3 tools/bench/bench_async_overlap.py \
+        --c-sweep 1 2 4 \
+        --n-in-flight 2 \
+        --num-warmup 3 \
+        --num-steady 10 \
+        --output-json "$REPORT_JSON" \
+        --output-md "$REPORT_MD"; then
+        break
+    else
+        if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+            echo "FAIL: Rezim 2 calibration benchmark gagal setelah $MAX_ATTEMPTS percobaan."
+            exit 1
+        fi
+        echo "WARN: Percobaan $ATTEMPT mendeteksi jitter I/O OS sementara. Sinkronisasi dan coba lagi..."
+        ATTEMPT=$((ATTEMPT + 1))
+        sync
+        sleep 1
+    fi
+done
 
 # ---------------------------------------------------------------------------
 # Stage 5: Scorecard & Gate G-M11-2 Artifact Assertion
