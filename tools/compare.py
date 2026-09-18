@@ -208,6 +208,11 @@ def compute_f10_fallback(
             else f"delta_max <= {tol:e} && epsilon_rel <= 1e-4"
         )
         run_id = "M8-F10-001"
+    elif gate == "G-M10-3":
+        tol = tolerance if tolerance is not None else 1e-7
+        is_pass = delta_max <= tol
+        thresh_str = f"delta_max <= {tol:e}"
+        run_id = "M10-G3-001"
     elif gate in ("G-M4-1", "G-M5-1"):
         is_pass = (
             delta_max <= 1e-2

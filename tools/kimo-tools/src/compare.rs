@@ -1095,6 +1095,16 @@ pub fn evaluate_gate(gate: &str, metrics: &CompareMetrics) -> (bool, &'static st
             };
             (pass, thresh, cat)
         }
+        "G-M10-3" => {
+            let pass = metrics.delta_max <= 1e-7;
+            let thresh = "delta_max <= 1e-7";
+            let cat = if pass {
+                None
+            } else {
+                Some("numeric-order".to_string())
+            };
+            (pass, thresh, cat)
+        }
         _ => {
             // Default loose check
             let pass = metrics.delta_max <= 1e-2 && metrics.epsilon_rel <= 1e-4;
