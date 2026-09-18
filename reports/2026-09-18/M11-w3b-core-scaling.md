@@ -10,17 +10,17 @@
 
 | $c$ (Threads) | $T_{comp}$ p50 (ms) | $T_{comp}$ p95 (ms) | Speedup $S_{tok}$ | VmHWM (KiB) |
 |:---:|:---:|:---:|:---:|:---:|
-| **1** | 10.86 | 11.79 | 1.00x | 145736 |
-| **2** | 6.04 | 6.41 | 1.80x | 145976 |
-| **4** | 3.94 | 4.51 | 2.75x | 146268 |
-| **7** | 2.53 | 2.65 | 4.30x | 146088 |
+| **1** | 11.01 | 11.11 | 1.00x | 146116 |
+| **2** | 6.72 | 7.59 | 1.64x | 146460 |
+| **4** | 4.41 | 4.66 | 2.50x | 147036 |
+| **7** | 2.74 | 2.96 | 4.02x | 145772 |
 
 ## 2. Fitting F16 Amdahl & Knee $c^*_{compute}$
 
-- $T_1 = 10.8662\text{ ms}$
-- $p = 0.8771$ ($87.71\%$ fraksi paralel)
+- $T_1 = 11.1481\text{ ms}$
+- $p = 0.8392$ ($83.92\%$ fraksi paralel)
 - $\beta = 0.0000\text{ ms/thread}$ (overhead konkurensi)
-- $e_{T,core} = 6.66\%$ (Ambang batas $\le 20\%$)
+- $e_{T,core} = 14.21\%$ (Ambang batas $\le 20\%$)
 - **Knee Komputasi $c^*_{compute} = 7$ threads**
 
 ## 3. Sintesis Profil Sistem G-M11-1(b) (Tri-Pillar)
@@ -31,11 +31,11 @@
 | `tier_16gb` | 16.0 | 35.0% | 2925 | **1** | 0.14 | ✅ VALID |
 | `tier_32gb` | 32.0 | 65.0% | 2925 | **1** | 0.14 | ✅ VALID |
 | `tier_64gb` | 64.0 | 90.0% | 2925 | **1** | 0.14 | ✅ VALID |
-| `host_current` | 5.9 | 5.0% | 2925 | **1** | 0.14 | ✅ VALID |
+| `host_current` | 4.9 | 5.0% | 2925 | **1** | 0.14 | ✅ VALID |
 
 ## 4. Scorecard Gate G-M11-1
 
-- Gate G-M11-1(a) (F16 Fit & Compute Knee): **PASS**
-- Gate G-M11-1(b) (Tri-Pillar Synthesis & Invariants): **PASS**
+- Gate G-M11-1(a) (F16 Fit & Knee): **PASS**
+- Gate G-M11-1(b) (Tri-Pillar Synthesis): **PASS**
 - Artefak `dismoen.hardware.lock`: **10 Fields Valid**
 - **OVERALL VERDICT**: **ALL GATES PASS (HIJAU)**

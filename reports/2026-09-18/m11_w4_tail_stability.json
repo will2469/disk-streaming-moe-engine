@@ -1,0 +1,86 @@
+{
+  "benchmark": "M11-W4-Tail-Stability-RAM-Adherence",
+  "timestamp": "2026-09-18T14:18:59.621432+00:00",
+  "cpu_model": "12th Gen Intel(R) Core(TM) i3-1215U",
+  "cpu_governor": "powersave",
+  "profile": "host_current",
+  "threads": 1,
+  "n_runs": 100,
+  "statistics": {
+    "n": 100,
+    "min_ms": 10.887668,
+    "max_ms": 11.975109,
+    "mean_ms": 11.092679250000002,
+    "std_ms": 0.1766631227922441,
+    "p50_ms": 11.049522,
+    "p90_ms": 11.274995599999999,
+    "p95_ms": 11.426164349999999,
+    "p99_ms": 11.732134290000001,
+    "r_tail": 1.0340867550650608
+  },
+  "bootstrap_ci": {
+    "n_resamples": 1000,
+    "ci_pct": 95.0,
+    "p50_ci": [
+      11.02814015,
+      11.0935115
+    ],
+    "p95_ci": [
+      11.273397,
+      11.5684251
+    ],
+    "r_tail_ci": [
+      1.0202589764785308,
+      1.0465673831632751
+    ]
+  },
+  "ram_adherence": {
+    "tier_8gb": {
+      "budget_gib": 8.0,
+      "budget_kib": 8388608.0,
+      "vm_hwm_kib": 145588,
+      "r_ram": 0.01735544204711914,
+      "passed": true
+    },
+    "tier_16gb": {
+      "budget_gib": 16.0,
+      "budget_kib": 16777216.0,
+      "vm_hwm_kib": 145588,
+      "r_ram": 0.00867772102355957,
+      "passed": true
+    },
+    "tier_32gb": {
+      "budget_gib": 32.0,
+      "budget_kib": 33554432.0,
+      "vm_hwm_kib": 145588,
+      "r_ram": 0.004338860511779785,
+      "passed": true
+    },
+    "tier_64gb": {
+      "budget_gib": 64.0,
+      "budget_kib": 67108864.0,
+      "vm_hwm_kib": 145588,
+      "r_ram": 0.0021694302558898926,
+      "passed": true
+    },
+    "host_active": {
+      "budget_gib": 4.92,
+      "budget_kib": 5158993.92,
+      "vm_hwm_kib": 145588,
+      "r_ram": 0.028220230970925433,
+      "passed": true
+    }
+  },
+  "memory_leak_check": {
+    "vm_hwm_run1_kib": 145588,
+    "vm_hwm_run2_kib": 146568,
+    "delta_pct": 0.6731324010220623,
+    "passed": true
+  },
+  "storage_e_bw": {
+    "source_report": "/home/will/Monorepo/disk-streaming-moe-engine/reports/2026-09-18/m11_w2_async_overlap.json",
+    "max_e_bw_pct": 2.6157263413147813,
+    "passed": true
+  },
+  "gate_g_m11_3_pass": true
+}
