@@ -26,7 +26,7 @@ echo "======================================================================="
 # Stage 1: Static Hygiene & Formatting Verification
 # ----------------------------------------------------------------------
 echo ">> [1/6] Memeriksa kepatuhan formatting & static hygiene..."
-pre-commit run --all-files || {
+pixi run pre-commit run --all-files || {
     echo "FAIL: Pre-commit hooks gagal!"
     exit 1
 }

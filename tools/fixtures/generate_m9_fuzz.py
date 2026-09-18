@@ -169,6 +169,7 @@ def main():
     }
     with open(p7, "w") as f:
         json.dump(cfg7, f)
+        f.write("\n")
     cases.append(
         {
             "id": "FUZZ_07_WILD_VOCAB_CONFIG",
@@ -199,6 +200,7 @@ def main():
     }
     with open(p8, "w") as f:
         json.dump(cfg8, f)
+        f.write("\n")
     cases.append(
         {
             "id": "FUZZ_08_WILD_HIDDEN_CONFIG",
@@ -237,6 +239,7 @@ def main():
     p10 = os.path.join(fuzz_dir, "empty_tokens.json")
     with open(p10, "w") as f:
         json.dump({"tokens": [], "seq_len": 0}, f)
+        f.write("\n")
     cases.append(
         {
             "id": "FUZZ_10_EMPTY_TOKENS",
@@ -321,6 +324,7 @@ def main():
     manifest_path = os.path.join(fuzz_dir, "manifest.json")
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
+        f.write("\n")
 
     print(f"Generated {len(cases)} fuzz test cases in {fuzz_dir} and {manifest_path}")
 

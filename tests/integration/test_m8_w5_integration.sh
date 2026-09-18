@@ -32,7 +32,7 @@ fi
 # Stage 1: Static Hygiene & Formatting Compliance
 # -----------------------------------------------------------------------------
 echo ">> [1/7] Memeriksa kepatuhan formatting, ruff, clippy, dan no-noqa..."
-pre-commit run --all-files
+pixi run pre-commit run --all-files
 echo "   PASS: Seluruh static hygiene checks (ruff, clippy, mojo format, no-noqa) lolos 100%."
 
 # -----------------------------------------------------------------------------

@@ -31,6 +31,11 @@ BENCH_RAW_JSON="reports/2026-09-17/m5_benchmark_raw.json"
 TEST_DIR="/tmp/test_m5_kv_decode_$$"
 WORKDIR="$TEST_DIR/workdir"
 
+if [ ! -d "$MODEL_DIR" ] || [ ! -f "$MODEL_DIR/model.safetensors.index.json" ]; then
+    echo "SKIP: model directory tidak ditemukan: $MODEL_DIR"
+    exit 0
+fi
+
 cleanup() {
     chmod -R 777 "$TEST_DIR" 2>/dev/null || true
     rm -rf "$TEST_DIR"

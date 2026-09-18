@@ -26,9 +26,9 @@ mkdir -p "$WORKDIR"
 
 trap 'rm -rf "$WORKDIR"' EXIT
 
-MODEL_FILE="$HOME/models/qwen1.5-moe-a2.7b-chat-4bit/quant_model.bin"
+MODEL_FILE="${MODEL_FILE:-$HOME/models/qwen3.6-35b-a3b/model-00001-of-00026.safetensors}"
 if [ ! -f "$MODEL_FILE" ]; then
-    echo "ERROR: Model quant_model.bin tidak ditemukan di $MODEL_FILE"
+    echo "ERROR: Model file tidak ditemukan di $MODEL_FILE"
     exit 1
 fi
 

@@ -98,7 +98,7 @@ TEST_BASE="/tmp/test_m7_master_$$"
 WORKDIR="$TEST_BASE/workdir"
 MOCK_MODEL_DIR="$TEST_BASE/mock_model"
 OUTPUT_DIR="$TEST_BASE/output"
-REAL_MODEL_FILE="$HOME/models/qwen1.5-moe-a2.7b-chat-4bit/quant_model.bin"
+REAL_MODEL_FILE="${REAL_MODEL_FILE:-$HOME/models/qwen3.6-35b-a3b/model-00001-of-00026.safetensors}"
 REAL_MODEL_DIR="$(dirname "$REAL_MODEL_FILE")"
 FIXTURE_PATH="tools/fixtures/m7_io_patterns.json"
 

@@ -30,7 +30,7 @@ mkdir -p "$WORKDIR"
 
 trap 'rm -rf "$WORKDIR"' EXIT
 
-MODEL_FILE="$HOME/models/qwen1.5-moe-a2.7b-chat-4bit/quant_model.bin"
+MODEL_FILE="${MODEL_FILE:-fixtures/m10_quant_mini.bin}"
 if [ ! -f "$MODEL_FILE" ]; then
     echo "ERROR: Model quant_model.bin tidak ditemukan di $MODEL_FILE"
     exit 1

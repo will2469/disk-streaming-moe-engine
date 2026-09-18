@@ -30,7 +30,7 @@ TEST_DIR="/tmp/test_m7_w4_$$"
 WORKDIR="$TEST_DIR/workdir"
 MODEL_DIR="$TEST_DIR/model"
 OUTPUT_DIR="$TEST_DIR/output"
-REAL_MODEL_FILE="$HOME/models/qwen1.5-moe-a2.7b-chat-4bit/quant_model.bin"
+REAL_MODEL_FILE="${REAL_MODEL_FILE:-$HOME/models/qwen3.6-35b-a3b/model-00001-of-00026.safetensors}"
 
 cleanup() {
     chmod -R 777 "$TEST_DIR" 2>/dev/null || true

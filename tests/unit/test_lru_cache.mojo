@@ -404,9 +404,7 @@ def test_f9_hot_experts_pinning_integration() raises:
 def test_real_model_odirect_lru_integration() raises:
     """Menguji integrasi end-to-end: O_DIRECT reader -> LRU Cache -> SIMD dequant pada model riil.
     """
-    var model_path = (
-        "/home/will/models/qwen1.5-moe-a2.7b-chat-4bit/quant_model.bin"
-    )
+    var model_path = "fixtures/m10_quant_mini.bin"
     var reader = ODirectReader.discover(
         model_path, requested_block_size=4096, queue_depth=8
     )
