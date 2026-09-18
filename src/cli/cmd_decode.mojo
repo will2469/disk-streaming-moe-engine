@@ -36,6 +36,7 @@ from cli.sys_utils import (
     path_is_within,
 )
 from core.config import LoadMemoryTelemetry, ModelConfig
+from core.topology import read_hardware_lock_c_star
 from core.f3b_f5 import F3bTraffic, F5Forecast
 from core.tensor_loader import ShardHeaderCache, _load_one_tensor_by_name
 from format.file_io import read_small_file, resolve_within_root
@@ -180,6 +181,8 @@ def cmd_decode(args: List[String]) raises:
     var workdir = String("./work")
     var workdir_specified = False
     var threads = 1
+    var threads_explicit = False
+    var auto_threads = False
     var seed_val = 42
     var temperature = Float64(0.0)
     var token_timing = String("")
@@ -308,6 +311,7 @@ def cmd_decode(args: List[String]) raises:
                 )
             try:
                 threads = Int(String(args[i + 1]))
+                threads_explicit = True
             except:
                 fail_m5(
                     "M5_ERR_INPUT",
@@ -315,6 +319,9 @@ def cmd_decode(args: List[String]) raises:
                     "invalid integer for --threads: " + String(args[i + 1]),
                 )
             i += 2
+        elif a == "--auto":
+            auto_threads = True
+            i += 1
         elif a == "--seed":
             if i + 1 >= len(args):
                 fail_m5(
@@ -505,6 +512,9 @@ def cmd_decode(args: List[String]) raises:
             "queue-depth must be one of {1, 2, 4, 8, 16}, got "
             + String(queue_depth),
         )
+
+    if auto_threads and not threads_explicit:
+        threads = read_hardware_lock_c_star()
 
     # 2. Validasi input dasar
     if model_dir.byte_length() == 0:

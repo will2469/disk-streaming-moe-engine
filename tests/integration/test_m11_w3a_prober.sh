@@ -35,14 +35,15 @@ TRACKED_FILES=(
     "tests/unit/test_m11_w3a_prober.mojo"
 )
 
+HOME_PREFIX="/home/""will"
 for file in "${TRACKED_FILES[@]}"; do
     if [ -f "$file" ]; then
         if grep -nE "noqa|#[[:space:]]*allow" "$file"; then
             echo "FAIL: Ditemukan suppressions terlarang di $file!"
             exit 1
         fi
-        if grep -F "/home/will" "$file"; then
-            echo "FAIL: Ditemukan hardcoded /home/will di $file!"
+        if grep -F "$HOME_PREFIX" "$file"; then
+            echo "FAIL: Ditemukan hardcoded $HOME_PREFIX di $file!"
             exit 1
         fi
     fi

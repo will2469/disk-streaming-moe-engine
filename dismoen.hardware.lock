@@ -1,0 +1,89 @@
+{
+  "version": "1.0.0",
+  "schema": "dismoen.hardware.lock",
+  "description": "Deterministic hardware profiles for core scaling & latency hiding",
+  "updated_at": "2026-09-18T14:07:10.898198+00:00",
+  "active_profile": "host_current",
+  "profiles": {
+    "tier_8gb": {
+      "ram_budget_gib": 8.0,
+      "bw_eff_mbs": 2925.0,
+      "cache_hit_rate": 0.1,
+      "c_compute_max": 7,
+      "c_star_compute": 7,
+      "c_star_system": 1,
+      "r_star_system": 0.1429,
+      "chunk_size": 3493888,
+      "n_in_flight": 2,
+      "dio_align": [
+        4096,
+        4096,
+        4096
+      ]
+    },
+    "tier_16gb": {
+      "ram_budget_gib": 16.0,
+      "bw_eff_mbs": 2925.0,
+      "cache_hit_rate": 0.35,
+      "c_compute_max": 7,
+      "c_star_compute": 7,
+      "c_star_system": 1,
+      "r_star_system": 0.1429,
+      "chunk_size": 3493888,
+      "n_in_flight": 2,
+      "dio_align": [
+        4096,
+        4096,
+        4096
+      ]
+    },
+    "tier_32gb": {
+      "ram_budget_gib": 32.0,
+      "bw_eff_mbs": 2925.0,
+      "cache_hit_rate": 0.65,
+      "c_compute_max": 7,
+      "c_star_compute": 7,
+      "c_star_system": 1,
+      "r_star_system": 0.1429,
+      "chunk_size": 3493888,
+      "n_in_flight": 2,
+      "dio_align": [
+        4096,
+        4096,
+        4096
+      ]
+    },
+    "tier_64gb": {
+      "ram_budget_gib": 64.0,
+      "bw_eff_mbs": 2925.0,
+      "cache_hit_rate": 0.9,
+      "c_compute_max": 7,
+      "c_star_compute": 7,
+      "c_star_system": 1,
+      "r_star_system": 0.1429,
+      "chunk_size": 3493888,
+      "n_in_flight": 2,
+      "dio_align": [
+        4096,
+        4096,
+        4096
+      ]
+    },
+    "host_current": {
+      "ram_budget_gib": 5.86,
+      "bw_eff_mbs": 2925.0,
+      "cache_hit_rate": 0.05,
+      "c_compute_max": 7,
+      "c_star_compute": 7,
+      "c_star_system": 1,
+      "r_star_system": 0.1429,
+      "chunk_size": 3493888,
+      "n_in_flight": 2,
+      "dio_align": [
+        4096,
+        4096,
+        4096
+      ]
+    }
+  }
+}

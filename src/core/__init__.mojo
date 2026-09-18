@@ -36,6 +36,7 @@ from core.topology import (
     parse_cpu_list,
     probe_cpu_topology,
     probe_ram_available,
+    read_hardware_lock_c_star,
     read_sysfs_string,
     validate_runtime_feasibility,
 )

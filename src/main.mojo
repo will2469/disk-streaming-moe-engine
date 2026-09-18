@@ -12,6 +12,7 @@ from cli.cmd_gdn import cmd_gdn
 from cli.cmd_head import cmd_head
 from cli.cmd_layer import cmd_layer
 from cli.cmd_quantize import cmd_quantize
+from cli.cmd_tune import cmd_tune
 from cli.errors import eprint_json, fail, fail_layer
 from cli.m4_errors import m4_error_json
 from cli.m5_errors import m5_error_json
@@ -29,7 +30,7 @@ def main() raises:
             (
                 "DISMOEN: Disk-Streaming MoE Inference Engine\n"
                 "pakai: dismoen"
-                " (check-index|head|layer|forward|forward-port|decode|quantize|compare|gdn)"
+                " (check-index|head|layer|forward|forward-port|decode|quantize|compare|gdn|tune)"
                 " ..."
             ),
             "",
@@ -55,6 +56,10 @@ def main() raises:
         print("  quantize      Kuantisasi bobot ke format GGUF v3")
         print("  compare       Evaluasi paritas numerik dan quality gates")
         print("  gdn           Gated DeltaNet linear attention forward")
+        print(
+            "  tune          Kalibrasi hardware, fitting F16 & profil core"
+            " scaling"
+        )
         return
     if cmd == "check-index":
         var shards = List[String]()
@@ -177,5 +182,10 @@ def main() raises:
         for i in range(len(args)):
             pass_args.append(String(args[i]))
         cmd_forward_port(pass_args^)
+    elif cmd == "tune":
+        var pass_args = List[String]()
+        for i in range(len(args)):
+            pass_args.append(String(args[i]))
+        cmd_tune(pass_args^)
     else:
         fail("USAGE", String("subcommand tak dikenal: ", cmd), "", "")

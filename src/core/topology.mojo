@@ -98,7 +98,7 @@ def read_sysfs_string(path: String) raises -> String:
     """Membaca baris teks pertama dari antarmuka Linux sysfs."""
     var path_z = path + "\0"
     var fd = external_call["openat", Int32](
-        -100, path_z.unsafe_ptr(), Int32(0), Int32(0)  # O_RDONLY
+        -100, path_z.unsafe_ptr(), 0, 0  # O_RDONLY
     )
     if fd < 0:
         raise Error("read_sysfs_string: failed to open " + path)
@@ -565,3 +565,72 @@ def probe_ram_available() -> Tuple[Int, Int, Int]:
         safe_budget = 0
 
     return (total_bytes, avail_bytes, safe_budget)
+
+
+def read_hardware_lock_c_star(
+    lock_path: String = "dismoen.hardware.lock",
+) -> Int:
+    """Membaca c*_system dari profile aktif dismoen.hardware.lock dengan dynamic probe fallback (§2.4, §3.4).
+
+    Bila file lock tidak ditemukan atau gagal diurai, prober topologi lokal
+    akan dipanggil secara dinamis untuk mengembalikan alokasi aman c_compute_max.
+    """
+    var path_z = lock_path + "\0"
+    var fd = external_call["openat", Int32](
+        -100, path_z.unsafe_ptr(), 0, 0  # O_RDONLY
+    )
+    if fd >= 0:
+        var max_read = 16384
+        var buf = external_call["malloc", Int](max_read)
+        var n = external_call["pread", Int](fd, buf, max_read, 0)
+        _ = external_call["close", Int32](fd)
+
+        if n > 0:
+            var p = Pointer[UInt8, MutAnyOrigin](unsafe_from_address=buf)
+            # Cari substring "c_star_system":
+            # "c_star_system": -> len = 16
+            var found_idx = -1
+            for i in range(n - 16):
+                if (
+                    p[unsafe_offset=i] == 99  # c
+                    and p[unsafe_offset=i + 1] == 95  # _
+                    and p[unsafe_offset=i + 2] == 115  # s
+                    and p[unsafe_offset=i + 3] == 116  # t
+                    and p[unsafe_offset=i + 4] == 97  # a
+                    and p[unsafe_offset=i + 5] == 114  # r
+                    and p[unsafe_offset=i + 6] == 95  # _
+                    and p[unsafe_offset=i + 7] == 115  # s
+                    and p[unsafe_offset=i + 8] == 121  # y
+                    and p[unsafe_offset=i + 9] == 115  # s
+                    and p[unsafe_offset=i + 10] == 116  # t
+                    and p[unsafe_offset=i + 11] == 101  # e
+                    and p[unsafe_offset=i + 12] == 109  # m
+                    and p[unsafe_offset=i + 13] == 34  # "
+                    and p[unsafe_offset=i + 14] == 58  # :
+                ):
+                    found_idx = i + 15
+                    break
+
+            if found_idx >= 0:
+                var val = 0
+                var parsing_digit = False
+                for i in range(found_idx, n):
+                    var c = p[unsafe_offset=i]
+                    if c >= 48 and c <= 57:
+                        parsing_digit = True
+                        val = val * 10 + Int(c - 48)
+                    elif parsing_digit:
+                        break
+
+                external_call["free", NoneType](buf)
+                if val >= 1:
+                    return val
+            else:
+                external_call["free", NoneType](buf)
+        else:
+            external_call["free", NoneType](buf)
+
+    # Dynamic Fallback: probe topologi lokal langsung
+    var topo = probe_cpu_topology()
+    var alloc = build_core_allocation(topo, c_io=1)
+    return alloc.c_compute_max

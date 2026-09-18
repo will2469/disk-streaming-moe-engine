@@ -26,6 +26,7 @@ from cli.sys_utils import (
     get_vmhwm_bytes,
 )
 from core.config import ModelConfig
+from core.topology import read_hardware_lock_c_star
 from core.security_port import (
     validate_disk_space_guard,
     validate_memory_budget_port,
@@ -313,6 +314,8 @@ def cmd_forward(args: List[String]) raises:
     var output_file = String("")
     var check_config_only = False
     var threads = 1
+    var threads_explicit = False
+    var auto_threads = False
     var quantization = String("none")
     var run_id = String("")
     var timing_profile = False
@@ -398,9 +401,13 @@ def cmd_forward(args: List[String]) raises:
             if i + 1 < len(args):
                 try:
                     threads = Int(args[i + 1])
+                    threads_explicit = True
                 except:
                     threads = 1
             i += 2
+        elif a == "--auto":
+            auto_threads = True
+            i += 1
         elif a == "--quantization":
             if i + 1 < len(args):
                 quantization = String(args[i + 1])
@@ -421,6 +428,9 @@ def cmd_forward(args: List[String]) raises:
             fail_m4("M4_ERR_INPUT", "input", "unknown option: " + a)
         else:
             i += 1
+
+    if auto_threads and not threads_explicit:
+        threads = read_hardware_lock_c_star()
 
     _ = tokens_path
     _ = output_file
