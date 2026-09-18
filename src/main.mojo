@@ -1,7 +1,7 @@
 # Copyright 2026 will2469
 # Licensed under the Apache License, Version 2.0 (the "License");
 # See LICENSE for details.
-"""Kimo CLI entry point."""
+"""DISMOEN CLI entry point."""
 
 from cli.cmd_check_index import cmd_check_index
 from cli.cmd_compare import cmd_compare
@@ -27,7 +27,8 @@ def main() raises:
         fail(
             "USAGE",
             (
-                "pakai: kimo"
+                "DISMOEN: Disk-Streaming MoE Inference Engine\n"
+                "pakai: dismoen"
                 " (check-index|head|layer|forward|forward-port|decode|quantize|compare|gdn)"
                 " ..."
             ),
@@ -35,6 +36,26 @@ def main() raises:
             "",
         )
     var cmd = String(args[1])
+    if cmd == "--help" or cmd == "-h" or cmd == "help":
+        print(
+            "DISMOEN (DIsk Streaming MOe ENgine) — Production Inference Engine"
+        )
+        print("Penggunaan: dismoen <subcommand> [flags]")
+        print("Subcommand tersedia:")
+        print(
+            "  check-index   Validasi header dan integritas shard Safetensors"
+        )
+        print(
+            "  head          Forward pass embedding dan layer normalisasi awal"
+        )
+        print("  layer         Eksekusi layer tunggal (attn/gdn/moe)")
+        print("  forward       Unified full forward pass (Qwen 3.6 hybrid)")
+        print("  forward-port  Forward pass port M9 (alias transisi)")
+        print("  decode        Autoregressive token generation")
+        print("  quantize      Kuantisasi bobot ke format GGUF v3")
+        print("  compare       Evaluasi paritas numerik dan quality gates")
+        print("  gdn           Gated DeltaNet linear attention forward")
+        return
     if cmd == "check-index":
         var shards = List[String]()
         for i in range(2, len(args)):

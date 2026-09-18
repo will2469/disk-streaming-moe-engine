@@ -22,7 +22,7 @@ from std.testing import (
 def get_target_model_path() -> String:
     """Mengembalikan path model kuantisasi nyata jika ada, atau fallback fixture.
     """
-    return "/home/will/models/qwen1.5-moe-a2.7b-chat-4bit/quant_model.bin"
+    return "fixtures/m10_quant_mini.bin"
 
 
 def test_dio_discovery_probe() raises:

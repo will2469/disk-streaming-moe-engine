@@ -41,6 +41,22 @@
   - $M_{ws\_runtime}$: buffer aktivasi token, GGUF metadata index ($<1\text{ MB}$), thread stacks & allocator pools $\le 0{,}50\text{ GiB}$.
     Total nominal streaming $M_{peak}^{port} \approx 2{,}11\text{ GiB}$; worst-case alokasi penuh $\le 4{,}41\text{ GiB} \ll 7{,}5\text{ GiB}$ (Gate G-M9-2).
 
+**F1d — Plafon Dinamis Anggaran RAM (M11 Tri-Pillar Scaling):**
+Ketika kapasitas DRAM host diskalakan ($M_{budget} \in \{8, 16, 32, 64\}\text{ GiB}$), alokasi cache LRU $M_{cache}$ membesar secara dinamis. Plafon VmHWM runtime bukan konstanta absolut statis, melainkan fungsi linear terhadap anggaran memori aktif:
+
+$$V_{\text{mHWM}}^{ceiling}(M_{budget}) = M_{budget} - M_{OS\_reserve}$$
+
+dengan $M_{OS\_reserve} \ge 0{,}5\text{ GiB}$ (cadangan wajib OS kernel & background daemon). Rasio kepatuhan memori runtime didefinisikan sebagai:
+
+$$\mathcal{R}_{RAM} = \frac{\text{VmHWM}}{M_{budget}} \le 0{,}95$$
+
+- Tier $8\text{ GiB}$: $V_{\text{mHWM}} \le 7{,}5\text{ GiB}$ ($\mathcal{R}_{RAM} \le 0{,}9375$).
+- Tier $16\text{ GiB}$: $V_{\text{mHWM}} \le 15{,}0\text{ GiB}$ ($M_{cache} \to 8\text{--}10\text{ GiB}$, $h \to 50\text{--}65\%$).
+- Tier $32\text{ GiB}$: $V_{\text{mHWM}} \le 30{,}0\text{ GiB}$ ($M_{cache} \to 20\text{--}24\text{ GiB}$, $h \to 75\text{--}85\%$).
+- Tier $64\text{ GiB}$: seluruh bobot termuat di RAM ($h \to 95\%$).
+
+Plafon ini menjamin bahwa saat RAM bertambah dan engine memperluas cache sesuai model F1–F3, metrik HWM tidak mengalami regresi terhadap batas statis, melainkan terikat secara matematis pada rasio $\mathcal{R}_{RAM} \le 0{,}95$.
+
 **F2 — KV cache** (hanya layer dengan attention penuh):
 
 $$M_{KV}(s) = 2 L_{att} H_{kv} d_h(\text{config}) s b_{KV}$$
@@ -369,15 +385,23 @@ dengan $\mathcal{D} = \{\mathrm{BF16}, \mathrm{F32}, \mathrm{F16}, \mathrm{F64}\
 
 ## 3.7 Skala Core (F16) — rasio, tanpa angka device di spec
 
-Simbol device (terdeteksi saat run, **tidak** dipatok di spec): $C_{max}$ = core logis tersedia; $c$ = thread pekerja yang diuji, $c \in \{1,2,4,\dots\} \cap [1, C_{max}]$; rasio $r = c / C_{max}$.
+Simbol device (terdeteksi saat run via Linux sysfs `/sys/devices/system/cpu/`, **tidak** dipatok di spec):
+
+- $C_{online}$ = total processor logis online (fallback `sysconf(_SC_NPROCESSORS_ONLN)`);
+- $C_{io}$ = core yang dialokasikan untuk dedicated asynchronous I/O worker ($C_{io} \ge 1$);
+- $C_{compute\_max} = \max(1, C_{online} - C_{io})$ = batas atas fisik core worker pool komputasi;
+- $c$ = thread pekerja komputasi yang diuji, $c \in \{1,2,4,\dots\} \cap [1, C_{compute\_max}]$;
+- rasio operasi aman $r = c / C_{compute\_max}$.
+
+Invarian kelayakan sistem: total alokasi $C_{total} = c + C_{io} \le C_{online}$.
 
 **F16a — Model waktu dan Amdahl:**
 
 $$T_{tok}(c)=T_{IO}+T_{comp}(c)+T_{ovh}(c)$$
 
-$$T_{comp}(c)=T_1/S(c)$$
+$$T_{comp}(c)=T_1/S(c) = T_1 \left((1 - p) + \frac{p}{c}\right)$$
 
-$$S(c)=1/(1-p+p/c)$$
+$$S(c)=\frac{1}{(1-p)+\frac{p}{c}}$$
 
 **F16b — Overhead:**
 
@@ -386,6 +410,8 @@ $$T_{ovh}(c)=\beta(c-1)$$
 $$\beta\ge0$$
 
 $T_{IO} = B_{tok}/BW_{eff}$ (F5) diasumsikan independen $c$ pada decode memory-bound — asumsi ini justru yang diuji di G-M7-4. $p$ = fraksi paralel, $T_1$ = komponen compute pada $c=1$, keduanya di-fit dari kurva ukur.
+
+> **Pemisahan Metodologis F16 vs F18 (Anti I/O-Masking):** Fitting parameter Amdahl ($T_1, p, \beta$) wajib dilakukan pada waktu komputasi terisolasi ($T_{comp}(c)$, baik via timer komputasi murni maupun memori yang telah di-preload). Dilarang keras melakukan fitting Amdahl F16 pada total waktu end-to-end ber-double-buffer asinkron ($\max(T_{IO}, T_{comp})$), karena lantai latensi I/O storage ($T_{IO}$) akan menutupi percepatan komputasi saat $T_{comp}(c) < T_{IO}$, yang memicu kesalahan estimasi fraksi serial $(1-p)$ (_spurious serial fraction hallucination_).
 
 Turunan (dilaporkan, bukan di-gate kaku):
 
@@ -403,7 +429,7 @@ Pilih $c^*$ sebagai nilai $c$ terkecil yang diuji dan memenuhi gain marginal di 
 
 $$M(c^*\to2c^*)<10\%$$
 
-$$r^*=c^*/C_{max}$$
+$$r^*=c^*/C_{compute\_max} \le 1{,}0$$
 
 Kalibrasi kurva: $e_{T,core} = |T^{pred}(c)-T^{meas}(c)|/T^{meas}(c)$ untuk semua $c$ yang diuji. Monotonisitas: $T(c_2) \le T(c_1)(1+\varepsilon)$ untuk $c_2>c_1$, $\varepsilon=5\%$ (toleransi noise). Non-regresi: $S_{tok}(c) \ge 1$ (tak pernah melambat vs $c=1$ di luar noise). Bukti paper per pilihan: `appendices/D-core-scaling.md` ([R14]–[R20]). Dipakai di `milestones/M5-kv-decode.md` (G-M5-5) dan `milestones/M7-odirect-lru.md` (G-M7-4).
 
@@ -444,12 +470,12 @@ Pada eksekusi sekuensial naif (single buffer):
 $$T_{step}^{serial} = T_{IO} + T_{comp}(c)$$
 
 Dengan arsitektur asynchronous double-buffering ping-pong (buffer ganda bergiliran):
-$$T_{step}^{overlap}(c) = \max\left(T_{IO}, \; T_{comp}(c)\right) + \epsilon_{sync}$$
+$$T_{step}^{overlap}(c) = \max\left(T_{IO}, \; T_{comp}(c)\right) + T_{ovh}(c) + \epsilon_{sync}$$
 
-dengan $T_{IO} = B_{tok}/BW_{eff}$ (F5), $T_{comp}(c) = T_1 / S(c)$ (F16a), dan $\epsilon_{sync} \ge 0$ adalah overhead sinkronisasi thread antrean I/O dan semafor worker pool.
+dengan $T_{IO} = B_{tok}/BW_{eff}$ (F5), $T_{comp}(c) = T_1 \left((1 - p) + \frac{p}{c}\right)$ (F16a), $T_{ovh}(c) = \beta(c-1)$ (F16b), dan $\epsilon_{sync} \ge 0$ adalah overhead sinkronisasi thread antrean I/O dan semafor worker pool.
 
 Pada rezim decode disk-streaming memory-bound ($I_{decode} \ll I_{ridge}$, F4 [R17][R18]), $T_{IO} > T_{comp}(c)$ terpenuhi pada titik operasi $c^*$, sehingga waktu komputasi CPU tersembunyi (_hidden_) di balik transfer storage:
-$$T_{step}^{overlap}(c^*) \approx T_{IO} + \epsilon_{sync}$$
+$$T_{step}^{overlap}(c^*) \approx T_{IO} + T_{ovh}(c^*) + \epsilon_{sync}$$
 
 **F18b — Efisiensi Latency Hiding (Overlap Efficiency):**
 
@@ -462,3 +488,14 @@ Target kelayakan gate pada $c^*$: $\mathcal{E}_{overlap}(c^*) \ge 80\%$.
 $$R_{tail} = \frac{p95}{p50}$$
 
 Sesuai prinsip _The Tail at Scale_ [R19], utilisasi thread tidak boleh memicu saturasi yang merusak distribusi latensi ekor. Target kelayakan stabilitas pada $c^*$: $R_{tail} \le 1{,}35$ dengan toleransi kebisingan $\varepsilon = 5\%$. Dipakai di `milestones/M11-core-scaling.md` (G-M11-2, G-M11-3).
+
+**F18d — Kontrak Buffer & Granularitas Chunk Ring-Buffer:**
+
+Kapasitas alokasi buffer streaming ganda:
+$$M_{buf} = 2 \times \lceil S_{layer}^{active} \rceil_{4096} = 2 \times 28\text{ MiB} = \mathbf{56\text{ MiB}} \quad (\text{dibulatkan ke } 64\text{ MiB aligned pool})$$
+
+Ukuran chunk per-expert (Q3*K):
+$$S*{chunk} = S*{expert}^{Q3_K} \approx \frac{S*{layer}^{active}}{k} = \frac{26{,}65\text{ MiB}}{8} \approx \mathbf{3{,}33\text{ MiB}} \quad (3{,}493{,}888\text{ B})$$
+
+Penjajaran memori wajib: $4096\text{ Bytes}$ (`posix_memalign`, batas keras Linux `O_DIRECT`).
+Pipelining berbutir halus: $N_{slots} \ge 8$, $N_{in\_flight} \in [2, 4]$. Worker threads memulai dekuantisasi/GEMM seketika chunk ke-$i$ terkonfirmasi selesai tanpa harus menunggu pembacaan seluruh $k=8$ expert pada layer tersebut.

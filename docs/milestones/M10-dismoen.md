@@ -44,11 +44,13 @@ Milestone M10 meresmikan transformasi dari fase riset multi-model (Trial model Q
 
 ### 2.1 Berkas Penyimpanan (Storage Sanitization)
 
-| Lokasi Berkas / Direktori                       |       Ukuran        |    Status Tindakan M10     | Justifikasi                                                              |
-| :---------------------------------------------- | :-----------------: | :------------------------: | :----------------------------------------------------------------------- |
-| `/home/will/models/qwen1.5-moe-a2.7b-chat`      | $26{,}68\text{ GB}$ | **DIHAPUS / DIPENSIUNKAN** | Shard Safetensors 1.5 trial tidak lagi dipakai setelah M9 tersertifikasi |
-| `/home/will/models/qwen1.5-moe-a2.7b-chat-4bit` | $6{,}88\text{ GB}$  | **DIHAPUS / DIPENSIUNKAN** | Format kuantisasi custom M6 usang; digantikan oleh GGUF v3               |
-| `/home/will/models/qwen3.6-35b-a3b`             | $68{,}12\text{ GB}$ |  **DIPERTAHANKAN (SSOT)**  | Checkpoint target produksi 26 shard Safetensors BF16                     |
+> Lokasi root model diatur via variabel lingkungan `${DISMOEN_MODEL_ROOT:-/home/will/models}` atau flag CLI `--model-dir`.
+
+| Lokasi Berkas / Direktori                           | Ukuran Eksak (Bytes / GiB)                             |    Status Tindakan M10     | Justifikasi                                                              |
+| :-------------------------------------------------- | :----------------------------------------------------- | :------------------------: | :----------------------------------------------------------------------- |
+| `${DISMOEN_MODEL_ROOT}/qwen1.5-moe-a2.7b-chat`      | $28{,}644{,}046{,}163\text{ B}$ ($26{,}68\text{ GiB}$) | **DIHAPUS / DIPENSIUNKAN** | Shard Safetensors 1.5 trial tidak lagi dipakai setelah M9 tersertifikasi |
+| `${DISMOEN_MODEL_ROOT}/qwen1.5-moe-a2.7b-chat-4bit` | $7{,}382{,}480{,}468\text{ B}$ ($6{,}88\text{ GiB}$)   | **DIHAPUS / DIPENSIUNKAN** | Format kuantisasi custom M6 usang; digantikan oleh GGUF v3               |
+| `${DISMOEN_MODEL_ROOT}/qwen3.6-35b-a3b`             | $73{,}139{,}739{,}806\text{ B}$ ($68{,}12\text{ GiB}$) |  **DIPERTAHANKAN (SSOT)**  | Checkpoint target produksi 26 shard Safetensors BF16                     |
 
 ### 2.2 Komponen Kode yang Didepresiasi & Dihapus
 
@@ -153,38 +155,64 @@ dismoen compare \
 
 ## 4. Model Analitis Kapasitas Storage Pasca-Sanitasi
 
-### 4.1 Neraca Kapasitas Partisi Host ($S_{host}$)
+### 4.1 Standar Satuan & Neraca Kapasitas Partisi Host ($S_{host}$)
 
-Sebelum pembersihan (Kondisi Akhir M9):
-$$S_{used} = 387\text{ GB}, \quad S_{avail} = 54\text{ GB} \quad (\text{Utilisasi } 88\%)$$
+> **Aturan SSOT Satuan Penyimpanan:**
+>
+> - $\text{Bytes}$: Integer presisi tunggal (SSOT penghitungan filesystem).
+> - $\text{GiB} = \text{Bytes} / 2^{30} = \text{Bytes} / 1{,}073{,}741{,}824$ (standar biner IEC, metrik resmi engine).
+> - $\text{GB} = \text{Bytes} / 10^9 = \text{Bytes} / 1{,}000{,}000{,}000$ (standar metrik desimal SI).
 
-Pembersihan artefak Qwen 1.5:
-$$\Delta S_{freed} = S_{safetensors}^{1.5} + S_{quant}^{1.5} = 26{,}68\text{ GB} + 6{,}88\text{ GB} = \mathbf{33{,}56\text{ GB}}$$
+**Neraca Sebelum Pembersihan (Kondisi Akhir M9):**
 
-Kapasitas baru pasca-sanitasi M10:
-$$S_{avail}^{M10} = 54\text{ GB} + 33{,}56\text{ GB} \approx \mathbf{87{,}56\text{ GB}} \quad (\text{Utilisasi turun ke } \approx 80\%)$$
+- Partisi Host: $S_{used} \approx 387\text{ GiB}$, $S_{avail} \approx 54\text{ GiB}$ (Utilisasi $\approx 88\%$).
+
+**Perhitungan Eksak Berkas Qwen 1.5 yang Dibersihkan:**
+
+$$
+\begin{aligned}
+S_{safetensors}^{1.5} &= 28{,}644{,}046{,}163\text{ Bytes} \approx 26{,}677\text{ GiB} \quad (28{,}644\text{ GB}) \\
+S_{quant}^{1.5}       &= 7{,}382{,}480{,}468\text{ Bytes} \approx 6{,}875\text{ GiB} \quad (7{,}382\text{ GB}) \\
+\Delta S_{freed}      &= 28{,}644{,}046{,}163 + 7{,}382{,}480{,}468 = \mathbf{36{,}026{,}526{,}631\text{ Bytes}} \approx \mathbf{33{,}552\text{ GiB}} \quad (36{,}027\text{ GB})
+\end{aligned}
+$$
+
+Ambang batas kelulusan kuota sanitasi storage (Gate G-M10-2):
+$$\Delta S_{freed} \ge 33 \times 2^{30}\text{ Bytes} \quad (= 35{,}433{,}480{,}192\text{ Bytes})$$
+
+Kapasitas ruang bebas baru pasca-sanitasi M10:
+$$S_{avail}^{M10} = S_{avail}^{M9} + \Delta S_{freed} \approx 54\text{ GiB} + 33{,}55\text{ GiB} \approx \mathbf{87{,}55\text{ GiB}} \quad (\text{Utilisasi turun ke } \approx 80\%)$$
 
 ### 4.2 Alokasi Ruang untuk Qwen 3.6-35B dan Target Kuantisasi
 
-Kapasitas $\approx 88\text{ GB}$ yang tersedia menjamin keamanan operasional untuk:
+Kondisi fisik penyimpanan host:
 
-1. **Model Utuh BF16 (26 Shards)**: $68{,}12\text{ GB}$ (sudah ada).
-2. **Model Kuantisasi GGUF Q3_K_M Target**: $\approx 15{,}2\text{ GB}$.
-3. **Headroom Operasional (Buffer OS, Scratch, Logs)**: $\approx 4{,}2\text{ GB}$.
+- Shard asli Qwen 3.6-35B ($68{,}12\text{ GB}$) **sudah ada di disk** dan sudah terhitung di dalam $S_{used} = 387\text{ GB}$.
+- Setelah pembersihan artefak Qwen 1.5 ($\Delta S_{freed} = 33{,}56\text{ GB}$), ruang kosong partisi meningkat menjadi $S_{avail}^{M10} = 87{,}56\text{ GB}$.
+- Berkas baru yang wajib ditulis ke ruang kosong hanyalah berkas kuantisasi runtime GGUF ($S_{quant}^{target} \approx 15{,}20\text{ GB}$).
 
-Total kebutuhan storage terkonsolidasi:
-$$S_{total\_req} = 68{,}12\text{ GB} + 15{,}2\text{ GB} = 83{,}32\text{ GB} \le S_{avail}^{M10} + S_{35B}^{current} \quad \implies \quad \mathbf{[AMAN]}$$
+**Perhitungan Headroom Penyimpanan yang Benar:**
+
+1. **Skenario Operasi Normal (In-Place Quantization)**:
+   Karena bobot asli $68{,}12\text{ GB}$ sudah tersimpan, pembuatan berkas kuantisasi GGUF hanya mengonsumsi $15{,}20\text{ GB}$ dari ruang kosong:
+   $$S_{headroom}^{real} = S_{avail}^{M10} - S_{quant}^{target} = 87{,}56\text{ GB} - 15{,}20\text{ GB} = \mathbf{72{,}36\text{ GB}} \quad \implies \quad \mathbf{[SANGAT\;LEGA]}$$
+   Partisi host menyisakan ruang bebas sebesar $\approx 72{,}4\text{ GB}$, sangat aman untuk buffer scratch, logs, dan KV cache swap.
+
+2. **Skenario Ekstrem (Worst-Case Duplikasi / Re-Download Full Checkpoint)**:
+   Seandainya partisi harus menampung _salinan baru_ checkpoint utuh $68{,}12\text{ GB}$ dari nol secara bersamaan dengan target GGUF $15{,}20\text{ GB}$:
+   $$S_{headroom}^{worst\_case} = S_{avail}^{M10} - S_{model}^{raw} - S_{quant}^{target} = 87{,}56\text{ GB} - 68{,}12\text{ GB} - 15{,}20\text{ GB} = \mathbf{4{,}24\text{ GB}} \quad \implies \quad \mathbf{[AMAN]}$$
+   Bahkan pada skenario duplikasi terburuk sekalipun, partisi tetap memiliki _headroom_ positif sebesar $4{,}24\text{ GB}$ tanpa mengalami `ENOSPC` (_Disk Full_).
 
 ---
 
 ## 5. Quality Gates (Fase Konsolidasi M10)
 
-| Gate        | Kriteria Penilaian                                                                                                                                                                                                  |                                      Ambang Batas                                       | Verifier Tool                   |
-| :---------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :-------------------------------------------------------------------------------------: | :------------------------------ |
-| **G-M10-1** | **Rebranding & Toolchain Integrity**: Kompilasi `dismoen` 0 compiler warning, symlink `kimo` aktif, CLI banner menampilkan nama DISMOEN                                                                             |                      Exit code 0, binary executable, symlink valid                      | `test_m10_w1_rebrand.sh`        |
-| **G-M10-2** | **Storage Sanitization & Zero-Legacy**: Seluruh berkas model 1.5 dihapus dari disk, `models.lock.json` terkunci ke 3.6, seluruh tes CI bebas dependensi model 27 GB                                                 |           $\Delta S \ge 33\text{ GB}$, 0 file 1.5 tersisa di active test path           | `test_m10_w2_sanitization.sh`   |
-| **G-M10-3** | **Unified Forward Parity & Decode Continuation**: `dismoen forward` bit-exact vs reference logits M9 ($\Delta_{\max} \le 10^{-7}$), `dismoen decode` menjalankan hybrid continuation dengan `recompute_tokens == 0` | $\Delta_{\max} \le 10^{-7}$, $\text{recompute} = 0$, $\text{gdn\_reused} = \text{true}$ | `test_m10_w3_forward_decode.sh` |
-| **G-M10-4** | **Zero Regression & Code Hygiene**: Seluruh suite tes regresi (`validate-m9`, `validate-m8`) dan 13 hook pre-commit 100% hijau                                                                                      |                           100% PASS, 0 `# noqa`, 0 `#[allow]`                           | `test_m10_w5_gates.sh`          |
+| Gate        | Kriteria Penilaian                                                                                                                                                                                                                                 |                                                                  Ambang Batas                                                                   | Verifier Tool                   |
+| :---------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------: | :------------------------------ |
+| **G-M10-1** | **Rebranding & Toolchain Integrity**: Kompilasi `dismoen` 0 compiler warning, symlink `kimo` aktif, CLI banner menampilkan nama DISMOEN                                                                                                            |                                                  Exit code 0, binary executable, symlink valid                                                  | `test_m10_w1_rebrand.sh`        |
+| **G-M10-2** | **Storage Sanitization & Zero-Legacy Multi-Layer Verification**: Penghapusan fisik berkas legacy 1.5 di `${DISMOEN_MODEL_ROOT}`, dekopling referensi tes aktif, penguncian lockfile, dan verifikasi kuota pembebasan byte                          | 0 legacy path, 0 test references, $\text{lockfile} = \text{Qwen3.6}$, $\text{legacy\_bytes} \equiv 0$, $\Delta S \ge 33 \times 2^{30}\text{ B}$ | `test_m10_w2_sanitization.sh`   |
+| **G-M10-3** | **Unified Forward Numerical Parity & Decode Continuation**: `dismoen forward` memenuhi paritas numerik terhadap reference logits M9 ($\Delta_{\max} \le 10^{-7}$), `dismoen decode` menjalankan hybrid continuation dengan `recompute_tokens == 0` |                             $\Delta_{\max} \le 10^{-7}$, $\text{recompute} = 0$, $\text{gdn\_reused} = \text{true}$                             | `test_m10_w3_forward_decode.sh` |
+| **G-M10-4** | **Zero Regression & Code Hygiene**: Seluruh suite tes regresi (`validate-m9`, `validate-m8`) dan 13 hook pre-commit 100% hijau                                                                                                                     |                                                       100% PASS, 0 `# noqa`, 0 `#[allow]`                                                       | `test_m10_w5_gates.sh`          |
 
 ---
 
@@ -202,9 +230,9 @@ Pelaksanaan Milestone M10 dipecah menjadi 5 gelombang kerja berurutan:
 ### Gelombang 2 (M10-W2): Storage Sanitization & Test Fixture Decoupling
 
 - Perbarui `test_odirect.mojo` dan `test_lru_cache.mojo` agar membaca fixture sintetis mini atau shard 3.6.
-- Perbarui `test_m9_w1_config_adapter.sh` agar bebas dari direktori fisik Qwen 1.5.
-- Hapus direktori `/home/will/models/qwen1.5-moe-a2.7b-chat` dan `/home/will/models/qwen1.5-moe-a2.7b-chat-4bit`.
-- Verifikasi pembebasan ruang storage ($\ge 33\text{ GB}$) dan Gate G-M10-2.
+- Perbarui `test_m9_w1_config_adapter.sh` agar bebas dari path fisik `${DISMOEN_MODEL_ROOT}/qwen1.5*`.
+- Hapus direktori `${DISMOEN_MODEL_ROOT}/qwen1.5-moe-a2.7b-chat` dan `${DISMOEN_MODEL_ROOT}/qwen1.5-moe-a2.7b-chat-4bit`.
+- Verifikasi multi-layer Gate G-M10-2: 0 path legacy, 0 referensi di `tests/`, lockfile Qwen 3.6, legacy byte count $\equiv 0$, dan pembebasan disk $\Delta S_{freed} \ge 33 \times 2^{30}\text{ Bytes}$ ($35{,}433{,}480{,}192\text{ B}$).
 
 ### Gelombang 3 (M10-W3): Unifikasi ModelConfig & Perintah `forward`
 
@@ -231,10 +259,10 @@ Pelaksanaan Milestone M10 dipecah menjadi 5 gelombang kerja berurutan:
 ## 7. Definisi Selesai (DoD M10)
 
 - [ ] Binary utama terkompilasi sebagai `dismoen` dengan symlink `kimo` aktif dan banner resmi `DISMOEN`.
-- [ ] Berkas bobot fisik Qwen 1.5 ($26{,}68\text{ GB}$ Safetensors + $6{,}88\text{ GB}$ 4-bit bin) terhapus dari host storage, membebaskan $\ge 33\text{ GB}$ disk space.
+- [ ] Berkas bobot fisik Qwen 1.5 terhapus dari `${DISMOEN_MODEL_ROOT}` dengan verifikasi multi-layer Gate G-M10-2 (0 path legacy, 0 referensi di tes aktif, legacy byte count $\equiv 0$, dan pembebasan $\ge 33 \times 2^{30}\text{ Bytes}$).
 - [ ] Pengujian unit `test_odirect.mojo` dan `test_lru_cache.mojo` terbebas dari path Qwen 1.5 dan lulus 100%.
 - [ ] Seluruh percabangan `trial` pada `config_parser.mojo` dan `config.mojo` dibersihkan; Qwen 3.6 hybrid menjadi arsitektur default.
-- [ ] `dismoen forward` terpadu lolos verifikasi paritas numerik bit-exact terhadap logits M9 ($\Delta_{\max} \le 10^{-7}$).
+- [ ] `dismoen forward` terpadu lolos verifikasi paritas numerik (Unified Forward Numerical Parity) terhadap logits M9 ($\Delta_{\max} \le 10^{-7}$).
 - [ ] `dismoen decode` mendukung decoding autoregresif 40-layer hybrid dengan session continuation `KMSS v1` (`recompute_tokens == 0`).
 - [ ] `models.lock.json` diperbarui mengunci spesifikasi resmi target Qwen 3.6-35B-A3B.
 - [ ] Seluruh suite pengujian regresi (`validate-m9`, `validate-m8`) dan 13 hook `pre-commit` 100% hijau tanpa suppressions (`# noqa`, `#[allow]`).

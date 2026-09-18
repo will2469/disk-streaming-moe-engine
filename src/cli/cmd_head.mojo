@@ -49,8 +49,8 @@ def cmd_head(args: List[String]) raises:
         fail(
             "USAGE",
             (
-                "pakai: kimo head tokens.json (--model-dir <dir> | <shard...>)"
-                " [--output <path>] [--workdir <dir>]"
+                "pakai: dismoen head tokens.json (--model-dir <dir> |"
+                " <shard...>) [--output <path>] [--workdir <dir>]"
             ),
             "",
             "",

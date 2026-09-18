@@ -7,3 +7,15 @@ edition = "2021"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 sha2 = "0.11.0"
+
+[lib]
+name = "dismoen_tools"
+path = "src/lib.rs"
+
+[[bin]]
+name = "dismoen-tools"
+path = "src/bin/dismoen-tools.rs"
+
+[[bin]]
+name = "kimo-tools"
+path = "src/bin/kimo-tools.rs"

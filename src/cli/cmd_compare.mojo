@@ -22,8 +22,12 @@ def c_system(cmd: String) -> Int:
 
 def find_compare_binary() -> String:
     var candidates = List[String]()
+    candidates.append("target/release/dismoen-tools")
+    candidates.append("target/debug/dismoen-tools")
     candidates.append("target/release/kimo-tools")
     candidates.append("target/debug/kimo-tools")
+    candidates.append("tools/kimo-tools/target/release/dismoen-tools")
+    candidates.append("tools/kimo-tools/target/debug/dismoen-tools")
     candidates.append("tools/kimo-tools/target/release/kimo-tools")
     candidates.append("tools/kimo-tools/target/debug/kimo-tools")
     for i in range(len(candidates)):
@@ -37,7 +41,7 @@ def cmd_compare(args: List[String]) raises:
         fail(
             "USAGE",
             (
-                "pakai: kimo compare --reference <ref.bin> --candidate"
+                "pakai: dismoen compare --reference <ref.bin> --candidate"
                 " <cand.bin> [--tolerance <tol>]"
             ),
             "",
