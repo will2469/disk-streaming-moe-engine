@@ -400,13 +400,13 @@ Pelaksanaan Milestone M10 dipecah menjadi 5 gelombang kerja berurutan:
 
 ## 7. Definisi Selesai (DoD M10)
 
-- [ ] Binary utama terkompilasi sebagai `dismoen` dengan 0 leftover legacy dan banner resmi `DISMOEN`.
-- [ ] Berkas bobot fisik Qwen 1.5 terhapus dari `${DISMOEN_MODEL_ROOT}` dengan verifikasi multi-layer Gate G-M10-2 ($L_{paths} \equiv 0$, $L_{logical} \equiv 0$ logical-bytes, 0 referensi di tes aktif, $\Delta B_{free}$ hanya observasional, margin tulis $B_{free\_before} - B_{required} \ge 2\text{ GiB}$, dan pembebasan $\ge 33 \times 2^{30}\text{ Bytes}$).
-- [ ] Zero-legacy source lolos Gate G-M10-2 lapisan §4.3 (0 simbol trial/quant-legacy/`kimo-tools` di `src/`; `quant_format.mojo` retired; uji mismatch trial M9 dimigrasi; stage dual-binary W1 ditulis ulang single-binary).
-- [ ] Pengujian unit `test_odirect.mojo` dan `test_lru_cache.mojo` terbebas dari path Qwen 1.5 dan lulus 100%.
-- [ ] Seluruh percabangan `trial` pada `config_parser.mojo` dan `config.mojo` dibersihkan; Qwen 3.6 hybrid menjadi arsitektur default.
-- [ ] `dismoen forward` terpadu lolos verifikasi paritas numerik (Unified Forward Numerical Parity) terhadap logits M9 ($\Delta_{\max} \le 10^{-7}$).
-- [ ] `dismoen decode` mendukung decoding autoregresif 40-layer hybrid dengan session continuation `KMSS v1` (`historical_recompute_tokens == 0`, §3.2).
-- [ ] `models.lock.json` diperbarui mengunci spesifikasi resmi target Qwen 3.6-35B-A3B dengan 7 field identitas §4.5 (tanpa placeholder hash).
-- [ ] Seluruh suite pengujian regresi (`validate-m9`, `validate-m8`) dan 13 hook `pre-commit` 100% hijau tanpa suppressions (`# noqa`, `#[allow]`).
-- [ ] Laporan scorecard sertifikasi M10 ter-commit di `reports/YYYY-MM-DD/M10-gates-scorecard.md`.
+- [x] Binary utama terkompilasi sebagai `dismoen` dengan 0 leftover legacy dan banner resmi `DISMOEN`.
+- [x] Berkas bobot fisik Qwen 1.5 terhapus dari `${DISMOEN_MODEL_ROOT}` dengan verifikasi multi-layer Gate G-M10-2 ($L_{paths} \equiv 0$, $L_{logical} \equiv 0$ logical-bytes, 0 referensi di tes aktif, $\Delta B_{free}$ hanya observasional, margin tulis $B_{free\_before} - B_{required} \ge 2\text{ GiB}$, dan pembebasan $\ge 33 \times 2^{30}\text{ Bytes}$).
+- [x] Zero-legacy source lolos Gate G-M10-2 lapisan §4.3 (0 simbol trial/quant-legacy/`kimo-tools` di `src/`; `quant_format.mojo` retired; uji mismatch trial M9 dimigrasi; stage dual-binary W1 ditulis ulang single-binary).
+- [x] Pengujian unit `test_odirect.mojo` dan `test_lru_cache.mojo` terbebas dari path Qwen 1.5 dan lulus 100%.
+- [x] Seluruh percabangan `trial` pada `config_parser.mojo` dan `config.mojo` dibersihkan; Qwen 3.6 hybrid menjadi arsitektur default.
+- [x] `dismoen forward` terpadu lolos verifikasi paritas numerik (Unified Forward Numerical Parity) terhadap logits M9 ($\Delta_{\max} \le 10^{-7}$).
+- [x] `dismoen decode` mendukung decoding autoregresif 40-layer hybrid dengan session continuation `KMSS v1` (`historical_recompute_tokens == 0`, §3.2).
+- [x] `models.lock.json` diperbarui mengunci spesifikasi resmi target Qwen 3.6-35B-A3B dengan 7 field identitas §4.5 (tanpa placeholder hash).
+- [x] Seluruh suite pengujian regresi (`validate-m9`, `validate-m8`) dan 13 hook `pre-commit` 100% hijau tanpa suppressions (`# noqa`, `#[allow]`).
+- [x] Laporan scorecard sertifikasi M10 ter-commit di `reports/2026-09-19/M10-gates-scorecard.md`.

@@ -131,6 +131,45 @@ def argmax_sample(logits: List[Float32], vocab_size: Int) raises -> Int:
     return best_idx
 
 
+def _parse_tokens_from_file(path: String) raises -> List[Int]:
+    var raw = read_small_file(path)
+    var n = len(raw)
+    var i = 0
+    while i < n and (
+        raw[i] == 32 or raw[i] == 9 or raw[i] == 10 or raw[i] == 13
+    ):
+        i += 1
+    if i < n and raw[i] == 123:  # '{'
+        while i < n and raw[i] != 91:  # '['
+            i += 1
+    if i >= n or raw[i] != 91:
+        raise Error("Expected '[' in tokens file")
+    i += 1
+    var tokens = List[Int]()
+    while i < n:
+        while i < n and (
+            raw[i] == 32 or raw[i] == 9 or raw[i] == 10 or raw[i] == 13
+        ):
+            i += 1
+        if i < n and raw[i] == 93:  # ']'
+            break
+        var val = 0
+        var is_digit = False
+        while i < n and (raw[i] >= 48 and raw[i] <= 57):
+            val = val * 10 + (Int(raw[i]) - 48)
+            is_digit = True
+            i += 1
+        if is_digit:
+            tokens.append(val)
+        while i < n and (
+            raw[i] == 32 or raw[i] == 9 or raw[i] == 10 or raw[i] == 13
+        ):
+            i += 1
+        if i < n and raw[i] == 44:  # ','
+            i += 1
+    return tokens^
+
+
 def cmd_decode(args: List[String]) raises:
     """CLI handler untuk dismoen decode."""
     var t_start = perf_counter_ns()
@@ -517,17 +556,13 @@ def cmd_decode(args: List[String]) raises:
                 "unknown option: " + a,
             )
 
-    if (
-        architecture.byte_length() > 0
-        and architecture != "qwen3.6"
-        and architecture != "trial"
-    ):
+    if architecture.byte_length() > 0 and architecture != "qwen3.6":
         fail_m9(
             M9_ERR_ARCHITECTURE,
             "ARCHITECTURE_ERROR",
             "unsupported architecture: "
             + architecture
-            + " (supported: qwen3.6, trial)",
+            + " (supported: qwen3.6)",
         )
 
     # Validasi opsi M7 fail-fast
@@ -710,7 +745,10 @@ def cmd_decode(args: List[String]) raises:
             )
         try:
             var raw_tok = read_small_file(tokens_path)
-            prompt_tokens = parse_flat_u32_tokens(raw_tok, tokens_path)
+            try:
+                prompt_tokens = parse_flat_u32_tokens(raw_tok, tokens_path)
+            except:
+                prompt_tokens = _parse_tokens_from_file(tokens_path)
         except e:
             fail_m5(
                 "M5_ERR_INPUT",

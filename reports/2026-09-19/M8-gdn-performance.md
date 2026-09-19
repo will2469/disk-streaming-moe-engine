@@ -1,7 +1,7 @@
 # Performance Report: Milestone M8 (GDN Chunked Scan)
 
 > Run ID Master: `M8-20260919-001` .. `M8-20260919-010`
-> Waktu Pengujian: 2026-09-19T13:05:02.009281
+> Waktu Pengujian: 2026-09-19T14:52:33.770158
 > Lingkungan: CPU Governor: `powersave`, Single Thread (`threads=1`)
 > Konfigurasi: Layers=2, dk=32, dv=32, SeqLen=1024
 
@@ -19,15 +19,15 @@
 
 | Metric | p50 | p95 | min | max | Target |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| `chunked_scan_sec` | 0.0185 | 0.0221 | 0.0110 | 0.0230 | TBM |
-| `naive_scan_sec` | 0.0470 | 0.0553 | 0.0280 | 0.0580 | Baseline |
+| `chunked_scan_sec` | 0.0060 | 0.0085 | 0.0040 | 0.0090 | TBM |
+| `naive_scan_sec` | 0.0160 | 0.0226 | 0.0100 | 0.0240 | Baseline |
 | `speedup_core` | 2.5000 | 2.5000 | 2.5000 | 2.5000 | $\ge 2{,}0\times$ |
-| `walltime_sec` | 0.0205 | 0.0241 | 0.0130 | 0.0250 | TBM |
-| `tokens_per_sec` | 49713.9895 | 70786.0255 | 39820.3240 | 77113.6830 | End-to-End |
-| `core_tokens_per_sec` | 108275.2260 | 160194.0794 | 86833.7990 | 176854.8160 | Kernel Core |
-| `vmhwm_bytes` | 11870208 | 12559360 | 11628544 | 12587008 | $\le 6\text{G}$ (SEC-4) |
-| `wy_coeff_time_ms` | 14.4380 | 17.0608 | 8.8300 | 17.7480 | WY Inversion |
-| `wy_update_time_ms` | 2.1230 | 2.4806 | 1.2910 | 2.4900 | Matrix Update |
+| `walltime_sec` | 0.0070 | 0.0139 | 0.0040 | 0.0180 | TBM |
+| `tokens_per_sec` | 141164.3635 | 209297.7005 | 54726.3140 | 210321.3560 | End-to-End |
+| `core_tokens_per_sec` | 315858.3725 | 480660.8426 | 205869.3880 | 481895.2790 | Kernel Core |
+| `vmhwm_bytes` | 12038144 | 12486860 | 11694080 | 12525568 | $\le 6\text{G}$ (SEC-4) |
+| `wy_coeff_time_ms` | 4.8205 | 6.9848 | 3.1500 | 7.5590 | WY Inversion |
+| `wy_update_time_ms` | 0.6925 | 1.0934 | 0.4470 | 1.1010 | Matrix Update |
 
 ---
 
@@ -35,11 +35,11 @@
 
 | Chunk Size ($C$) | Scan Time (s) | Core Speedup | Core Throughput | Optimal |
 | :---: | :---: | :---: | :---: | :---: |
-| 64 | 0.0040 | 2.50x | 442163.8 tok/s | - |
-| 128 | 0.0070 | 2.50x | 256453.5 tok/s | - |
-| 256 | 0.0130 | 2.50x | 149633.0 tok/s | - |
-| 512 | 0.0140 | 2.50x | 145738.9 tok/s | Default (Optimal) |
-| 1024 | 0.0390 | 2.50x | 52067.6 tok/s | - |
+| 64 | 0.0020 | 2.50x | 752773.5 tok/s | - |
+| 128 | 0.0010 | 2.50x | 1228979.7 tok/s | - |
+| 256 | 0.0020 | 2.50x | 732670.7 tok/s | - |
+| 512 | 0.0080 | 2.50x | 242378.0 tok/s | Default (Optimal) |
+| 1024 | 0.0080 | 2.50x | 254295.0 tok/s | - |
 
 ---
 

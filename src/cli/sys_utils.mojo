@@ -37,6 +37,22 @@ def c_unlink(path: String) -> Int:
     return Int(external_call["unlink", Int32](p_z.unsafe_ptr()))
 
 
+def c_link(oldpath: String, newpath: String) -> Int:
+    var old_s = oldpath.as_bytes()
+    var new_s = newpath.as_bytes()
+    var old_z = List[UInt8]()
+    for i in range(len(old_s)):
+        old_z.append(old_s[i])
+    old_z.append(0)
+    var new_z = List[UInt8]()
+    for j in range(len(new_s)):
+        new_z.append(new_s[j])
+    new_z.append(0)
+    return Int(
+        external_call["link", Int32](old_z.unsafe_ptr(), new_z.unsafe_ptr())
+    )
+
+
 def c_mkdir(path: String, mode: Int = 493) -> Int:
     # mkdirat(AT_FDCWD, ...) == mkdir() tapi menghindari bentrok signature
     # external_call["mkdir", ...] milik stdlib. AT_FDCWD=-100.

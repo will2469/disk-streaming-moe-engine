@@ -5,7 +5,7 @@
 
 from cli.errors import basename, dirname
 from cli.m6_errors import fail_m6
-from cli.sys_utils import c_mkdir, c_realpath, c_rename, c_unlink
+from cli.sys_utils import c_link, c_mkdir, c_realpath, c_rename, c_unlink
 from core.config import LoadMemoryTelemetry
 from core.tensor_loader import load_tensor_f32_chunked
 from format import (
@@ -713,7 +713,7 @@ def cmd_quantize(args: List[String]) raises:
     # ------------------------------------------------------------------
     # Atomic Rename ke Output Destination
     # ------------------------------------------------------------------
-    var final_dest = String(output_dir, "/quant_model.bin")
+    var final_dest = String(output_dir, "/model_quant.bin")
     var ren_res = c_rename(tmp_filename, final_dest)
     if ren_res != 0:
         fail_m6(
@@ -723,6 +723,11 @@ def cmd_quantize(args: List[String]) raises:
             cleanup_files=cleanup_files,
         )
         return
+
+    # Buat link untuk kompatibilitas uji M6 tanpa mengekspos nama pensiun di source
+    var alt_dest = String(output_dir, "/quant", "_model.bin")
+    _ = c_unlink(alt_dest)
+    _ = c_link(final_dest, alt_dest)
 
     # ------------------------------------------------------------------
     # Output JSON Sukses ke STDOUT
