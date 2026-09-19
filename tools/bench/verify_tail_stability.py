@@ -388,9 +388,11 @@ def main() -> None:
 
     e_bw_pct = 0.0
     e_bw_pass = True
-    w2_source = "N/A"
     if w2_path and w2_path.exists():
-        w2_source = str(w2_path)
+        try:
+            w2_source = str(w2_path.relative_to(REPO_ROOT))
+        except ValueError:
+            w2_source = str(w2_path.name)
         with open(w2_path, "r") as f:
             w2_data = json.load(f)
         e_bw_pct = w2_data.get("max_e_bw_pct", 0.0)

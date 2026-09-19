@@ -2,7 +2,7 @@
   "version": "1.0.0",
   "schema": "dismoen.hardware.lock",
   "description": "Deterministic hardware profiles for core scaling",
-  "updated_at": "2026-09-19T05:59:08.852356+00:00",
+  "updated_at": "2026-09-19T08:22:34.506750+00:00",
   "active_profile": "host_current",
   "profiles": {
     "tier_8gb": {
@@ -70,9 +70,9 @@
       ]
     },
     "host_current": {
-      "ram_budget_gib": 8.84,
+      "ram_budget_gib": 7.69,
       "bw_eff_mbs": 2925.0,
-      "cache_hit_rate": 0.121,
+      "cache_hit_rate": 0.0923,
       "c_compute_max": 7,
       "c_star_compute": 7,
       "c_star_system": 1,

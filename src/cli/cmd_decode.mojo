@@ -1207,40 +1207,22 @@ def cmd_decode(args: List[String]) raises:
             quant_model_path.byte_length() == 0
             or get_file_size(quant_model_path) <= 0
         ):
-            if architecture == "qwen3.6":
-                fail_m9(
-                    M9_ERR_QUANT,
-                    "NO_QUANTIZER_MODEL",
-                    String(
-                        (
-                            "no quantizer model found: provide --quant-model"
-                            " <file.gguf> or point --model-dir at a .gguf file"
-                            " (got --quant-model='"
-                        ),
-                        quant_model_arg,
-                        "' --model-dir='",
-                        model_dir,
-                        "')",
+            cleanup_run_resources(run_dir, tmp_files)
+            fail_m9(
+                M9_ERR_QUANT,
+                "NO_QUANTIZER_MODEL",
+                String(
+                    (
+                        "no quantizer model found: provide --quant-model"
+                        " <file.gguf> or point --model-dir at a .gguf file"
+                        " (got --quant-model='"
                     ),
-                )
-            else:
-                fail_m5(
-                    "M5_ERR_INPUT",
-                    "input",
-                    String(
-                        (
-                            "no quantizer model found: provide --quant-model"
-                            " <file.gguf> or point --model-dir at a .gguf file"
-                            " (got --quant-model='"
-                        ),
-                        quant_model_arg,
-                        "' --model-dir='",
-                        model_dir,
-                        "')",
-                    ),
-                    run_dir=run_dir,
-                    tmp_files=tmp_files,
-                )
+                    quant_model_arg,
+                    "' --model-dir='",
+                    model_dir,
+                    "')",
+                ),
+            )
 
         var gguf_index = parse_gguf_index(quant_model_path)
         try:
@@ -1886,40 +1868,22 @@ def cmd_decode(args: List[String]) raises:
         quant_model_path.byte_length() == 0
         or get_file_size(quant_model_path) <= 0
     ):
-        if architecture == "qwen3.6":
-            fail_m9(
-                M9_ERR_QUANT,
-                "NO_QUANTIZER_MODEL",
-                String(
-                    (
-                        "no quantizer model found: provide --quant-model"
-                        " <file.gguf> or point --model-dir at a .gguf file (got"
-                        " --quant-model='"
-                    ),
-                    quant_model_arg,
-                    "' --model-dir='",
-                    model_dir,
-                    "')",
+        cleanup_run_resources(run_dir, tmp_files)
+        fail_m9(
+            M9_ERR_QUANT,
+            "NO_QUANTIZER_MODEL",
+            String(
+                (
+                    "no quantizer model found: provide --quant-model"
+                    " <file.gguf> or point --model-dir at a .gguf file (got"
+                    " --quant-model='"
                 ),
-            )
-        else:
-            fail_m5(
-                "M5_ERR_INPUT",
-                "input",
-                String(
-                    (
-                        "no quantizer model found: provide --quant-model"
-                        " <file.gguf> or point --model-dir at a .gguf file (got"
-                        " --quant-model='"
-                    ),
-                    quant_model_arg,
-                    "' --model-dir='",
-                    model_dir,
-                    "')",
-                ),
-                run_dir=run_dir,
-                tmp_files=tmp_files,
-            )
+                quant_model_arg,
+                "' --model-dir='",
+                model_dir,
+                "')",
+            ),
+        )
 
     var gguf_index = parse_gguf_index(quant_model_path)
     var port_cfg = ModelConfig(

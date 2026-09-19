@@ -1,7 +1,7 @@
 {
   "gate": "G-M10-2",
   "status": "PASS",
-  "timestamp": "2026-09-19T07:50:09Z",
+  "timestamp": "2026-09-19T08:22:50Z",
   "model_root": "~/models",
   "legacy_paths_deleted": [
     "~/models/qwen1.5-moe-a2.7b-chat",
@@ -20,17 +20,17 @@
     "delta_b_free_bytes": 0,
     "delta_b_free_gib": 0.0,
     "delta_b_free_gb_si": 0.0,
-    "b_free_current_bytes": 91750641664,
-    "b_free_current_gib": 85.4494,
-    "b_free_current_gb_si": 91.7506,
+    "b_free_current_bytes": 91751952384,
+    "b_free_current_gib": 85.4507,
+    "b_free_current_gb_si": 91.752,
     "b_required_bytes": 16320875724,
     "b_required_gib": 15.2,
     "b_reserved_bytes": 2147483648,
     "b_reserved_gib": 2.0,
-    "expected_free_after_write_bytes": 75429765940,
-    "expected_free_after_write_gib": 70.2494,
-    "headroom_surplus_bytes": 73282282292,
-    "headroom_surplus_gib": 68.2494,
+    "expected_free_after_write_bytes": 75431076660,
+    "expected_free_after_write_gib": 70.2507,
+    "headroom_surplus_bytes": 73283593012,
+    "headroom_surplus_gib": 68.2507,
     "margin_satisfied": true
   }
 }

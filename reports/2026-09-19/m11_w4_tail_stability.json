@@ -1,6 +1,6 @@
 {
   "benchmark": "M11-W4-Tail-Stability-RAM-Adherence",
-  "timestamp": "2026-09-19T05:59:50.573145+00:00",
+  "timestamp": "2026-09-19T08:22:46.835228+00:00",
   "cpu_model": "12th Gen Intel(R) Core(TM) i3-1215U",
   "cpu_governor": "powersave",
   "profile": "host_current",
@@ -8,69 +8,78 @@
   "n_runs": 100,
   "statistics": {
     "n": 100,
-    "min_ms": 21.696405,
-    "max_ms": 27.567285,
-    "mean_ms": 22.487793670000002,
-    "std_ms": 0.8684075930619912,
-    "p50_ms": 22.230150000000002,
-    "p90_ms": 23.313925400000002,
-    "p95_ms": 23.764445249999998,
-    "p99_ms": 25.701768600000012,
-    "r_tail": 1.0690186638416743
+    "min_ms": 12.197574,
+    "max_ms": 13.035617,
+    "mean_ms": 12.340012719999999,
+    "std_ms": 0.11195961846416584,
+    "p50_ms": 12.323055,
+    "p90_ms": 12.4390364,
+    "p95_ms": 12.5244732,
+    "p99_ms": 12.656050010000001,
+    "r_tail": 1.0163448268306843
   },
   "bootstrap_ci": {
     "n_resamples": 1000,
     "ci_pct": 95.0,
-    "p50_ci": [22.102543925, 22.3992615],
-    "p95_ci": [23.311301, 25.2219318],
-    "r_tail_ci": [1.048602887868448, 1.1343273849885456]
+    "p50_ci": [
+      12.30602485,
+      12.337429499999999
+    ],
+    "p95_ci": [
+      12.438993,
+      12.626270550000001
+    ],
+    "r_tail_ci": [
+      1.0088888009621275,
+      1.0246534260886266
+    ]
   },
   "ram_adherence": {
     "tier_8gb": {
       "budget_gib": 8.0,
       "budget_kib": 8388608.0,
-      "vm_hwm_kib": 134392,
-      "r_ram": 0.016020774841308594,
+      "vm_hwm_kib": 140500,
+      "r_ram": 0.016748905181884766,
       "passed": true
     },
     "tier_16gb": {
       "budget_gib": 16.0,
       "budget_kib": 16777216.0,
-      "vm_hwm_kib": 134392,
-      "r_ram": 0.008010387420654297,
+      "vm_hwm_kib": 140500,
+      "r_ram": 0.008374452590942383,
       "passed": true
     },
     "tier_32gb": {
       "budget_gib": 32.0,
       "budget_kib": 33554432.0,
-      "vm_hwm_kib": 134392,
-      "r_ram": 0.0040051937103271484,
+      "vm_hwm_kib": 140500,
+      "r_ram": 0.004187226295471191,
       "passed": true
     },
     "tier_64gb": {
       "budget_gib": 64.0,
       "budget_kib": 67108864.0,
-      "vm_hwm_kib": 134392,
-      "r_ram": 0.0020025968551635742,
+      "vm_hwm_kib": 140500,
+      "r_ram": 0.0020936131477355957,
       "passed": true
     },
     "host_active": {
-      "budget_gib": 8.84,
-      "budget_kib": 9269411.84,
-      "vm_hwm_kib": 134392,
-      "r_ram": 0.014498438770415017,
+      "budget_gib": 7.69,
+      "budget_kib": 8063549.44,
+      "vm_hwm_kib": 140500,
+      "r_ram": 0.01742408861574488,
       "passed": true
     }
   },
   "memory_leak_check": {
-    "vm_hwm_run1_kib": 134392,
-    "vm_hwm_run2_kib": 134032,
-    "delta_pct": 0.2678730876837907,
+    "vm_hwm_run1_kib": 140500,
+    "vm_hwm_run2_kib": 140896,
+    "delta_pct": 0.28185053380782915,
     "passed": true
   },
   "storage_e_bw": {
     "source_report": "reports/2026-09-19/m11_w2_async_overlap.json",
-    "max_e_bw_pct": 4.702504010840303,
+    "max_e_bw_pct": 2.342003917848812,
     "passed": true
   },
   "gate_g_m11_3_pass": true

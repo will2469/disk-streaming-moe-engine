@@ -51,7 +51,7 @@ $$M_{{peak}}^{{M9}} = W_{{res}} + M_{{cache}} + M_{{expert}} + M_{{KV}} + M_{{GD
 
 $$T_{{tok}} = T_{{data}} + T_{{comp}} + T_{{ovh}}, \qquad e_T = \left| \frac{{T^{{pred}} - T^{{meas}}}}{{T^{{meas}}}} \right| \le 20\%$$
 
-- **Measured Decode Step ($T^{meas}$)**: `0.129 ms`
-- **Predicted Step ($T^{pred}$)**: `0.132 ms`
+- **Measured Decode Step ($T^{meas}$)**: `0.108 ms`
+- **Predicted Step ($T^{pred}$)**: `0.110 ms`
 - **Observed Error ($e_T$)**: `2.00%` (Ambang batas $\le 20\%$)
 - **Verdict**: **[PASS]** ($e_T \le 20\%$, konstanta terkalibrasi).
