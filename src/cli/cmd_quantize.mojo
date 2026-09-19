@@ -713,7 +713,7 @@ def cmd_quantize(args: List[String]) raises:
     # ------------------------------------------------------------------
     # Atomic Rename ke Output Destination
     # ------------------------------------------------------------------
-    var final_dest = String(output_dir, "/model_quant.bin")
+    var final_dest = String(output_dir, "/quant_model.bin")
     var ren_res = c_rename(tmp_filename, final_dest)
     if ren_res != 0:
         fail_m6(

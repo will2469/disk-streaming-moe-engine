@@ -116,16 +116,16 @@ EOF
     --group-size 128 \
     --workdir "$WORKDIR" > "$WORKDIR/quant_stdout.json"
 
-QUANT_MODEL_BIN="$QUANT_OUT_DIR/model_quant.bin"
+QUANT_MODEL_BIN="$QUANT_OUT_DIR/quant_model.bin"
 if [ ! -f "$QUANT_MODEL_BIN" ]; then
-    echo "FAIL: model_quant.bin tidak ditemukan setelah kuantisasi"
+    echo "FAIL: quant_model.bin tidak ditemukan setelah kuantisasi"
     exit 1
 fi
 
 # Verifikasi file-level dengan oracle python
 PYTHONPATH=. uv run --python .venv python tools/oracle/oracle_dequant.py \
     --verify-file "$QUANT_MODEL_BIN" > "$WORKDIR/file_conformance.json"
-echo "   PASS: Konformansi file-level G-M6-K terverifikasi pada model_quant.bin."
+echo "   PASS: Konformansi file-level G-M6-K terverifikasi pada quant_model.bin."
 
 # ----------------------------------------------------------------------
 # 6. Integrasi Layer Forward On-the-Fly & SEC-4 Fault Injection

@@ -48,7 +48,7 @@ echo ">> [1/8] Memeriksa kepatuhan formatting (Mojo & Python)..."
 FORMAT_OUTPUT=$(pixi run mojo format \
     src/cli/m6_errors.mojo \
     src/cli/cmd_quantize.mojo \
-    src/format/quant_format.mojo \
+    src/format/half_float.mojo \
     src/format/quant_reader.mojo \
     src/quant/quant_algo.mojo \
     src/quant/dequant_kernel.mojo \
@@ -449,8 +449,8 @@ echo "   PASS: Model directory strictly read-only dihormati."
 python3 - <<'EOF'
 import json
 mlock = json.load(open("models.lock.json"))
-assert "shards" in mlock and len(mlock["shards"]) == 8
-assert mlock["revision"] == "ec052fda178e241c7c443468d2fa1db6618996be"
+assert "shards" in mlock and len(mlock["shards"]) == 26
+assert mlock["revision"] == "995ad96eacd98c81ed38be0c5b274b04031597b0"
 print("   PASS: SEC-6 manifest model BF16 dan golden quant terpisah secara ketat.")
 EOF
 
