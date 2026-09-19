@@ -64,6 +64,8 @@ def _parse_proc_oom_kills() -> int:
     oom_kills = 0
     cg_pattern = "/sys/fs/cgroup/user.slice/**/memory.events"
     for f_oom in glob.glob(cg_pattern, recursive=True):
+        if f_oom.endswith(".local"):
+            continue
         try:
             with open(f_oom, "r", encoding="utf-8") as f:
                 for line in f:
@@ -120,9 +122,12 @@ def run_single_decode(
     env = os.environ.copy()
     env["OMP_NUM_THREADS"] = "1"
 
+    oom_before = _parse_proc_oom_kills()
     t0 = time.perf_counter()
     proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
     t1 = time.perf_counter()
+    oom_after = _parse_proc_oom_kills()
+    oom_kills = max(0, oom_after - oom_before)
 
     if proc.returncode != 0:
         print(
@@ -150,8 +155,6 @@ def run_single_decode(
     bytes_prefill = m.get("bytes_read_prefill", 0)
     bytes_decode = m.get("bytes_read_decode", 0)
     kv_cache_bytes = data.get("kv_cache_bytes", 0)
-
-    oom_kills = _parse_proc_oom_kills()
 
     return {
         "run": run_idx,
