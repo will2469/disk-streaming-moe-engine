@@ -16,7 +16,7 @@
 
 - **O_DIRECT Reader**: Terverifikasi pada block size 4096 B
 - **LRU Cache**: Terverifikasi dengan kapasitas budget memori dan pin ratio 25%
-- **Peak Memory VmHWM**: 10625024 bytes (0.0099 GB) $\le 6.0\text{ GB}$ (PASS SEC-4)
+- **Peak Memory VmHWM**: 11112448 bytes (0.0103 GB) $\le 6.0\text{ GB}$ (PASS SEC-4)
 - **State Serialization**: Format GDNS v1 valid dengan trailing SHA-256 digest
 
 ## 3. Hasil Verifikasi Kesiapan Arsitektur M9

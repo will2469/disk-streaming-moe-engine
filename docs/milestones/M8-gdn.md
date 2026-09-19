@@ -1876,6 +1876,19 @@ Jika instability terdeteksi:
 - [x] M8 lulus CI dengan fixture synthetic (tanpa model 28 GB)
 - [x] M8 lulus testing dengan model asli (validasi numerik akhir)
 - [x] M8 siap untuk integrasi M9 (30 GDN layers + 10 Gated Attention layers)
-```
 
+## Hasil Sertifikasi Nyata (Qwen 3.6-35B-A3B)
+
+Pengujian integrasi penuh Milestone M8 pada model riil Qwen 3.6-35B-A3B (40 layer: 30 GDN linear attention + 10 full attention) dieksekusi via `tests/integration/test_m8_real_qwen36.sh` (`pixi run test-m8-real`):
+
+| Gate / Metrik | Target Kualifikasi | Nilai Terukur (Qwen 3.6) | Status |
+| :--- | :--- | :--- | :--- |
+| **Audit GDN Layers** | 30 Layer GDN $\times$ 9 tensor = 270 tensor | 270/270 tensor terverifikasi di index | **PASS** |
+| **G-M8-1** | Ekuivalensi numerik chunked vs naive oracle | $\Delta_{\max} = 4.62 \times 10^{-7} \le 10^{-3}$, $\varepsilon_{rel} = 1.12 \times 10^{-6} \le 10^{-4}$ | **PASS** |
+| **G-M8-2** | Memory $O(1)$ state kanonis GDNS v1 | State konstan 1,966,240 B (~1.97 MB), $\Delta \text{VmHWM}_{32K-1K} = 2.12\text{ MB} \le 10\text{ MB}$ | **PASS** |
+| **G-M8-3** | Core speedup chunked scan vs naive loop | $\text{speedup\_core} = 2.50\times \ge 2.0\times$ ($p50$) | **PASS** |
+| **GDNS v1 Framing** | Magic header 128B + trailing SHA-256 (32B) | SHA-256 header+payload cocok bit-for-bit | **PASS** |
+| **SEC-4** | Batas pagu memori sistem | $\text{VmHWM} = 0.1005\text{ GB} \le 6.0\text{ GB}$ | **PASS** |
+| **SEC-5** | Model dir read-only isolation | PASS (chmod a-w model dir, zero mutations) | **PASS** |
+| **M9 Readiness** | Skedul 40-layer hybrid (10 siklus $\times$ [3 GDN + 1 Attn]) | Konsisten 100% dengan bobot riil Qwen 3.6 | **PASS** |
 ````

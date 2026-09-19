@@ -40,7 +40,9 @@ from bench_bw_stream import (
     run_stream_copy,
 )
 
-DEFAULT_MODEL_DIR = Path(os.path.expanduser("~/models/qwen1.5-moe-a2.7b-chat-4bit"))
+DEFAULT_MODEL_DIR = Path(
+    os.environ.get("MODEL_DIR", Path.home() / "models/qwen3.6-35b-a3b")
+)
 DEFAULT_FIXTURE_TOKENS = Path("tools/fixtures/m4_prompt1_tokens.json")
 DEFAULT_IO_FIXTURE = Path("tools/fixtures/m7_io_patterns.json")
 DEFAULT_OUTPUT_JSON = Path("reports/2026-09-17/m7_benchmark_raw.json")
@@ -521,6 +523,18 @@ def fit_f16_amdahl(
     }
 
 
+def resolve_model_file(model_dir: Path) -> Path:
+    """Menyelesaikan berkas model biner atau shard Safetensors untuk benchmark."""
+    for cand in [
+        model_dir / "quant_model.bin",
+        model_dir / "model-00001-of-00026.safetensors",
+        model_dir / "model.safetensors",
+    ]:
+        if cand.exists():
+            return cand
+    return model_dir / "quant_model.bin"
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="M7 Performance Baseline, I/O Patterns & Core Scaling Runner"
@@ -617,7 +631,7 @@ def main():
         print(f"Error: binary {dismoen_bin} tidak ditemukan.", file=sys.stderr)
         sys.exit(1)
 
-    model_file = args.model_dir / "quant_model.bin"
+    model_file = resolve_model_file(args.model_dir)
     if not model_file.exists():
         print(f"Error: model file {model_file} tidak ditemukan.", file=sys.stderr)
         sys.exit(1)
@@ -822,7 +836,7 @@ def main():
             "logical_cores": logical_cores,
             "ram_stream_copy_gb_s": bw_ram_sustained,
             "cgroup_memory_limit": "6G",
-            "model_path": str(model_file),
+            "model_path": str(model_file).replace(str(Path.home()), "$HOME"),
             "model_size_bytes": model_file.stat().st_size,
         },
         "storage_io": storage_io_res,

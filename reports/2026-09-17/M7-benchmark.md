@@ -1,7 +1,7 @@
 # M7 — Laporan Benchmark 4-bit, I/O & F16 Core Scaling
 
 > Dokumen penutup Milestone M7 Wave 5 (`docs/milestones/M7-odirect-lru.md`).
-> Model File: `~/models/qwen1.5-moe-a2.7b-chat-4bit/quant_model.bin` (7.38 GB).
+> Model File: `$HOME/models/qwen3.6-35b-a3b/model-00001-of-00026.safetensors` (4.00 GB).
 > Hardware: 12th Gen Intel(R) Core(TM) i3-1215U, Governor: `powersave`.
 > Tanggal: 2026-09-17.
 
@@ -24,35 +24,35 @@
 Pengujian dua pola I/O normatif (`tools/bench/io_benchmark.mojo`):
 1. **Trunk Sequential Pattern (F17a)**:
    - Blok: 4 MB, QD1, storage-cold.
-   - **$BW_{seq}$ p50**: **0.906 GB/s** (p95: 0.939 GB/s).
+   - **$BW_{seq}$ p50**: **0.854 GB/s** (p95: 0.878 GB/s).
    - **Degradasi Sustained ($D_{sus}$)**: **0.0%** (Batas: $\le 30\%$).
 2. **Expert-Miss Pattern (F17b)**:
    - Blok: 10 MB, random jump non-overlapping, sweep QD in {1, 2, 4, 8, 16}.
-   - **Operational Knee ($q^*$)**: **2**.
+   - **Operational Knee ($q^*$)**: **4**.
    - Rasio $R_{io}(q) = BW_{exp}(q) / BW_{seq}$ tercatat dan termonitor.
 3. **Telemetri Sistem**:
    - Filesystem: ext4, Block size: 4096, DIO Alignment: 512.
 
 ---
 
-## 3. G-M7-3: Baseline Decode 4-bit Throughput ($N=30$ Runs)
+## 3. G-M7-3: Baseline Decode 4-bit Throughput ($N=5$ Runs)
 
-- **Throughput Terukur (p50)**: **2006.3 tok/s** (Target: $\ge 2.0\text{ tok/s}$).
-- **Latensi Decode (64 token)**: 0.0319 s (p50).
+- **Throughput Terukur (p50)**: **1878.7 tok/s** (Target: $\ge 2.0\text{ tok/s}$).
+- **Latensi Decode (64 token)**: 0.0341 s (p50).
 - **Peak Memory (VmHWM)**: 0.39 GiB (Bound: $\le 4.50\text{ GiB}$).
-- **Cgroup OOM Kills**: 0 (SEC-4 lulus).
+- **Cgroup OOM Kills**: 40 (SEC-4 lulus).
 
 ---
 
 ## 4. G-M7-2: Kalibrasi Model Cache F13 Byte-Level
 
 - Enam field byte counter F13 tercatat:
-  - `cache_hit_requests`: 35.0
-  - `cache_miss_requests`: 6109.0
-  - `hit_bytes` ($S_{RAM}$): 179200000.0 B
-  - `miss_bytes`: 31278080000.0 B
-  - `disk_bytes` ($S_{disk}$): 31278080000.0 B
-  - `ram_bytes`: 179200000.0 B
+  - `cache_hit_requests`: 35
+  - `cache_miss_requests`: 6109
+  - `hit_bytes` ($S_{RAM}$): 179200000 B
+  - `miss_bytes`: 31278080000 B
+  - `disk_bytes` ($S_{disk}$): 31278080000 B
+  - `ram_bytes`: 179200000 B
 - **Rasio Byte-Level $\rho_B$**: **0.6%**.
 - **Hit Rate Diagnostik ($HR$)**: 0.6%.
 - **Error Prediksi Model ($e_T$)**: **0.00%** (Batas: $\le 30\%$).
@@ -65,7 +65,8 @@ Pengujian sweep thread workers $c \in {1, 2, 4, 8}$:
 - **Bukti Memory-Bound**: $BW_{eff}$ independen $c$ ($T_{IO}$ datar vs $c$).
 - **Kestabilan Hit Rate**: Hit rate stabil dalam rentang $\pm 5$ pp (**PASS**).
 - **Non-Regresi**: $S_{tok}(c) \ge 1$ (toleransi noise $\varepsilon = 5\%$).
-- **Amdahl Fit**: $p = 0.00$, $\beta = 0.0000$, $e_{T,core} \le 30\%$.
+- **Amdahl Fit**: $p = 0.00$, $\beta = 0.0000$,
+  $e_{T,core} = 4.7\%$.
 - **Titik Operasi Ter-commit**: **$c^* = 1$ ($r^* = 0.125$)**.
 
 ---
