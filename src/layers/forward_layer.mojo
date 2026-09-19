@@ -7,8 +7,14 @@ from core.config import LoadMemoryTelemetry, ModelConfig
 from core.tensor_loader import ShardHeaderCache, _load_one_tensor_by_name
 from layers.attention import (
     AttentionWeights,
+    forward_attention_block,
     load_layer_attention_weights,
     o_project,
+)
+from layers.gdn import (
+    GDNWeights,
+    forward_gdn_block,
+    load_layer_gdn_weights,
 )
 from layers.kv_cache import LayerKVCache
 from layers.mha import mha_decode_step, mha_forward
@@ -70,7 +76,7 @@ def forward_attention_step(
     base: Float32 = Float32(1000000.0),
     layer_idx: Int = 0,
 ) raises -> List[Float32]:
-    """Pipeline blok attention TANPA penambahan residual:
+    """Pipeline blok attention TANPA penambahan residual.
 
     RMSNorm (F6) -> QKV (+bias) -> RoPE rotate_half (F7) -> MHA Causal -> o_proj.
     Residual connection dieksekusi terpisah di caller (Residual 1).
@@ -132,7 +138,7 @@ def forward_attention_decode_step(
     base: Float32 = Float32(1000000.0),
     layer_idx: Int = 0,
 ) raises -> List[Float32]:
-    """Pipeline blok attention incremental decode untuk 1 token pada posisi sekuens p:
+    """Pipeline blok attention incremental decode untuk 1 token pada posisi sekuens p.
 
     RMSNorm -> QKV -> RoPE(pos) -> append K/V(pos) -> mha_decode_step -> o_proj.
     Residual connection dieksekusi terpisah di caller (Residual 1).
@@ -181,7 +187,7 @@ def moe_combine_no_residual(
     hidden_dim: Int,
     layer_idx: Int = 0,
 ) raises -> List[Float32]:
-    """Agregasi MoE TANPA penambahan residual:
+    """Agregasi MoE TANPA penambahan residual.
 
     y = sum_{k in top-4} p_k E_{i_k}(x) + sigma(g_sh) E_sh(x).
     Residual connection dieksekusi terpisah di caller (Residual 2).
@@ -253,7 +259,7 @@ def forward_single_layer(
     mut telemetry: LoadMemoryTelemetry,
     dump_routing_dir: String = "",
 ) raises -> LayerTiming:
-    """Menjalankan full streaming satu layer transformer (0..23):
+    """Menjalankan full streaming satu layer transformer (0..39).
 
     1. Attention pread -> RMSNorm input -> Attention step -> Residual 1
     2. MoE pread norm -> RMSNorm post_attention -> Router -> Experts SwiGLU -> Shared SwiGLU -> MoE combine -> Residual 2
@@ -266,35 +272,49 @@ def forward_single_layer(
     var moe_ns: Int = 0
 
     # -------------------------------------------------------------
-    # TAHAP 1: ATTENTION (M2)
+    # TAHAP 1: TOKEN MIXER (GDN atau Gated Attention)
     # -------------------------------------------------------------
-    var t_att_pread0 = perf_counter_ns()
-    var attn_weights = load_layer_attention_weights(
-        layer_idx, model_root, weight_map, cfg, cache, telemetry
-    )
-    pread_ns += perf_counter_ns() - t_att_pread0
+    var is_linear = cfg.is_linear_attn_layer(layer_idx)
+    if is_linear:
+        var t_gdn_pread0 = perf_counter_ns()
+        var gdn_weights = load_layer_gdn_weights(
+            layer_idx, model_root, weight_map, cfg, cache, telemetry
+        )
+        pread_ns += perf_counter_ns() - t_gdn_pread0
 
-    var t_att_comp0 = perf_counter_ns()
-    var attn_out = forward_attention_step(
-        hidden,
-        attn_weights,
-        seq_len,
-        cfg,
-        eps,
-        0,
-        Float32(1000000.0),
-        layer_idx,
-    )
-    # RESIDUAL 1: hidden = hidden + attn_out
-    hidden = add_residual(attn_out, hidden, layer_idx)
-    attn_ns += perf_counter_ns() - t_att_comp0
+        var t_gdn_comp0 = perf_counter_ns()
+        hidden = forward_gdn_block(
+            hidden, gdn_weights, seq_len, cfg, eps, layer_idx
+        )
+        attn_ns += perf_counter_ns() - t_gdn_comp0
+    else:
+        var t_att_pread0 = perf_counter_ns()
+        var attn_weights = load_layer_attention_weights(
+            layer_idx, model_root, weight_map, cfg, cache, telemetry
+        )
+        pread_ns += perf_counter_ns() - t_att_pread0
+
+        var t_att_comp0 = perf_counter_ns()
+        hidden = forward_attention_block(
+            hidden,
+            attn_weights,
+            seq_len,
+            cfg,
+            eps,
+            pos_offset=0,
+            base=cfg.rope_theta,
+            layer_idx=layer_idx,
+        )
+        attn_ns += perf_counter_ns() - t_att_comp0
 
     # -------------------------------------------------------------
     # TAHAP 2: MoE (M3)
     # -------------------------------------------------------------
     # 2a. Pread post_attention_layernorm.weight
     var t_moe_pread0 = perf_counter_ns()
-    var prefix = "model.layers." + String(layer_idx) + "."
+    var prefix = "model.language_model.layers." + String(layer_idx) + "."
+    if (prefix + "post_attention_layernorm.weight") not in weight_map:
+        prefix = "model.layers." + String(layer_idx) + "."
     var norm2_name = prefix + "post_attention_layernorm.weight"
     if norm2_name not in weight_map:
         raise Error(

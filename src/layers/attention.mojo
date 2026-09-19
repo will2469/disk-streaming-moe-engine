@@ -16,7 +16,8 @@ from std.math import cos, exp, isinf, isnan, pow, sin, sqrt
 
 
 struct AttentionWeights(Copyable, Movable):
-    """Bobot attention satu layer: norm_gamma, QKV (w+b), w_o, b_o, q_norm, k_norm, is_qwen36."""
+    """Bobot attention satu layer: norm_gamma, QKV (w+b), w_o, b_o, q_norm, k_norm, is_qwen36.
+    """
 
     var norm_gamma: List[Float32]
     var qkv: QKVWeights
@@ -347,9 +348,7 @@ def forward_attention_qwen36(
                 var rot_sin = sin(m * inv_freq[k])
                 var v0 = p_k[unsafe_offset=head_start + k]
                 var v1 = p_k[unsafe_offset=head_start + half_rot + k]
-                p_k[unsafe_offset=head_start + k] = (
-                    v0 * rot_cos - v1 * rot_sin
-                )
+                p_k[unsafe_offset=head_start + k] = v0 * rot_cos - v1 * rot_sin
                 p_k[unsafe_offset=head_start + half_rot + k] = (
                     v0 * rot_sin + v1 * rot_cos
                 )
@@ -446,7 +445,8 @@ def forward_attention_block(
     base: Float32 = Float32(1000000.0),
     layer_idx: Int = 0,
 ) raises -> List[Float32]:
-    """Pipeline blok attention utuh: RMSNorm -> QKV -> RoPE -> MHA -> o_proj -> Residual."""
+    """Pipeline blok attention utuh: RMSNorm -> QKV -> RoPE -> MHA -> o_proj -> Residual.
+    """
     if weights.is_qwen36:
         return forward_attention_qwen36(
             x, weights, seq_len, cfg, eps, pos_offset, base, layer_idx
@@ -531,9 +531,8 @@ def load_layer_attention_weights(
         prefix = "model.layers." + String(layer_idx) + "."
 
     var is_qwen36 = (
-        (prefix + "self_attn.q_norm.weight") in weight_map
-        or not cfg.attention_bias
-    )
+        prefix + "self_attn.q_norm.weight"
+    ) in weight_map or not cfg.attention_bias
 
     if is_qwen36:
         var norm_name = prefix + "input_layernorm.weight"

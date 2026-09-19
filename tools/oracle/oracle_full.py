@@ -2,12 +2,15 @@
 # Copyright 2026 will2469
 # Licensed under the Apache License, Version 2.0 (the "License");
 # See LICENSE for details.
-"""Oracle Full Forward Reference (PyTorch FP32).
+"""Oracle Full Forward Reference (PyTorch FP32 CPU Deterministic).
 
-Menjalankan full forward pass referensi 24-layer deterministik (fail-closed CPU-only).
-Pipeline:
-  Token IDs -> Embedding Lookup -> 24 Layer Transformer
-            -> Final RMSNorm -> LM Head -> Logits FP32 [s, V]
+Menjalankan full forward pass referensi 40-layer hybrid untuk Qwen3.6-35B-A3B:
+  Token IDs -> Embedding Lookup -> 40 Layer Transformer Hybrid
+  (30 GDN Linear Attention + 10 Gated Attention + 40 MoE Channel Mixers)
+  -> Final RMSNorm -> LM Head -> Logits FP32 [s, 248320].
+
+Bobot di-stream layer-per-layer dari safetensors shards dengan pelepasan buffer seketika
+agar memori proses tetap terikat aman (<= 2-3 GiB).
 """
 
 import argparse
@@ -18,6 +21,7 @@ import os
 import sys
 
 import torch
+import torch.nn.functional as F
 from safetensors import safe_open
 
 # Determinism fail-closed CPU-only per kontrak M4
@@ -50,45 +54,40 @@ def fail(
 
 def parse_model_config(config_path: str) -> dict:
     if not os.path.exists(config_path):
-        fail(
-            "M4_ERR_CONFIG",
-            f"config file not found: {config_path}",
-            stage="config",
-        )
+        fail("M4_ERR_CONFIG", f"config not found: {config_path}", stage="config")
     try:
         with open(config_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
+            raw = json.load(f)
     except Exception as e:
-        fail(
-            "M4_ERR_CONFIG",
-            f"failed to parse config JSON: {e}",
-            stage="config",
-        )
+        fail("M4_ERR_CONFIG", f"failed parsing config JSON: {e}", stage="config")
 
-    for req in ["hidden_size", "num_attention_heads"]:
-        if req not in cfg:
-            fail(
-                "M4_ERR_CONFIG",
-                f"missing required field: {req}",
-                stage="config",
-            )
-        if not isinstance(cfg[req], int) or cfg[req] <= 0:
-            fail(
-                "M4_ERR_CONFIG",
-                f"field {req} must be a positive integer",
-                stage="config",
-            )
-
-    cfg["num_hidden_layers"] = int(cfg.get("num_hidden_layers", 24))
-    cfg["vocab_size"] = int(cfg.get("vocab_size", 151936))
-    cfg["rms_norm_eps"] = float(cfg.get("rms_norm_eps", 1e-6))
-    cfg["rope_theta"] = float(cfg.get("rope_theta", 1000000.0))
-    cfg["num_experts"] = int(cfg.get("num_experts", 60))
-    cfg["num_experts_per_tok"] = int(cfg.get("num_experts_per_tok", 4))
-    cfg["moe_intermediate_size"] = int(cfg.get("moe_intermediate_size", 1408))
-    cfg["shared_expert_intermediate_size"] = int(
-        cfg.get("shared_expert_intermediate_size", 5632)
+    cfg = raw.get("text_config", raw)
+    cfg["hidden_size"] = int(cfg.get("hidden_size", 2048))
+    cfg["num_hidden_layers"] = int(cfg.get("num_hidden_layers", 40))
+    cfg["num_attention_heads"] = int(cfg.get("num_attention_heads", 16))
+    cfg["num_key_value_heads"] = int(cfg.get("num_key_value_heads", 2))
+    cfg["head_dim"] = int(
+        cfg.get("head_dim", cfg["hidden_size"] // cfg["num_attention_heads"])
     )
+    cfg["vocab_size"] = int(cfg.get("vocab_size", 248320))
+    cfg["rms_norm_eps"] = float(cfg.get("rms_norm_eps", 1e-6))
+    cfg["rope_theta"] = float(
+        cfg.get("rope_parameters", {}).get(
+            "rope_theta", cfg.get("rope_theta", 10000000.0)
+        )
+    )
+    cfg["partial_rotary_factor"] = float(
+        cfg.get("rope_parameters", {}).get(
+            "partial_rotary_factor", cfg.get("partial_rotary_factor", 0.25)
+        )
+    )
+    cfg["num_experts"] = int(cfg.get("num_experts", 256))
+    cfg["num_experts_per_tok"] = int(cfg.get("num_experts_per_tok", 8))
+    cfg["moe_intermediate_size"] = int(cfg.get("moe_intermediate_size", 512))
+    cfg["shared_expert_intermediate_size"] = int(
+        cfg.get("shared_expert_intermediate_size", 512)
+    )
+    cfg["full_attention_interval"] = int(cfg.get("full_attention_interval", 4))
     return cfg
 
 
@@ -125,7 +124,7 @@ def load_tokens(tokens_path: str, vocab_size: int) -> list[int]:
         else:
             fail(
                 "M4_ERR_INPUT",
-                "tokens JSON dict missing 'tokens' or 'prompts' field",
+                "tokens JSON missing 'tokens' or 'prompts'",
                 stage="input",
                 exit_code=1,
             )
@@ -140,7 +139,7 @@ def load_tokens(tokens_path: str, vocab_size: int) -> list[int]:
     if len(token_list) == 0:
         fail(
             "M4_ERR_INPUT",
-            "token sequence cannot be empty",
+            "tokens sequence is empty",
             stage="input",
             exit_code=1,
         )
@@ -149,191 +148,409 @@ def load_tokens(tokens_path: str, vocab_size: int) -> list[int]:
         if not isinstance(tid, int):
             fail(
                 "M4_ERR_INPUT",
-                f"token at index {idx} is not an integer",
+                f"token at index {idx} not an integer",
                 stage="input",
                 exit_code=1,
             )
         if tid < 0 or tid >= vocab_size:
             fail(
                 "M4_ERR_INPUT",
-                f"token {tid} at index {idx} out of vocab range [0, {vocab_size})",
+                f"token {tid} at index {idx} out of range [0, {vocab_size})",
                 stage="input",
                 exit_code=1,
             )
-
     return token_list
 
 
 def rotate_half(x: torch.Tensor) -> torch.Tensor:
-    """Formula F7 rotate_half: [-x_{half..}, x_{..half}]."""
     half = x.shape[-1] // 2
     return torch.cat((-x[..., half:], x[..., :half]), dim=-1)
 
 
-def forward_attention(
-    x: torch.Tensor,
-    layer_idx: int,
-    cfg: dict,
-    get_tensor,
+def load_shard_tensor(
+    model_dir: str,
+    weight_map: dict[str, str],
+    name: str,
+    shards: dict,
+    layer: int = -1,
 ) -> torch.Tensor:
-    """Eksekusi attention block:
-    RMSNorm -> QKV -> RoPE -> MHA -> o_proj -> Residual 1.
-    """
-    pfx = f"model.layers.{layer_idx}."
-    seq_len = x.shape[0]
-    hidden_size = cfg["hidden_size"]
+    if name not in weight_map:
+        fail("M4_ERR_SHARD_IO", f"missing tensor: {name}", layer=layer, exit_code=4)
+    sf_name = weight_map[name]
+    if sf_name not in shards:
+        path = os.path.join(model_dir, sf_name)
+        if not os.path.exists(path):
+            fail(
+                "M4_ERR_SHARD_IO",
+                f"shard file not found: {path}",
+                layer=layer,
+                exit_code=4,
+            )
+        try:
+            shards[sf_name] = safe_open(path, framework="pt", device="cpu")
+        except Exception as e:
+            fail(
+                "M4_ERR_SHARD_IO",
+                f"failed to open shard {sf_name}: {e}",
+                layer=layer,
+                exit_code=4,
+            )
+    try:
+        return shards[sf_name].get_tensor(name).float()
+    except Exception as e:
+        fail(
+            "M4_ERR_SHARD_IO",
+            f"failed reading tensor {name}: {e}",
+            layer=layer,
+            exit_code=4,
+        )
+
+
+def forward_gdn_step(
+    x_norm: torch.Tensor,
+    weights: dict[str, torch.Tensor],
+    s_state: torch.Tensor,
+    seq_len: int,
+    eps: float,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Eksekusi token mixer Gated DeltaNet (F14 recurrence baseline)."""
+    # 1. QKV Proyeksi + Depthwise 1D Causal Convolution
+    w_qkv = weights["linear_attn.in_proj_qkv.weight"]
+    qkv = F.linear(x_norm, w_qkv)
+
+    w_conv = weights["linear_attn.conv1d.weight"]
+    qkv_t = qkv.t().unsqueeze(0)
+    qkv_padded = F.pad(qkv_t, (3, 0))
+    qkv_conv = F.conv1d(qkv_padded, w_conv, groups=8192)
+    qkv_act = F.silu(qkv_conv.squeeze(0).t())
+
+    q = qkv_act[:, :2048].view(seq_len, 16, 128).repeat_interleave(2, dim=1)
+    k = qkv_act[:, 2048:4096].view(seq_len, 16, 128).repeat_interleave(2, dim=1)
+    v = qkv_act[:, 4096:].view(seq_len, 32, 128)
+
+    w_z = weights["linear_attn.in_proj_z.weight"]
+    z_act = F.silu(F.linear(x_norm, w_z))
+
+    w_a = weights["linear_attn.in_proj_a.weight"]
+    w_b = weights["linear_attn.in_proj_b.weight"]
+    a = F.linear(x_norm, w_a)
+    b = F.linear(x_norm, w_b)
+    dt_bias = weights["linear_attn.dt_bias"]
+    a_log = weights["linear_attn.A_log"]
+
+    decay = torch.exp(-torch.exp(a_log) * F.softplus(a + dt_bias))
+    beta = torch.sigmoid(b)
+
+    # 2. Recurrence DeltaNet scan per head
+    outputs = []
+    eye = torch.eye(128, device=x_norm.device, dtype=torch.float32)
+    new_s = s_state.clone()
+
+    for t in range(seq_len):
+        out_heads = []
+        for h in range(32):
+            qt = q[t, h]
+            kt = k[t, h]
+            kt = kt / (torch.norm(kt) + eps)
+            vt = v[t, h]
+            g = decay[t, h]
+            b_val = beta[t, h]
+
+            trans = eye - b_val * torch.outer(kt, kt)
+            bias_m = b_val * torch.outer(vt, kt)
+            new_s[h] = g * torch.matmul(new_s[h], trans) + bias_m
+
+            ot = torch.matmul(new_s[h], qt)
+            out_heads.append(ot)
+        outputs.append(torch.cat(out_heads, dim=-1))
+
+    out_tensor = torch.stack(outputs, dim=0).view(seq_len, 32, 128)
+
+    # 3. Head RMSNorm + Gate Z + Out Proj
+    norm_w = weights["linear_attn.norm.weight"]
+    var_h = torch.mean(out_tensor**2, dim=-1, keepdim=True)
+    out_normed = (out_tensor * torch.rsqrt(var_h + eps) * norm_w).view(seq_len, 4096)
+    out_gated = out_normed * z_act
+    w_out = weights["linear_attn.out_proj.weight"]
+    y = F.linear(out_gated, w_out)
+    return y, new_s
+
+
+def forward_attn_step(
+    x_norm: torch.Tensor,
+    weights: dict[str, torch.Tensor],
+    seq_len: int,
+    cfg: dict,
+) -> torch.Tensor:
+    """Eksekusi token mixer Gated Attention
+    (GQA, QK-Norm, Partial RoPE, Sigmoid Gate)."""
     num_heads = cfg["num_attention_heads"]
-    head_dim = hidden_size // num_heads
+    num_kv_heads = cfg["num_key_value_heads"]
+    head_dim = cfg["head_dim"]
     eps = cfg["rms_norm_eps"]
-    base_theta = cfg["rope_theta"]
+    base = cfg["rope_theta"]
+    rotary_factor = cfg["partial_rotary_factor"]
 
-    w_in_norm = get_tensor(f"{pfx}input_layernorm.weight", "attention", layer_idx)
-    var_in = torch.mean(x**2, dim=-1, keepdim=True)
-    x_norm = x * torch.rsqrt(var_in + eps) * w_in_norm
+    wq = weights["self_attn.q_proj.weight"]
+    wk = weights["self_attn.k_proj.weight"]
+    wv = weights["self_attn.v_proj.weight"]
+    q_norm = weights["self_attn.q_norm.weight"]
+    k_norm = weights["self_attn.k_norm.weight"]
+    wo = weights["self_attn.o_proj.weight"]
 
-    wq = get_tensor(f"{pfx}self_attn.q_proj.weight", "attention", layer_idx)
-    bq = get_tensor(f"{pfx}self_attn.q_proj.bias", "attention", layer_idx)
-    wk = get_tensor(f"{pfx}self_attn.k_proj.weight", "attention", layer_idx)
-    bk = get_tensor(f"{pfx}self_attn.k_proj.bias", "attention", layer_idx)
-    wv = get_tensor(f"{pfx}self_attn.v_proj.weight", "attention", layer_idx)
-    bv = get_tensor(f"{pfx}self_attn.v_proj.bias", "attention", layer_idx)
-
-    q = torch.matmul(x_norm, wq.t()) + bq
-    k = torch.matmul(x_norm, wk.t()) + bk
-    v = torch.matmul(x_norm, wv.t()) + bv
+    q_proj_out = F.linear(x_norm, wq)
+    q, gate = torch.chunk(q_proj_out, 2, dim=-1)
+    k = F.linear(x_norm, wk)
+    v = F.linear(x_norm, wv)
 
     qh = q.view(seq_len, num_heads, head_dim)
-    kh = k.view(seq_len, num_heads, head_dim)
+    kh = k.view(seq_len, num_kv_heads, head_dim)
+    vh = v.view(seq_len, num_kv_heads, head_dim)
+
+    # QK-Norm
+    qh = qh * torch.rsqrt(torch.mean(qh**2, dim=-1, keepdim=True) + eps) * q_norm
+    kh = kh * torch.rsqrt(torch.mean(kh**2, dim=-1, keepdim=True) + eps) * k_norm
+
+    # Partial RoPE 0.25
+    rot_dim = int(head_dim * rotary_factor)
+    qh_rot = qh[..., :rot_dim]
+    qh_pass = qh[..., rot_dim:]
+    kh_rot = kh[..., :rot_dim]
+    kh_pass = kh[..., rot_dim:]
 
     inv_freq = 1.0 / (
-        base_theta ** (torch.arange(0, head_dim, 2, dtype=torch.float32) / head_dim)
+        base ** (torch.arange(0, rot_dim, 2, dtype=torch.float32) / rot_dim)
     )
     t_pos = torch.arange(seq_len, dtype=torch.float32)
     freqs = torch.outer(t_pos, inv_freq)
     emb = torch.cat((freqs, freqs), dim=-1).unsqueeze(1)
-    cos_emb = emb.cos()
-    sin_emb = emb.sin()
+    cos_emb, sin_emb = emb.cos(), emb.sin()
 
-    q_rot = (qh * cos_emb) + (rotate_half(qh) * sin_emb)
-    k_rot = (kh * cos_emb) + (rotate_half(kh) * sin_emb)
+    qh_rot = (qh_rot * cos_emb) + (rotate_half(qh_rot) * sin_emb)
+    kh_rot = (kh_rot * cos_emb) + (rotate_half(kh_rot) * sin_emb)
 
-    qh = q_rot.permute(1, 0, 2)
-    kh = k_rot.permute(1, 0, 2)
-    vh = v.view(seq_len, num_heads, head_dim).permute(1, 0, 2)
+    qh = torch.cat((qh_rot, qh_pass), dim=-1).permute(1, 0, 2)
+    kh = torch.cat((kh_rot, kh_pass), dim=-1).permute(1, 0, 2)
+    vh = vh.permute(1, 0, 2)
 
+    # GQA repeat
+    group = num_heads // num_kv_heads
+    if group > 1:
+        kh = kh.repeat_interleave(group, dim=0)
+        vh = vh.repeat_interleave(group, dim=0)
+
+    # Causal MHA
     scale = 1.0 / math.sqrt(head_dim)
     scores = torch.matmul(qh, kh.transpose(-2, -1)) * scale
-
     mask = torch.triu(
         torch.full((seq_len, seq_len), float("-inf"), dtype=torch.float32),
         diagonal=1,
     )
     scores = scores + mask
-
-    max_s = torch.max(scores, dim=-1, keepdim=True)[0]
-    exp_s = torch.exp(scores - max_s)
-    attn_weights = exp_s / torch.sum(exp_s, dim=-1, keepdim=True)
-
-    attn_out = torch.matmul(attn_weights, vh)
-    attn_out = attn_out.permute(1, 0, 2).contiguous().view(seq_len, hidden_size)
-
-    wo = get_tensor(f"{pfx}self_attn.o_proj.weight", "attention", layer_idx)
-    attn_proj = torch.matmul(attn_out, wo.t())
-
-    x_out = x + attn_proj
-    if not torch.isfinite(x_out).all():
-        fail(
-            "M4_ERR_LAYER_FORWARD",
-            f"non-finite values after attention residual in layer {layer_idx}",
-            stage="attention",
-            layer=layer_idx,
-            exit_code=5,
-        )
-    return x_out
+    attn_w = F.softmax(scores, dim=-1)
+    attn_out = (
+        torch.matmul(attn_w, vh)
+        .permute(1, 0, 2)
+        .contiguous()
+        .view(seq_len, num_heads * head_dim)
+    )
+    attn_gated = attn_out * torch.sigmoid(gate)
+    return F.linear(attn_gated, wo)
 
 
-def forward_moe(
-    x: torch.Tensor,
+def forward_moe_step(
+    x_norm_moe: torch.Tensor,
+    model_dir: str,
+    weight_map: dict[str, str],
+    pfx: str,
     layer_idx: int,
     cfg: dict,
-    get_tensor,
     dump_routing_dir: str | None = None,
 ) -> torch.Tensor:
-    """Eksekusi MoE block: RMSNorm -> Router -> Experts -> Shared -> Residual 2."""
-    pfx = f"model.layers.{layer_idx}."
-    seq_len = x.shape[0]
-    hidden_size = cfg["hidden_size"]
-    eps = cfg["rms_norm_eps"]
+    """Eksekusi channel mixer MoE (top-8 routed experts 3D slice + shared expert)."""
+    seq_len, hidden_size = x_norm_moe.shape
     top_k = cfg["num_experts_per_tok"]
+    inter_moe = cfg["moe_intermediate_size"]
+    sh_shards: dict[str, safe_open] = {}
 
-    w_post_norm = get_tensor(f"{pfx}post_attention_layernorm.weight", "moe", layer_idx)
-    var_post = torch.mean(x**2, dim=-1, keepdim=True)
-    x_norm_moe = x * torch.rsqrt(var_post + eps) * w_post_norm
-
-    w_router = get_tensor(f"{pfx}mlp.gate.weight", "router", layer_idx)
-    router_logits = torch.matmul(x_norm_moe, w_router.t())
-    router_probs = torch.softmax(router_logits, dim=-1, dtype=torch.float32)
-
+    # 1. Router logits & unrenormalized top-k
+    w_router = load_shard_tensor(
+        model_dir, weight_map, f"{pfx}mlp.gate.weight", sh_shards, layer_idx
+    )
+    router_logits = F.linear(x_norm_moe, w_router)
+    router_probs = F.softmax(router_logits, dim=-1, dtype=torch.float32)
     topk_probs, topk_indices = torch.topk(router_probs, k=top_k, dim=-1, sorted=True)
 
     selected_experts = []
     for t in range(seq_len):
-        row_exp = [int(topk_indices[t, k].item()) for k in range(top_k)]
-        selected_experts.append(row_exp)
+        selected_experts.append([int(topk_indices[t, k].item()) for k in range(top_k)])
 
     if dump_routing_dir:
-        rout_file = os.path.join(dump_routing_dir, f"routing_L{layer_idx}.json")
-        with open(rout_file, "w", encoding="utf-8") as rf:
+        rout_path = os.path.join(dump_routing_dir, f"routing_L{layer_idx}.json")
+        with open(rout_path, "w", encoding="utf-8") as rf:
             json.dump({"selected_experts": selected_experts}, rf)
             rf.write("\n")
 
-    unique_experts = sorted(list({e for row in selected_experts for e in row}))
-    y_routed = torch.zeros_like(x)
+    unique_exp = sorted(list({e for row in selected_experts for e in row}))
 
-    for exp_id in unique_experts:
-        pfx_exp = f"{pfx}mlp.experts.{exp_id}."
-        wg = get_tensor(pfx_exp + "gate_proj.weight", "experts", layer_idx)
-        wu = get_tensor(pfx_exp + "up_proj.weight", "experts", layer_idx)
-        wd = get_tensor(pfx_exp + "down_proj.weight", "experts", layer_idx)
+    # 2. 3D Slice streaming untuk routed experts
+    gu_name = f"{pfx}mlp.experts.gate_up_proj"
+    d_name = f"{pfx}mlp.experts.down_proj"
+    gu_shard = os.path.join(model_dir, weight_map[gu_name])
+    d_shard = os.path.join(model_dir, weight_map[d_name])
 
+    routed_gates = {}
+    routed_ups = {}
+    routed_downs = {}
+    with (
+        safe_open(gu_shard, framework="pt") as sf_gu,
+        safe_open(d_shard, framework="pt") as sf_d,
+    ):
+        sl_gu = sf_gu.get_slice(gu_name)
+        sl_d = sf_d.get_slice(d_name)
+        for exp_id in unique_exp:
+            w_gu = sl_gu[exp_id, :, :].float()
+            routed_gates[exp_id] = w_gu[:inter_moe, :]
+            routed_ups[exp_id] = w_gu[inter_moe:, :]
+            routed_downs[exp_id] = sl_d[exp_id, :, :].float()
+
+    y_routed = torch.zeros_like(x_norm_moe)
+    for exp_id in unique_exp:
+        wg = routed_gates[exp_id]
+        wu = routed_ups[exp_id]
+        wd = routed_downs[exp_id]
         for t in range(seq_len):
             for k in range(top_k):
                 if selected_experts[t][k] == exp_id:
                     p = float(topk_probs[t, k].item())
                     xt = x_norm_moe[t : t + 1]
-                    g = torch.nn.functional.silu(torch.matmul(xt, wg.t()))
-                    u = torch.matmul(xt, wu.t())
-                    e_out = torch.matmul(g * u, wd.t())[0]
+                    g = F.silu(F.linear(xt, wg))
+                    u = F.linear(xt, wu)
+                    e_out = F.linear(g * u, wd)[0]
                     y_routed[t] += p * e_out
 
-    pfx_sh = f"{pfx}mlp.shared_expert."
-    w_sh_gate_proj = get_tensor(pfx_sh + "gate_proj.weight", "shared", layer_idx)
-    w_sh_up_proj = get_tensor(pfx_sh + "up_proj.weight", "shared", layer_idx)
-    w_sh_down_proj = get_tensor(pfx_sh + "down_proj.weight", "shared", layer_idx)
-    w_sh_gate = get_tensor(
-        f"{pfx}mlp.shared_expert_gate.weight", "shared", layer_idx
-    ).view(1, hidden_size)
+    # 3. Shared expert SwiGLU + Sigmoid gate
+    sh_pfx = f"{pfx}mlp.shared_expert."
+    sh_wg = load_shard_tensor(
+        model_dir, weight_map, f"{sh_pfx}gate_proj.weight", sh_shards, layer_idx
+    )
+    sh_wu = load_shard_tensor(
+        model_dir, weight_map, f"{sh_pfx}up_proj.weight", sh_shards, layer_idx
+    )
+    sh_wd = load_shard_tensor(
+        model_dir, weight_map, f"{sh_pfx}down_proj.weight", sh_shards, layer_idx
+    )
+    sh_gate = load_shard_tensor(
+        model_dir,
+        weight_map,
+        f"{pfx}mlp.shared_expert_gate.weight",
+        sh_shards,
+        layer_idx,
+    )
 
-    shared_logits = torch.matmul(x_norm_moe, w_sh_gate.t())
-    g_sh = torch.sigmoid(shared_logits)
-
-    sh_g = torch.nn.functional.silu(torch.matmul(x_norm_moe, w_sh_gate_proj.t()))
-    sh_u = torch.matmul(x_norm_moe, w_sh_up_proj.t())
-    e_sh = torch.matmul(sh_g * sh_u, w_sh_down_proj.t())
+    g_sh = torch.sigmoid(F.linear(x_norm_moe, sh_gate.view(1, hidden_size)))
+    e_sh = F.linear(
+        F.silu(F.linear(x_norm_moe, sh_wg)) * F.linear(x_norm_moe, sh_wu), sh_wd
+    )
     y_shared = g_sh * e_sh
+    return y_routed + y_shared
 
-    moe_out = y_routed + y_shared
-    x_out = x + moe_out
 
-    if not torch.isfinite(x_out).all():
+def forward_single_hybrid_layer(
+    x: torch.Tensor,
+    layer_idx: int,
+    model_dir: str,
+    weight_map: dict[str, str],
+    cfg: dict,
+    s_gdn_layer: torch.Tensor,
+    dump_routing_dir: str | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Eksekusi 1 layer transformer hybrid: Mixer -> Res 1 -> MoE -> Res 2."""
+    pfx = f"model.language_model.layers.{layer_idx}."
+    if f"{pfx}input_layernorm.weight" not in weight_map:
+        pfx = f"model.layers.{layer_idx}."
+
+    sh_shards: dict[str, safe_open] = {}
+    seq_len, hidden_size = x.shape
+    eps = cfg["rms_norm_eps"]
+
+    # 1. Input RMSNorm
+    w_norm1 = load_shard_tensor(
+        model_dir, weight_map, f"{pfx}input_layernorm.weight", sh_shards, layer_idx
+    )
+    var1 = torch.mean(x**2, dim=-1, keepdim=True)
+    x_norm1 = x * torch.rsqrt(var1 + eps) * w_norm1
+
+    # 2. Token Mixer (GDN vs Gated Attention)
+    is_linear = (layer_idx % cfg["full_attention_interval"]) != (
+        cfg["full_attention_interval"] - 1
+    )
+    new_s = s_gdn_layer
+
+    if is_linear:
+        gdn_names = [
+            "linear_attn.in_proj_qkv.weight",
+            "linear_attn.conv1d.weight",
+            "linear_attn.in_proj_z.weight",
+            "linear_attn.in_proj_a.weight",
+            "linear_attn.in_proj_b.weight",
+            "linear_attn.dt_bias",
+            "linear_attn.A_log",
+            "linear_attn.norm.weight",
+            "linear_attn.out_proj.weight",
+        ]
+        gdn_w = {}
+        for n in gdn_names:
+            gdn_w[n] = load_shard_tensor(
+                model_dir, weight_map, f"{pfx}{n}", sh_shards, layer_idx
+            )
+        mixer_out, new_s = forward_gdn_step(x_norm1, gdn_w, s_gdn_layer, seq_len, eps)
+    else:
+        attn_names = [
+            "self_attn.q_proj.weight",
+            "self_attn.k_proj.weight",
+            "self_attn.v_proj.weight",
+            "self_attn.q_norm.weight",
+            "self_attn.k_norm.weight",
+            "self_attn.o_proj.weight",
+        ]
+        attn_w = {}
+        for n in attn_names:
+            attn_w[n] = load_shard_tensor(
+                model_dir, weight_map, f"{pfx}{n}", sh_shards, layer_idx
+            )
+        mixer_out = forward_attn_step(x_norm1, attn_w, seq_len, cfg)
+
+    # Residual 1
+    x_mid = x + mixer_out
+
+    # 3. Post-Attention RMSNorm
+    w_norm2 = load_shard_tensor(
+        model_dir,
+        weight_map,
+        f"{pfx}post_attention_layernorm.weight",
+        sh_shards,
+        layer_idx,
+    )
+    var2 = torch.mean(x_mid**2, dim=-1, keepdim=True)
+    x_norm2 = x_mid * torch.rsqrt(var2 + eps) * w_norm2
+
+    # 4. MoE Channel Mixer
+    moe_out = forward_moe_step(
+        x_norm2, model_dir, weight_map, pfx, layer_idx, cfg, dump_routing_dir
+    )
+
+    # Residual 2
+    x_final = x_mid + moe_out
+    if not torch.isfinite(x_final).all():
         fail(
             "M4_ERR_LAYER_FORWARD",
-            f"non-finite values after MoE residual in layer {layer_idx}",
-            stage="moe",
+            f"non-finite values in layer {layer_idx}",
+            stage="layer_forward",
             layer=layer_idx,
             exit_code=5,
         )
-    return x_out
+    return x_final, new_s
 
 
 def write_logits_and_hash(
@@ -343,17 +560,16 @@ def write_logits_and_hash(
     seq_len: int,
     vocab_size: int,
 ) -> str:
-    """Serialisasi output logits ke file biner dan tulis file sha256."""
     out_dir = os.path.dirname(out_file)
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
 
     out_bytes = logits.detach().cpu().to(torch.float32).numpy().tobytes()
-    expected_bytes = seq_len * vocab_size * 4
-    if len(out_bytes) != expected_bytes:
+    expected = seq_len * vocab_size * 4
+    if len(out_bytes) != expected:
         fail(
             "M4_ERR_OUTPUT",
-            f"output bytes {len(out_bytes)} != expected {expected_bytes}",
+            f"output bytes {len(out_bytes)} != expected {expected}",
             stage="final_norm",
             exit_code=6,
         )
@@ -385,7 +601,6 @@ def write_logits_and_hash(
     base_name = os.path.basename(out_file)
     with open(sha_file, "w", encoding="utf-8") as f:
         f.write(f"{sha256_hash}  {base_name}\n")
-
     return sha256_hash
 
 
@@ -411,12 +626,12 @@ def main():
     parser.add_argument(
         "--dump-routing",
         default=None,
-        help="Directory to dump per-layer routing JSON files (routing_L0..23.json)",
+        help="Directory to dump per-layer routing JSON files",
     )
     parser.add_argument(
         "--sha256",
         default=None,
-        help="Path to write SHA-256 checksum file (defaults to <output>.sha256)",
+        help="Path to write SHA-256 checksum file",
     )
     args = parser.parse_args()
 
@@ -442,58 +657,22 @@ def main():
             index_data = json.load(f)
         weight_map = index_data["weight_map"]
     except Exception as e:
-        fail("M4_ERR_INDEX", f"failed to parse index: {e}", stage="index_load")
+        fail("M4_ERR_INDEX", f"failed parsing index: {e}", stage="index_load")
 
-    shards_cache = {}
+    # Prefix deteksi
+    pfx_embed = "model.language_model.embed_tokens.weight"
+    if pfx_embed not in weight_map:
+        pfx_embed = "model.embed_tokens.weight"
 
-    def get_tensor(tensor_name: str, stage: str, layer_i: int = -1) -> torch.Tensor:
-        if tensor_name not in weight_map:
-            fail(
-                "M4_ERR_SHARD_IO",
-                f"tensor {tensor_name} missing from index weight_map",
-                stage=stage,
-                layer=layer_i,
-                exit_code=4,
-            )
-        shard_file = weight_map[tensor_name]
-        shard_path = os.path.join(args.model_dir, shard_file)
-        if not os.path.exists(shard_path):
-            fail(
-                "M4_ERR_SHARD_IO",
-                f"shard file {shard_file} not found on disk",
-                stage=stage,
-                layer=layer_i,
-                exit_code=4,
-            )
-        if shard_file not in shards_cache:
-            try:
-                shards_cache[shard_file] = safe_open(
-                    shard_path, framework="pt", device="cpu"
-                )
-            except Exception as e:
-                fail(
-                    "M4_ERR_SHARD_IO",
-                    f"failed to open shard {shard_file}: {e}",
-                    stage=stage,
-                    layer=layer_i,
-                    exit_code=4,
-                )
-        shard = shards_cache[shard_file]
-        try:
-            return shard.get_tensor(tensor_name).float()
-        except Exception as e:
-            fail(
-                "M4_ERR_SHARD_IO",
-                f"failed to read tensor {tensor_name} from shard {shard_file}: {e}",
-                stage=stage,
-                layer=layer_i,
-                exit_code=4,
-            )
-
-    w_embed = get_tensor("model.embed_tokens.weight", stage="embedding")
+    # Embedding lookup
+    init_shards: dict[str, safe_open] = {}
+    w_embed = load_shard_tensor(
+        args.model_dir, weight_map, pfx_embed, init_shards, layer=-1
+    )
     token_t = torch.tensor(tokens, dtype=torch.long, device=DEVICE)
     x = torch.embedding(w_embed, token_t).clone()
     del w_embed
+    init_shards.clear()
 
     if not torch.isfinite(x).all():
         fail(
@@ -506,16 +685,48 @@ def main():
     if args.dump_routing:
         os.makedirs(args.dump_routing, exist_ok=True)
 
-    for layer_idx in range(num_layers):
-        x = forward_attention(x, layer_idx, cfg, get_tensor)
-        x = forward_moe(x, layer_idx, cfg, get_tensor, args.dump_routing)
+    # Inisialisasi GDN states untuk 30 layer GDN
+    gdn_states: dict[int, torch.Tensor] = {}
+    for layer_i in range(num_layers):
+        if (layer_i % cfg["full_attention_interval"]) != (
+            cfg["full_attention_interval"] - 1
+        ):
+            gdn_states[layer_i] = torch.zeros((32, 128, 128), dtype=torch.float32)
 
-    w_final_norm = get_tensor("model.norm.weight", stage="final_norm")
+    # 40-Layer Streaming Loop
+    for layer_idx in range(num_layers):
+        s_prev = gdn_states.get(layer_idx, torch.zeros(1))
+        x, s_next = forward_single_hybrid_layer(
+            x,
+            layer_idx,
+            args.model_dir,
+            weight_map,
+            cfg,
+            s_prev,
+            args.dump_routing,
+        )
+        if layer_idx in gdn_states:
+            gdn_states[layer_idx] = s_next
+
+    # Final RMSNorm
+    norm_pfx = "model.language_model.norm.weight"
+    if norm_pfx not in weight_map:
+        norm_pfx = "model.norm.weight"
+
+    final_shards: dict[str, safe_open] = {}
+    w_final_norm = load_shard_tensor(
+        args.model_dir, weight_map, norm_pfx, final_shards, layer=-1
+    )
     var_final = torch.mean(x**2, dim=-1, keepdim=True)
     x_final_norm = x * torch.rsqrt(var_final + eps) * w_final_norm
 
-    w_lm_head = get_tensor("lm_head.weight", stage="lm_head")
-    logits = torch.matmul(x_final_norm, w_lm_head.t())
+    # LM Head Projection
+    w_lm_head = load_shard_tensor(
+        args.model_dir, weight_map, "lm_head.weight", final_shards, layer=-1
+    )
+    logits = F.linear(x_final_norm, w_lm_head)
+    del w_lm_head, w_final_norm
+    final_shards.clear()
 
     if not torch.isfinite(logits).all():
         fail(

@@ -440,6 +440,51 @@ def _load_one_tensor_by_name(
     )
 
 
+def _load_tensor_by_numel(
+    mut cache: ShardHeaderCache,
+    model_root: String,
+    shard_file: String,
+    tensor_name: String,
+    expected_numel: Int,
+    mut telemetry: LoadMemoryTelemetry,
+) raises -> List[Float32]:
+    """Helper pemuatan satu tensor dengan verifikasi jumlah elemen dan telemetri.
+    """
+    var shard_path = resolve_within_root(model_root, shard_file)
+    var idx = cache.get_or_read(shard_path)
+    ref hdr = cache.headers[idx]
+    ref pos = cache.maps[idx]
+    if tensor_name not in pos:
+        raise Error(
+            error_json(
+                "WEIGHT_LOAD_FAILED",
+                String("tensor ", tensor_name, " not found in shard header"),
+                shard_path,
+                tensor_name,
+            )
+        )
+    var gi = pos[tensor_name]
+    ref meta = hdr.entries[gi]
+    var numel = _numel_or_fail(meta.shape, shard_path, tensor_name)
+    if numel != expected_numel:
+        raise Error(
+            error_json(
+                "WEIGHT_LOAD_FAILED",
+                String(
+                    "tensor numel mismatch: expected ",
+                    expected_numel,
+                    " got ",
+                    numel,
+                ),
+                shard_path,
+                tensor_name,
+            )
+        )
+    return load_tensor_f32_chunked(
+        shard_path, hdr.data_base, meta.copy(), telemetry
+    )
+
+
 def _load_tensor_slice_by_name(
     mut cache: ShardHeaderCache,
     model_root: String,

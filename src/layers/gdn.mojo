@@ -13,9 +13,14 @@ Dalam satu chunk berukuran m in [1, C]:
 Mendukung sembarang panjang chunk m secara native tanpa naive fallback.
 """
 
+from core.config import LoadMemoryTelemetry, ModelConfig
+from core.tensor_loader import ShardHeaderCache, _load_tensor_by_numel
+from layers.residual import add_residual
+from layers.rmsnorm import rmsnorm
+from layers.swiglu import sigmoid_f32, silu_f32
 from std.builtin.dtype import DType
-from std.collections import List
-from std.math import exp, isinf, isnan, sqrt
+from std.collections import Dict, List
+from std.math import exp, isinf, isnan, log, sqrt
 
 
 struct GDNConfig(Copyable, Movable):
@@ -748,3 +753,431 @@ def project_tokens_to_kv_beta(
         p_beta_out[unsafe_offset=t] = beta_val
 
     return ProjectedKVBeta(k_out^, v_out^, beta_out^)
+
+
+@fieldwise_init
+struct GDNWeights(Copyable, Movable):
+    """Bobot parameter Gated DeltaNet linear attention satu layer."""
+
+    var norm_gamma: List[Float32]
+    var w_qkv: List[Float32]
+    var w_conv: List[Float32]
+    var w_z: List[Float32]
+    var w_a: List[Float32]
+    var w_b: List[Float32]
+    var dt_bias: List[Float32]
+    var a_log: List[Float32]
+    var norm_weight: List[Float32]
+    var w_out: List[Float32]
+
+
+def load_layer_gdn_weights(
+    layer_idx: Int,
+    model_root: String,
+    weight_map: Dict[String, String],
+    cfg: ModelConfig,
+    mut cache: ShardHeaderCache,
+    mut telemetry: LoadMemoryTelemetry,
+) raises -> GDNWeights:
+    """Memuat seluruh bobot blok GDN satu layer dari shard safetensors."""
+    var hidden = cfg.hidden_size
+    var prefix = "model.language_model.layers." + String(layer_idx) + "."
+    if (prefix + "input_layernorm.weight") not in weight_map:
+        prefix = "model.layers." + String(layer_idx) + "."
+
+    var norm_name = prefix + "input_layernorm.weight"
+    var qkv_name = prefix + "linear_attn.in_proj_qkv.weight"
+    var conv_name = prefix + "linear_attn.conv1d.weight"
+    var z_name = prefix + "linear_attn.in_proj_z.weight"
+    var a_name = prefix + "linear_attn.in_proj_a.weight"
+    var b_name = prefix + "linear_attn.in_proj_b.weight"
+    var dt_bias_name = prefix + "linear_attn.dt_bias"
+    var a_log_name = prefix + "linear_attn.A_log"
+    var norm_w_name = prefix + "linear_attn.norm.weight"
+    var out_name = prefix + "linear_attn.out_proj.weight"
+
+    var norm_gamma = _load_tensor_by_numel(
+        cache, model_root, weight_map[norm_name], norm_name, hidden, telemetry
+    )
+    var w_qkv = _load_tensor_by_numel(
+        cache,
+        model_root,
+        weight_map[qkv_name],
+        qkv_name,
+        8192 * hidden,
+        telemetry,
+    )
+    var w_conv = _load_tensor_by_numel(
+        cache,
+        model_root,
+        weight_map[conv_name],
+        conv_name,
+        8192 * 4,
+        telemetry,
+    )
+    var w_z = _load_tensor_by_numel(
+        cache,
+        model_root,
+        weight_map[z_name],
+        z_name,
+        4096 * hidden,
+        telemetry,
+    )
+    var w_a = _load_tensor_by_numel(
+        cache,
+        model_root,
+        weight_map[a_name],
+        a_name,
+        32 * hidden,
+        telemetry,
+    )
+    var w_b = _load_tensor_by_numel(
+        cache,
+        model_root,
+        weight_map[b_name],
+        b_name,
+        32 * hidden,
+        telemetry,
+    )
+    var dt_bias = _load_tensor_by_numel(
+        cache,
+        model_root,
+        weight_map[dt_bias_name],
+        dt_bias_name,
+        32,
+        telemetry,
+    )
+    var a_log = _load_tensor_by_numel(
+        cache,
+        model_root,
+        weight_map[a_log_name],
+        a_log_name,
+        32,
+        telemetry,
+    )
+    var norm_weight = _load_tensor_by_numel(
+        cache,
+        model_root,
+        weight_map[norm_w_name],
+        norm_w_name,
+        128,
+        telemetry,
+    )
+    var w_out = _load_tensor_by_numel(
+        cache,
+        model_root,
+        weight_map[out_name],
+        out_name,
+        hidden * 4096,
+        telemetry,
+    )
+
+    return GDNWeights(
+        norm_gamma^,
+        w_qkv^,
+        w_conv^,
+        w_z^,
+        w_a^,
+        w_b^,
+        dt_bias^,
+        a_log^,
+        norm_weight^,
+        w_out^,
+    )
+
+
+def _gdn_softplus(v: Float32) -> Float32:
+    if v > Float32(20.0):
+        return v
+    if v < Float32(-20.0):
+        return exp(v)
+    return log(Float32(1.0) + exp(v))
+
+
+def forward_gdn_block(
+    x: List[Float32],
+    weights: GDNWeights,
+    seq_len: Int,
+    cfg: ModelConfig,
+    eps: Float32,
+    layer_idx: Int = 0,
+) raises -> List[Float32]:
+    """Eksekusi token mixer Gated DeltaNet (WY scan recurrence + residual 1)."""
+    var hidden = cfg.hidden_size
+
+    # 1. RMSNorm input x
+    var x_norm = List[Float32]()
+    x_norm.reserve(seq_len * hidden)
+    var tok_vec = List[Float32]()
+    tok_vec.resize(hidden, Float32(0.0))
+    var p_tok = tok_vec.unsafe_ptr()
+    var p_x = x.unsafe_ptr()
+    for t in range(seq_len):
+        var row = t * hidden
+        for k in range(hidden):
+            p_tok[unsafe_offset=k] = p_x[unsafe_offset=row + k]
+        var normed = rmsnorm(tok_vec, weights.norm_gamma, eps)
+        var p_normed = normed.unsafe_ptr()
+        for k in range(hidden):
+            x_norm.append(p_normed[unsafe_offset=k])
+
+    # 2. QKV projection: [seq_len, hidden] x [8192, hidden]^T -> [seq_len, 8192]
+    var qkv = List[Float32]()
+    qkv.resize(seq_len * 8192, Float32(0.0))
+    var p_qkv = qkv.unsafe_ptr()
+    var p_xnorm = x_norm.unsafe_ptr()
+    var p_wqkv = weights.w_qkv.unsafe_ptr()
+
+    for t in range(seq_len):
+        var x_row = t * hidden
+        var out_row = t * 8192
+        for j in range(8192):
+            var w_row = j * hidden
+            var acc_simd = SIMD[DType.float32, 16](0.0)
+            var k = 0
+            while k + 16 <= hidden:
+                acc_simd += p_xnorm.unsafe_load[width=16](
+                    x_row + k
+                ) * p_wqkv.unsafe_load[width=16](w_row + k)
+                k += 16
+            var acc = acc_simd.reduce_add()
+            while k < hidden:
+                acc += (
+                    p_xnorm[unsafe_offset=x_row + k]
+                    * p_wqkv[unsafe_offset=w_row + k]
+                )
+                k += 1
+            p_qkv[unsafe_offset=out_row + j] = acc
+
+    # 3. 1D Causal Convolution: w_conv [8192, 4], causal pad 3 + SiLU
+    var qkv_act = List[Float32]()
+    qkv_act.resize(seq_len * 8192, Float32(0.0))
+    var p_qkv_act = qkv_act.unsafe_ptr()
+    var p_wconv = weights.w_conv.unsafe_ptr()
+
+    for t in range(seq_len):
+        var out_row = t * 8192
+        for c in range(8192):
+            var conv_val = Float32(0.0)
+            var w_off = c * 4
+            for k in range(4):
+                var t_in = t - 3 + k
+                if t_in >= 0:
+                    conv_val += (
+                        p_wconv[unsafe_offset=w_off + k]
+                        * p_qkv[unsafe_offset=t_in * 8192 + c]
+                    )
+            p_qkv_act[unsafe_offset=out_row + c] = silu_f32(conv_val)
+
+    # 4. In_proj_z [4096, hidden], In_proj_a [32, hidden], In_proj_b [32, hidden]
+    var z_act = List[Float32]()
+    z_act.resize(seq_len * 4096, Float32(0.0))
+    var p_z = z_act.unsafe_ptr()
+    var p_wz = weights.w_z.unsafe_ptr()
+
+    for t in range(seq_len):
+        var x_row = t * hidden
+        var out_row = t * 4096
+        for j in range(4096):
+            var w_row = j * hidden
+            var acc_simd = SIMD[DType.float32, 16](0.0)
+            var k = 0
+            while k + 16 <= hidden:
+                acc_simd += p_xnorm.unsafe_load[width=16](
+                    x_row + k
+                ) * p_wz.unsafe_load[width=16](w_row + k)
+                k += 16
+            var acc = acc_simd.reduce_add()
+            while k < hidden:
+                acc += (
+                    p_xnorm[unsafe_offset=x_row + k]
+                    * p_wz[unsafe_offset=w_row + k]
+                )
+                k += 1
+            p_z[unsafe_offset=out_row + j] = silu_f32(acc)
+
+    var a_proj = List[Float32]()
+    a_proj.resize(seq_len * 32, Float32(0.0))
+    var p_a = a_proj.unsafe_ptr()
+    var p_wa = weights.w_a.unsafe_ptr()
+
+    var b_proj = List[Float32]()
+    b_proj.resize(seq_len * 32, Float32(0.0))
+    var p_b = b_proj.unsafe_ptr()
+    var p_wb = weights.w_b.unsafe_ptr()
+
+    for t in range(seq_len):
+        var x_row = t * hidden
+        var out_row = t * 32
+        for j in range(32):
+            var w_row = j * hidden
+            var acc_a_simd = SIMD[DType.float32, 16](0.0)
+            var acc_b_simd = SIMD[DType.float32, 16](0.0)
+            var k = 0
+            while k + 16 <= hidden:
+                var x_vec = p_xnorm.unsafe_load[width=16](x_row + k)
+                acc_a_simd += x_vec * p_wa.unsafe_load[width=16](w_row + k)
+                acc_b_simd += x_vec * p_wb.unsafe_load[width=16](w_row + k)
+                k += 16
+            var acc_a = acc_a_simd.reduce_add()
+            var acc_b = acc_b_simd.reduce_add()
+            while k < hidden:
+                var xv = p_xnorm[unsafe_offset=x_row + k]
+                acc_a += xv * p_wa[unsafe_offset=w_row + k]
+                acc_b += xv * p_wb[unsafe_offset=w_row + k]
+                k += 1
+            p_a[unsafe_offset=out_row + j] = acc_a
+            p_b[unsafe_offset=out_row + j] = acc_b
+
+    # 5. DeltaNet Recurrence Scan per Head (32 heads of dim 128)
+    var out_tensor = List[Float32]()
+    out_tensor.resize(seq_len * 4096, Float32(0.0))
+    var p_out_t = out_tensor.unsafe_ptr()
+
+    var s_matrix = List[Float32]()
+    s_matrix.resize(32 * 128 * 128, Float32(0.0))
+    var p_s = s_matrix.unsafe_ptr()
+
+    var kt_normed = List[Float32]()
+    kt_normed.resize(128, Float32(0.0))
+    var p_kt_norm = kt_normed.unsafe_ptr()
+
+    var v_sk = List[Float32]()
+    v_sk.resize(128, Float32(0.0))
+    var p_vsk = v_sk.unsafe_ptr()
+
+    for t in range(seq_len):
+        var t_act_row = t * 8192
+        var t_ab_row = t * 32
+        var t_out_row = t * 4096
+
+        for h in range(32):
+            var s_h_off = h * (128 * 128)
+            var src_h = h // 2
+
+            # Compute decay and beta for head h
+            var a_val = p_a[unsafe_offset=t_ab_row + h]
+            var dt = weights.dt_bias[h]
+            var al = weights.a_log[h]
+            var g = exp(-exp(al) * _gdn_softplus(a_val + dt))
+
+            var b_val = p_b[unsafe_offset=t_ab_row + h]
+            var beta_val = sigmoid_f32(b_val)
+
+            # Extract q, k, v pointers for head h
+            var q_off = t_act_row + src_h * 128
+            var k_off = t_act_row + 2048 + src_h * 128
+            var v_off = t_act_row + 4096 + h * 128
+
+            # Normalize k: kt / (norm(kt) + eps)
+            var sum_sq = Float32(0.0)
+            for d in range(128):
+                var kd = p_qkv_act[unsafe_offset=k_off + d]
+                sum_sq += kd * kd
+            var inv_norm_k = Float32(1.0) / (sqrt(sum_sq) + eps)
+            for d in range(128):
+                p_kt_norm[unsafe_offset=d] = (
+                    p_qkv_act[unsafe_offset=k_off + d] * inv_norm_k
+                )
+
+            # Compute v_sk = S @ kt_normed (128)
+            for r in range(128):
+                var r_off = s_h_off + r * 128
+                var acc_simd = SIMD[DType.float32, 16](0.0)
+                var d = 0
+                while d + 16 <= 128:
+                    acc_simd += p_s.unsafe_load[width=16](
+                        r_off + d
+                    ) * p_kt_norm.unsafe_load[width=16](d)
+                    d += 16
+                var acc = acc_simd.reduce_add()
+                while d < 128:
+                    acc += (
+                        p_s[unsafe_offset=r_off + d]
+                        * p_kt_norm[unsafe_offset=d]
+                    )
+                    d += 1
+                p_vsk[unsafe_offset=r] = acc
+
+            # Update S: S = g * (S - beta * v_sk * kt_norm^T) + beta * vt * kt_norm^T
+            for r in range(128):
+                var r_off = s_h_off + r * 128
+                var vr = p_qkv_act[unsafe_offset=v_off + r]
+                var vsk_r = p_vsk[unsafe_offset=r]
+                for c in range(128):
+                    var kc = p_kt_norm[unsafe_offset=c]
+                    var s_old = p_s[unsafe_offset=r_off + c]
+                    p_s[unsafe_offset=r_off + c] = (
+                        g * (s_old - beta_val * vsk_r * kc) + beta_val * vr * kc
+                    )
+
+            # Compute ot = S @ qt (128)
+            var out_h_off = t_out_row + h * 128
+            for r in range(128):
+                var r_off = s_h_off + r * 128
+                var acc_simd = SIMD[DType.float32, 16](0.0)
+                var d = 0
+                while d + 16 <= 128:
+                    acc_simd += p_s.unsafe_load[width=16](
+                        r_off + d
+                    ) * p_qkv_act.unsafe_load[width=16](q_off + d)
+                    d += 16
+                var acc = acc_simd.reduce_add()
+                while d < 128:
+                    acc += (
+                        p_s[unsafe_offset=r_off + d]
+                        * p_qkv_act[unsafe_offset=q_off + d]
+                    )
+                    d += 1
+                p_out_t[unsafe_offset=out_h_off + r] = acc
+
+    # 6. Head RMSNorm with norm_weight [128] + Gate Z [4096]
+    var p_normw = weights.norm_weight.unsafe_ptr()
+    for t in range(seq_len):
+        var t_out_row = t * 4096
+        for h in range(32):
+            var h_off = t_out_row + h * 128
+            var sum_sq = Float32(0.0)
+            for d in range(128):
+                var val = p_out_t[unsafe_offset=h_off + d]
+                sum_sq += val * val
+            var rsqrt = Float32(1.0) / sqrt(sum_sq / Float32(128.0) + eps)
+            for d in range(128):
+                var normed = (
+                    p_out_t[unsafe_offset=h_off + d]
+                    * rsqrt
+                    * p_normw[unsafe_offset=d]
+                )
+                p_out_t[unsafe_offset=h_off + d] = (
+                    normed * p_z[unsafe_offset=h_off + d]
+                )
+
+    # 7. Out projection: [seq_len, 4096] x [hidden, 4096]^T -> [seq_len, hidden]
+    var y = List[Float32]()
+    y.resize(seq_len * hidden, Float32(0.0))
+    var p_y = y.unsafe_ptr()
+    var p_wout = weights.w_out.unsafe_ptr()
+
+    for t in range(seq_len):
+        var in_row = t * 4096
+        var out_row = t * hidden
+        for j in range(hidden):
+            var w_row = j * 4096
+            var acc_simd = SIMD[DType.float32, 16](0.0)
+            var k = 0
+            while k + 16 <= 4096:
+                acc_simd += p_out_t.unsafe_load[width=16](
+                    in_row + k
+                ) * p_wout.unsafe_load[width=16](w_row + k)
+                k += 16
+            var acc = acc_simd.reduce_add()
+            while k < 4096:
+                acc += (
+                    p_out_t[unsafe_offset=in_row + k]
+                    * p_wout[unsafe_offset=w_row + k]
+                )
+                k += 1
+            p_y[unsafe_offset=out_row + j] = acc
+
+    # 8. Residual 1: x + y
+    return add_residual(y, x, layer_idx)

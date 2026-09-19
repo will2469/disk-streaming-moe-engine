@@ -113,9 +113,8 @@ def run_layer_attn(
         prefix = "model.layers." + String(layer_val) + "."
 
     var is_qwen36 = (
-        (prefix + "self_attn.q_norm.weight") in weight_map
-        or not cfg.attention_bias
-    )
+        prefix + "self_attn.q_norm.weight"
+    ) in weight_map or not cfg.attention_bias
 
     var req_list = List[String]()
     req_list.append(prefix + "input_layernorm.weight")

@@ -146,15 +146,15 @@ def cmd_head(args: List[String]) raises:
     var cfg = cfg_tuple[0].copy()
     var eps = cfg_tuple[1]
 
-    var req_embed = (
-        String("model.language_model.embed_tokens.weight")
-        if "model.language_model.embed_tokens.weight" in weight_map
-        else String("model.embed_tokens.weight")
+    var req_embed = String(
+        "model.language_model.embed_tokens.weight"
+    ) if "model.language_model.embed_tokens.weight" in weight_map else String(
+        "model.embed_tokens.weight"
     )
-    var req_norm = (
-        String("model.language_model.norm.weight")
-        if "model.language_model.norm.weight" in weight_map
-        else String("model.norm.weight")
+    var req_norm = String(
+        "model.language_model.norm.weight"
+    ) if "model.language_model.norm.weight" in weight_map else String(
+        "model.norm.weight"
     )
     var req_head = String("lm_head.weight")
 

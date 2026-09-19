@@ -5,6 +5,7 @@
 
 from core.config import ModelConfig
 from layers.rmsnorm import rmsnorm
+from std.builtin.dtype import DType
 from std.collections import List
 from std.math import isinf, isnan
 
@@ -72,12 +73,20 @@ def matmul_activation_head(
         var act_row = t * hidden_size
         for v in range(vocab_size):
             var head_row = v * hidden_size
-            var acc = Float32(0.0)
-            for k in range(hidden_size):
+            var acc_simd = SIMD[DType.float32, 16](0.0)
+            var k = 0
+            while k + 16 <= hidden_size:
+                acc_simd += p_act.unsafe_load[width=16](
+                    act_row + k
+                ) * p_head.unsafe_load[width=16](head_row + k)
+                k += 16
+            var acc = acc_simd.reduce_add()
+            while k < hidden_size:
                 acc += (
                     p_act[unsafe_offset=act_row + k]
                     * p_head[unsafe_offset=head_row + k]
                 )
+                k += 1
             logits.append(acc)
     return logits^
 
