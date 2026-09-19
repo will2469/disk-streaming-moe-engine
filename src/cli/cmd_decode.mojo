@@ -11,6 +11,7 @@ from cli.io_utils import (
 )
 from cli.m5_errors import fail_m5, m5_error_json
 from cli.m7_errors import fail_m7, m7_error_json
+from cli.m9_errors import fail_m9, M9_ERR_ARCHITECTURE, M9_ERR_QUANT
 from io.odirect import ODirectReader
 from io.telemetry import (
     get_fs_and_mounts,
@@ -167,6 +168,7 @@ def cmd_decode(args: List[String]) raises:
     var domain_key_arg = String("")
     var finish_reason_arg = String("stop")
     var quant_model_arg = String("")
+    var architecture = String("")
 
     # 1. Parse argument
     var i = 2
@@ -180,6 +182,19 @@ def cmd_decode(args: List[String]) raises:
                     "missing argument for --model-dir",
                 )
             model_dir = String(args[i + 1])
+            i += 2
+        elif a == "--architecture":
+            if i + 1 >= len(args):
+                fail_m9(
+                    M9_ERR_ARCHITECTURE,
+                    "ARCHITECTURE_ERROR",
+                    "missing argument for --architecture",
+                )
+            architecture = String(args[i + 1])
+            i += 2
+        elif a == "--quantization":
+            if i + 1 < len(args):
+                _ = args[i + 1]
             i += 2
         elif a == "--prompt":
             if i + 1 >= len(args):
@@ -501,6 +516,19 @@ def cmd_decode(args: List[String]) raises:
                 "input",
                 "unknown option: " + a,
             )
+
+    if (
+        architecture.byte_length() > 0
+        and architecture != "qwen3.6"
+        and architecture != "trial"
+    ):
+        fail_m9(
+            M9_ERR_ARCHITECTURE,
+            "ARCHITECTURE_ERROR",
+            "unsupported architecture: "
+            + architecture
+            + " (supported: qwen3.6, trial)",
+        )
 
     # Validasi opsi M7 fail-fast
     if block_size != 512 and block_size != 4096 and block_size != 8192:
@@ -1141,23 +1169,40 @@ def cmd_decode(args: List[String]) raises:
             quant_model_path.byte_length() == 0
             or get_file_size(quant_model_path) <= 0
         ):
-            fail_m5(
-                "M5_ERR_INPUT",
-                "input",
-                String(
-                    (
-                        "no quantizer model found: provide --quant-model"
-                        " <file.gguf> or point --model-dir at a .gguf file (got"
-                        " --quant-model='"
+            if architecture == "qwen3.6":
+                fail_m9(
+                    M9_ERR_QUANT,
+                    "NO_QUANTIZER_MODEL",
+                    String(
+                        (
+                            "no quantizer model found: provide --quant-model"
+                            " <file.gguf> or point --model-dir at a .gguf file"
+                            " (got --quant-model='"
+                        ),
+                        quant_model_arg,
+                        "' --model-dir='",
+                        model_dir,
+                        "')",
                     ),
-                    quant_model_arg,
-                    "' --model-dir='",
-                    model_dir,
-                    "')",
-                ),
-                run_dir=run_dir,
-                tmp_files=tmp_files,
-            )
+                )
+            else:
+                fail_m5(
+                    "M5_ERR_INPUT",
+                    "input",
+                    String(
+                        (
+                            "no quantizer model found: provide --quant-model"
+                            " <file.gguf> or point --model-dir at a .gguf file"
+                            " (got --quant-model='"
+                        ),
+                        quant_model_arg,
+                        "' --model-dir='",
+                        model_dir,
+                        "')",
+                    ),
+                    run_dir=run_dir,
+                    tmp_files=tmp_files,
+                )
 
         var gguf_index = parse_gguf_index(quant_model_path)
         try:
@@ -1803,23 +1848,40 @@ def cmd_decode(args: List[String]) raises:
         quant_model_path.byte_length() == 0
         or get_file_size(quant_model_path) <= 0
     ):
-        fail_m5(
-            "M5_ERR_INPUT",
-            "input",
-            String(
-                (
-                    "no quantizer model found: provide --quant-model"
-                    " <file.gguf> or point --model-dir at a .gguf file (got"
-                    " --quant-model='"
+        if architecture == "qwen3.6":
+            fail_m9(
+                M9_ERR_QUANT,
+                "NO_QUANTIZER_MODEL",
+                String(
+                    (
+                        "no quantizer model found: provide --quant-model"
+                        " <file.gguf> or point --model-dir at a .gguf file (got"
+                        " --quant-model='"
+                    ),
+                    quant_model_arg,
+                    "' --model-dir='",
+                    model_dir,
+                    "')",
                 ),
-                quant_model_arg,
-                "' --model-dir='",
-                model_dir,
-                "')",
-            ),
-            run_dir=run_dir,
-            tmp_files=tmp_files,
-        )
+            )
+        else:
+            fail_m5(
+                "M5_ERR_INPUT",
+                "input",
+                String(
+                    (
+                        "no quantizer model found: provide --quant-model"
+                        " <file.gguf> or point --model-dir at a .gguf file (got"
+                        " --quant-model='"
+                    ),
+                    quant_model_arg,
+                    "' --model-dir='",
+                    model_dir,
+                    "')",
+                ),
+                run_dir=run_dir,
+                tmp_files=tmp_files,
+            )
 
     var gguf_index = parse_gguf_index(quant_model_path)
     var port_cfg = ModelConfig(

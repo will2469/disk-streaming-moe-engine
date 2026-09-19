@@ -21,18 +21,9 @@
   "bootstrap_ci": {
     "n_resamples": 1000,
     "ci_pct": 95.0,
-    "p50_ci": [
-      22.102543925,
-      22.3992615
-    ],
-    "p95_ci": [
-      23.311301,
-      25.2219318
-    ],
-    "r_tail_ci": [
-      1.048602887868448,
-      1.1343273849885456
-    ]
+    "p50_ci": [22.102543925, 22.3992615],
+    "p95_ci": [23.311301, 25.2219318],
+    "r_tail_ci": [1.048602887868448, 1.1343273849885456]
   },
   "ram_adherence": {
     "tier_8gb": {
@@ -78,7 +69,7 @@
     "passed": true
   },
   "storage_e_bw": {
-    "source_report": "/home/will/Monorepo/disk-streaming-moe-engine/reports/2026-09-19/m11_w2_async_overlap.json",
+    "source_report": "reports/2026-09-19/m11_w2_async_overlap.json",
     "max_e_bw_pct": 4.702504010840303,
     "passed": true
   },
