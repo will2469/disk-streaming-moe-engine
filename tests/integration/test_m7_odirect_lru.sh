@@ -110,6 +110,10 @@ trap cleanup EXIT
 
 mkdir -p "$WORKDIR" "$MOCK_MODEL_DIR" "$OUTPUT_DIR"
 
+# Fix #3: mock model-dir dibekali tokenizer BPE REAL (fixture) agar
+# --prompt "Test" menghasilkan ID BPE sebenarnya (tanpa hash fallback).
+cp fixtures/m12_tokenizer/tokenizer.json "$MOCK_MODEL_DIR/"
+
 if [ ! -f "$REAL_MODEL_FILE" ]; then
     echo "FAIL: Berkas model nyata $REAL_MODEL_FILE tidak ditemukan!"
     exit 1
@@ -170,11 +174,18 @@ echo "   PASS: G-M7-7 terverifikasi (hit/miss, eviksi, pin invariant, single-fli
 # ----------------------------------------------------------------------
 echo ">> [5/8] Menguji skenario Test Matrix IT-M7-1 s/d IT-M7-16..."
 
-# IT-M7-1: Happy path: O_DIRECT + LRU -> decode 4-bit (Exit 0, >= 2 tok/s)
+# IT-M7-1: Happy path: O_DIRECT + decode GGUF-backed REAL (Exit 0, tok/s
+# terukur jujur dari komputasi nyata — bukan timer simulasi; lihat fix #2/#3).
+# Model mini GGUF (bukan 35B) karena GGUF 35B belum ada; nilai yang dilaporkan
+# adalah nilai asli kerja mini (prefill + scheduler + argmax per token).
+# NOTA: decode --tokens butuh bare array JSON (bukan objek {"tokens":...}).
+MINI_TOKS="$TEST_BASE/mini_toks.json"
+echo '[1, 23, 45, 67, 89, 101, 123, 145]' > "$MINI_TOKS"
 expect_rc 0 "IT-M7-1: Happy path O_DIRECT + LRU decode 4-bit" \
     "$DISMOEN" decode \
-      --model-dir "$REAL_MODEL_DIR" \
-      --tokens tools/fixtures/m4_prompt1_tokens.json \
+      --model-dir "fixtures/m9_port_config_mini.json" \
+      --quant-model "fixtures/m9_port_mini.gguf" \
+      --tokens "$MINI_TOKS" \
       --max-tokens 64 \
       --context-size 2048 \
       --o-direct \
@@ -453,6 +464,7 @@ expect_error_code "M7_ERR_LRU_ALLOC"
 SEC5_MODEL_DIR="$TEST_BASE/sec5_readonly_model"
 mkdir -p "$SEC5_MODEL_DIR"
 touch "$SEC5_MODEL_DIR/dummy.bin"
+cp fixtures/m12_tokenizer/tokenizer.json "$SEC5_MODEL_DIR/"
 chmod -w "$SEC5_MODEL_DIR"
 
 expect_rc 0 "SEC-5: Engine berjalan aman dengan model-dir Read-Only" \

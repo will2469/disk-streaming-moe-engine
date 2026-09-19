@@ -19,6 +19,14 @@ from format.gguf import (
     parse_gguf_index,
     stream_gguf_tensor_f32,
 )
+from layers.gguf_port_loader import (
+    gguf_embed_tokens,
+    gguf_logits_from_hidden,
+    load_port_block_from_gguf,
+    resolve_quant_model_path,
+    validate_gguf_port_coverage,
+)
+from std.collections import List
 from std.math import isfinite
 from std.testing import (
     TestSuite,
@@ -44,17 +52,44 @@ def test_format_detection_gguf_and_safetensors() raises:
 
 def test_gguf_index_and_metadata() raises:
     """Verifikasi parsing index GGUF v3 dan penegakan formula F11b-GGUF exact size match.
+
+    Fixture mini full-coverage: 148 tensor (3 global + per-layer norm,
+    attention/GDN, router, 8 routed experts, shared expert). Angka 148
+    adalah kontrak generator generate_m9_gguf_fixture.py — bila generator
+    berubah, update ekspektasi ini bersamaan (bukan tebakan).
     """
     var gguf_path = "fixtures/m9_port_mini.gguf"
     var index = parse_gguf_index(gguf_path)
 
     assert_equal(index.version, 3)
-    assert_equal(index.tensor_count, 27)
+    assert_equal(index.tensor_count, 148)
     assert_true("general.architecture" in index.metadata)
     assert_equal(index.metadata["general.architecture"], "qwen3.6")
 
     # Invarian F11b-GGUF: actual file size == expected file size
-    assert_equal(index.expected_file_size, 329280)
+    assert_equal(index.expected_file_size, 762080)
+
+    # Full coverage untuk compute GGUF-backed: tiap layer wajib punya
+    # tensor attention/GDN pelengkap + 8 routed experts + shared expert.
+    for l in range(4):
+        var pfx = String("blk.", l, ".")
+        assert_true(String(pfx, "attn_norm.weight") in index.tensor_map)
+        assert_true(String(pfx, "ffn_norm.weight") in index.tensor_map)
+        assert_true(String(pfx, "ffn_gate_exps.weight") in index.tensor_map)
+        assert_true(String(pfx, "ffn_shared_down.weight") in index.tensor_map)
+        assert_true(String(pfx, "shared_gate.weight") in index.tensor_map)
+        assert_true(String(pfx, "ffn_gate.0.weight") in index.tensor_map)
+        assert_true(String(pfx, "ffn_down.7.weight") in index.tensor_map)
+        if l % 4 != 3:
+            assert_true(
+                String(pfx, "linear_attn.beta.weight") in index.tensor_map
+            )
+            assert_true(
+                String(pfx, "linear_attn.out.weight") in index.tensor_map
+            )
+        else:
+            assert_true(String(pfx, "attn_v.weight") in index.tensor_map)
+            assert_true(String(pfx, "attn_o.weight") in index.tensor_map)
 
 
 def test_gguf_on_demand_tensor_streaming() raises:
@@ -127,10 +162,92 @@ def test_security_port_guards() raises:
     assert_true(caught_oom)
 
 
+def test_gguf_port_loader_wiring() raises:
+    """Verifikasi wiring quantizer fix #2: resolve + coverage + block
+    shapes + embed/head semuanya dari GGUF (tanpa sintetis/safetensors).
+    """
+    var gguf_path = "fixtures/m9_port_mini.gguf"
+
+    # 1. Resolusi path: eksplisit > .gguf langsung > kosong (fail-closed).
+    assert_equal(
+        resolve_quant_model_path(
+            gguf_path, "fixtures/m9_port_config_mini.json"
+        ),
+        gguf_path,
+    )
+    assert_equal(
+        resolve_quant_model_path("", gguf_path),
+        gguf_path,
+    )
+    assert_equal(
+        resolve_quant_model_path("", "fixtures/m9_port_config_mini.json"),
+        "",
+    )
+
+    var index = parse_gguf_index(gguf_path)
+    var cfg = ModelConfig(
+        hidden_size=128,
+        num_hidden_layers=4,
+        num_attention_heads=4,
+        vocab_size=1024,
+        num_key_value_heads=1,
+        head_dim_override=32,
+        num_experts=8,
+        num_experts_per_tok=2,
+        moe_intermediate_size=64,
+        shared_expert_intermediate_size=64,
+        full_attention_interval=4,
+        norm_topk_prob=False,
+        attention_bias=False,
+        architecture="qwen3.6",
+    )
+
+    # 2. Full coverage valid untuk komputasi port.
+    validate_gguf_port_coverage(index, cfg)
+
+    # 3. Satu block GDN (layer 0) dan satu block GatedAttn (layer 3):
+    #    dimensi working set wajib eksak (peak O(1 layer)).
+    var b0 = load_port_block_from_gguf(index, 0, cfg, 32, 32)
+    assert_true(b0.is_linear_attn)
+    assert_equal(len(b0.input_layernorm_gamma), 128)
+    assert_equal(len(b0.gdn_w_k), 32 * 128)
+    assert_equal(len(b0.gdn_w_out), 128 * 32)
+    assert_equal(len(b0.w_router), 8 * 128)
+    assert_equal(len(b0.routed_experts), 8)
+    assert_equal(len(b0.routed_experts[0].w_gate), 64 * 128)
+    assert_equal(len(b0.shared_expert.w_down), 128 * 64)
+    assert_equal(len(b0.w_shared_gate), 128)
+
+    var b3 = load_port_block_from_gguf(index, 3, cfg, 32, 32)
+    assert_true(not b3.is_linear_attn)
+    assert_equal(len(b3.gated_attn.w_q), 128 * 128)
+    assert_equal(len(b3.gated_attn.w_k), 32 * 128)
+    assert_equal(len(b3.gated_attn.w_o), 128 * 128)
+
+    # 4. Embedding 2 token dari GGUF + determinisme antar load.
+    var ids = List[Int]()
+    ids.append(7)
+    ids.append(999)
+    var emb = gguf_embed_tokens(index, ids, cfg)
+    assert_equal(len(emb), 2 * 128)
+    for i in range(len(emb)):
+        assert_true(isfinite(emb[i]))
+    var emb2 = gguf_embed_tokens(index, ids, cfg)
+    for i in range(len(emb)):
+        assert_equal(emb[i], emb2[i])
+
+    # 5. Logits dari hidden: [2 x 1024], finite.
+    var logits = gguf_logits_from_hidden(index, emb, 2, cfg, Float32(1e-6))
+    assert_equal(len(logits), 2 * 1024)
+    for i in range(len(logits)):
+        assert_true(isfinite(logits[i]))
+
+
 def add_tests_to_suite(mut suite: TestSuite):
     suite.test[test_format_detection_gguf_and_safetensors]()
     suite.test[test_gguf_index_and_metadata]()
     suite.test[test_gguf_on_demand_tensor_streaming]()
+    suite.test[test_gguf_port_loader_wiring]()
     suite.test[test_security_port_guards]()
 
 

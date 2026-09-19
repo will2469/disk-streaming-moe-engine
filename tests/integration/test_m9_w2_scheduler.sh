@@ -15,6 +15,7 @@
 # Stage 5: CLI forward-port session load continuation (recompute_tokens == 0)
 # Stage 6: KMSS corruption rejection & integrity falsification
 # Stage 7: Determinism check across independent runs
+# Stage 8: Fail-closed tanpa model kuantisasi (NO_QUANTIZER_MODEL, fix #2)
 # ==============================================================================
 
 set -euo pipefail
@@ -26,6 +27,7 @@ DISMOEN="${DISMOEN:-./dismoen}"
 TEST_DIR="/tmp/test_m9_w2_$$"
 MINI_CONFIG="fixtures/m9_port_config_mini.json"
 TOKENS_FIXTURE="fixtures/m9_port_tokens.json"
+QUANT_GGUF="fixtures/m9_port_mini.gguf"
 SESSION_FILE="${TEST_DIR}/test_m9_w2.session"
 
 cleanup() {
@@ -41,12 +43,15 @@ echo "======================================================================"
 # -----------------------------------------------------------------------------
 # Stage 1: Formatting & Static Hygiene
 # -----------------------------------------------------------------------------
-echo ">> [1/7] Memeriksa kepatuhan formatting Mojo dan zero-suppression..."
+echo ">> [1/8] Memeriksa kepatuhan formatting Mojo dan zero-suppression..."
 FORMAT_OUTPUT=$(pixi run mojo format \
     src/format/kmss.mojo \
     src/layers/gated_attention.mojo \
     src/layers/port_scheduler.mojo \
+    src/layers/gguf_port_loader.mojo \
     src/cli/cmd_forward_port.mojo \
+    src/cli/cmd_forward.mojo \
+    src/cli/cmd_decode.mojo \
     tests/unit/test_m9_w2_gqa.mojo \
     tests/unit/test_m9_w2_kmss.mojo \
     tests/unit/test_m9_w2_scheduler.mojo 2>&1)
@@ -57,7 +62,7 @@ if echo "$FORMAT_OUTPUT" | grep -q "reformatted"; then
 fi
 
 # Larangan keras noqa dan allow suppression
-M9_FILES="src/format/kmss.mojo src/layers/gated_attention.mojo src/layers/port_scheduler.mojo src/cli/cmd_forward_port.mojo tests/unit/test_m9_w2_gqa.mojo tests/unit/test_m9_w2_kmss.mojo tests/unit/test_m9_w2_scheduler.mojo"
+M9_FILES="src/format/kmss.mojo src/layers/gated_attention.mojo src/layers/port_scheduler.mojo src/layers/gguf_port_loader.mojo src/cli/cmd_forward_port.mojo src/cli/cmd_forward.mojo src/cli/cmd_decode.mojo tests/unit/test_m9_w2_gqa.mojo tests/unit/test_m9_w2_kmss.mojo tests/unit/test_m9_w2_scheduler.mojo"
 if grep -rn "noqa" $M9_FILES; then
     echo "FAIL: Ditemukan komentar noqa terlarang!"
     exit 1
@@ -66,12 +71,29 @@ if grep -rn "allow(" $M9_FILES; then
     echo "FAIL: Ditemukan allow suppression terlarang!"
     exit 1
 fi
+
+# Invarian streaming M0-M4: DILARANG konstruksi List[PortBlockWeights]() di
+# src/ maupun tests/ — menumpuk N layer di RAM = OOM pada 40L/256E nyata.
+# Pola sah: 1 block resident via create_synthetic_block_weights per layer
+# di dalam loop, discard sebelum layer berikutnya
+# (forward_port_macro_scheduler_streaming).
+if grep -rn "List\[PortBlockWeights\]()" src/cli/ src/layers/port_scheduler.mojo tests/unit/test_m9_w2_scheduler.mojo tests/unit/test_m12_prefix_cache.mojo; then
+    echo "FAIL: Ditemukan konstruksi List[PortBlockWeights]() — pelanggaran invarian streaming O(1 layer)!"
+    exit 1
+fi
+# Invarian wiring quantizer fix #2: jalur produksi CLI (forward/decode)
+# DILARANG memanggil scheduler sintetis — komputasi wajib GGUF-backed
+# (forward_port_macro_scheduler_gguf). Sintetis hanya untuk unit test.
+if grep -rn "forward_port_macro_scheduler_streaming" src/cli/; then
+    echo "FAIL: Ditemukan pemakaian scheduler sintetis di src/cli/ — produksi wajib GGUF-backed (fix #2)!"
+    exit 1
+fi
 echo "   PASS: Formatting bersih, zero-suppression terverifikasi."
 
 # -----------------------------------------------------------------------------
 # Stage 2: Kompilasi Binary dismoen
 # -----------------------------------------------------------------------------
-echo ">> [2/7] Memeriksa kompilasi binary dismoen..."
+echo ">> [2/8] Memeriksa kompilasi binary dismoen..."
 pixi run build >/dev/null 2>&1 || {
     echo "FAIL: Gagal melakukan build binary dismoen!"
     exit 1
@@ -85,7 +107,7 @@ echo "   PASS: Binary dismoen siap eksekusi."
 # -----------------------------------------------------------------------------
 # Stage 3: Eksekusi Unit Test M9-W2
 # -----------------------------------------------------------------------------
-echo ">> [3/7] Menjalankan unit test suites M9-W2..."
+echo ">> [3/8] Menjalankan unit test suites M9-W2..."
 pixi run mojo -I src tests/unit/test_m9_w2_gqa.mojo >/dev/null 2>&1 || {
     echo "FAIL: Unit test GQA gagal!"
     exit 1
@@ -103,10 +125,11 @@ echo "   PASS: Seluruh unit test (11/11) lolos."
 # -----------------------------------------------------------------------------
 # Stage 4: CLI forward-port Fresh Execution + Session Save
 # -----------------------------------------------------------------------------
-echo ">> [4/7] Menguji forward-port fresh execution dan penyimpanan KMSS v1..."
+echo ">> [4/8] Menguji forward-port fresh execution dan penyimpanan KMSS v1..."
 OUT_STAGE4=$("$DISMOEN" forward-port \
     --architecture qwen3.6 \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$TOKENS_FIXTURE" \
     --save-session "$SESSION_FILE")
 
@@ -144,10 +167,11 @@ echo "   PASS: Fresh forward pass berhasil, session tersimpan ($SESSION_SIZE byt
 # -----------------------------------------------------------------------------
 # Stage 5: CLI forward-port Session Continuation (recompute_tokens == 0)
 # -----------------------------------------------------------------------------
-echo ">> [5/7] Menguji session continuation tanpa recompute (recompute_tokens == 0)..."
+echo ">> [5/8] Menguji session continuation tanpa recompute (recompute_tokens == 0)..."
 OUT_STAGE5=$("$DISMOEN" forward-port \
     --architecture qwen3.6 \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$TOKENS_FIXTURE" \
     --load-session "$SESSION_FILE")
 
@@ -176,7 +200,7 @@ echo "   PASS: Session continuation berhasil dengan zero-recompute (recompute_to
 # -----------------------------------------------------------------------------
 # Stage 6: KMSS Corruption Rejection & Integrity Falsification
 # -----------------------------------------------------------------------------
-echo ">> [6/7] Menguji deteksi korupsi SHA-256 pada berkas session KMSS..."
+echo ">> [6/8] Menguji deteksi korupsi SHA-256 pada berkas session KMSS..."
 CORRUPT_SESSION="${TEST_DIR}/corrupt.session"
 cp "$SESSION_FILE" "$CORRUPT_SESSION"
 # Korupsi 1 byte pada offset 200 (payload KV cache)
@@ -186,6 +210,7 @@ set +e
 OUT_CORRUPT=$("$DISMOEN" forward-port \
     --architecture qwen3.6 \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$TOKENS_FIXTURE" \
     --load-session "$CORRUPT_SESSION" 2>&1)
 EXIT_CORRUPT=$?
@@ -201,9 +226,9 @@ echo "   PASS: Korupsi berkas session berhasil ditolak secara deterministik."
 # -----------------------------------------------------------------------------
 # Stage 7: Determinisme Eksekusi
 # -----------------------------------------------------------------------------
-echo ">> [7/7] Menguji determinisme eksekusi antar run..."
-RUN1=$("$DISMOEN" forward-port --architecture qwen3.6 --model-dir "$MINI_CONFIG" --tokens "$TOKENS_FIXTURE")
-RUN2=$("$DISMOEN" forward-port --architecture qwen3.6 --model-dir "$MINI_CONFIG" --tokens "$TOKENS_FIXTURE")
+echo ">> [7/8] Menguji determinisme eksekusi antar run..."
+RUN1=$("$DISMOEN" forward-port --architecture qwen3.6 --model-dir "$MINI_CONFIG" --quant-model "$QUANT_GGUF" --tokens "$TOKENS_FIXTURE")
+RUN2=$("$DISMOEN" forward-port --architecture qwen3.6 --model-dir "$MINI_CONFIG" --quant-model "$QUANT_GGUF" --tokens "$TOKENS_FIXTURE")
 
 if [[ "$RUN1" != "$RUN2" ]]; then
     echo "FAIL: Output JSON forward-port tidak deterministik antar run!"
@@ -212,6 +237,35 @@ if [[ "$RUN1" != "$RUN2" ]]; then
 fi
 echo "   PASS: Eksekusi 100% deterministik."
 
+# -----------------------------------------------------------------------------
+# Stage 8: Fail-closed tanpa model kuantisasi (NO_QUANTIZER_MODEL, fix #2)
+# -----------------------------------------------------------------------------
+echo ">> [8/8] Menguji fail-closed tanpa --quant-model (no quantizer model found)..."
+set +e
+OUT_NOQUANT=$("$DISMOEN" forward-port \
+    --architecture qwen3.6 \
+    --model-dir "$MINI_CONFIG" \
+    --tokens "$TOKENS_FIXTURE" 2>&1)
+EXIT_NOQUANT=$?
+set -e
+
+if [[ $EXIT_NOQUANT -ne 7 ]]; then
+    echo "FAIL: Tanpa quant model harus exit 7, dapat $EXIT_NOQUANT!"
+    echo "$OUT_NOQUANT"
+    exit 1
+fi
+echo "$OUT_NOQUANT" | grep -q "NO_QUANTIZER_MODEL" || {
+    echo "FAIL: Error tanpa quant model harus memuat NO_QUANTIZER_MODEL!"
+    echo "$OUT_NOQUANT"
+    exit 1
+}
+echo "$OUT_NOQUANT" | grep -q "no quantizer model found" || {
+    echo "FAIL: Error tanpa quant model harus memuat 'no quantizer model found'!"
+    echo "$OUT_NOQUANT"
+    exit 1
+}
+echo "   PASS: Fail-closed NO_QUANTIZER_MODEL terverifikasi (exit 7, tanpa fallback)."
+
 echo "======================================================================"
-echo "Semua tahap verifikasi M9-W2 BERHASIL! (7/7)"
+echo "Semua tahap verifikasi M9-W2 BERHASIL! (8/8)"
 echo "======================================================================"

@@ -69,20 +69,21 @@ from core.worker_pool import WorkerPool
 from layers.forward_layer import LayerTiming, forward_single_layer
 from layers.gated_attention import GatedAttnKVCache
 from layers.gdn import GDNState
+from layers.gguf_port_loader import (
+    forward_port_macro_scheduler_gguf,
+    gguf_embed_tokens,
+    gguf_logits_from_hidden,
+    resolve_quant_model_path,
+    validate_gguf_port_coverage,
+)
 from layers.head import (
     embedding_lookup,
     matmul_activation_head,
     validate_logits,
 )
-from layers.port_scheduler import (
-    PortBlockWeights,
-    SchedulerTimings,
-    create_synthetic_block_weights,
-    forward_port_macro_scheduler,
-)
+from layers.port_scheduler import SchedulerTimings
 from layers.rmsnorm import rmsnorm
 from std.collections import Dict, List
-from std.ffi import external_call
 from std.math import max, min
 from std.time import perf_counter_ns
 from std.sys.terminate import exit
@@ -353,6 +354,8 @@ def cmd_forward(args: List[String]) raises:
     var layer_timing = String("")
     var mock_error = String("")
     var mock_forward = False
+    var quant_model_arg = String("")
+    var quant_model_path = String("")
 
     # 1. Parse Arguments
     var i = 2
@@ -483,6 +486,15 @@ def cmd_forward(args: List[String]) raises:
         elif a == "--quantization":
             if i + 1 < len(args):
                 quantization = String(args[i + 1])
+            i += 2
+        elif a == "--quant-model":
+            if i + 1 >= len(args):
+                fail_m9(
+                    M9_ERR_INPUT,
+                    "INPUT_ERROR",
+                    "missing argument for --quant-model",
+                )
+            quant_model_arg = String(args[i + 1])
             i += 2
         elif a == "--run-id":
             if i + 1 >= len(args):
@@ -1115,6 +1127,10 @@ def cmd_forward(args: List[String]) raises:
             try:
                 verify_models_lock_manifest(model_dir_canon, lock_path)
             except e:
+                # Bersihkan run-dir yang sudah dialokasi agar tidak orphan
+                # (kontrak cleanup IT-M4-2: 0 file yatim saat gagal).
+                if run_dir.byte_length() > 0:
+                    cleanup_run_resources(run_dir, tmp_files)
                 fail_m9(M9_ERR_INPUT, "MODEL_LOCK_TAMPER_DETECTED", String(e))
 
     # 7. Eksekusi Hybrid Scheduler bila --tokens diberikan
@@ -1571,6 +1587,38 @@ def cmd_forward(args: List[String]) raises:
         if seq_len == 0:
             fail_m9(M9_ERR_INPUT, "INPUT_ERROR", "tokens array is empty")
 
+        # WAJIB quantizer: resolusi model kuantisasi GGUF. Tidak ada
+        # fallback ke safetensors real / sintetis / oracle — fail-closed
+        # dengan NO_QUANTIZER_MODEL bila berkas tidak ada.
+        quant_model_path = resolve_quant_model_path(
+            quant_model_arg, model_dir_canon
+        )
+        if (
+            quant_model_path.byte_length() == 0
+            or get_file_size(quant_model_path) <= 0
+        ):
+            fail_m9(
+                M9_ERR_QUANT,
+                "NO_QUANTIZER_MODEL",
+                String(
+                    (
+                        "no quantizer model found: provide --quant-model"
+                        " <file.gguf> or point --model-dir at a .gguf file (got"
+                        " --quant-model='"
+                    ),
+                    quant_model_arg,
+                    "' --model-dir='",
+                    model_dir_canon,
+                    "')",
+                ),
+            )
+
+        var gguf_index = parse_gguf_index(quant_model_path)
+        try:
+            validate_gguf_port_coverage(gguf_index, cfg)
+        except e:
+            fail_m9(M9_ERR_QUANT, "NO_QUANTIZER_MODEL", String(e))
+
         var kv_layers = cfg.num_attention_layers()
         var kv_heads = cfg.num_key_value_heads
         var head_dim = cfg.head_dim()
@@ -1605,20 +1653,15 @@ def cmd_forward(args: List[String]) raises:
 
         var kv_tokens_after = pos_offset + seq_len
 
-        # Buat bobot sintetis untuk seluruh layer
-        var blocks = List[PortBlockWeights]()
-        for l in range(cfg.num_hidden_layers):
-            blocks.append(create_synthetic_block_weights(cfg, l, dv, dk))
-
-        # Inisialisasi token embedding aktivasi
+        # STREAMING GGUF (M0-M4 continuity + fix #1/#2): embedding lookup
+        # dari token_embd.weight (stream sekali, discard tabel), lalu
+        # scheduler load 1 block GGUF -> forward -> discard per layer.
+        # Tidak ada bobot sintetis dan tidak ada safetensors/oracle.
         var x = List[Float32]()
-        x.resize(seq_len * cfg.hidden_size, Float32(0.0))
-        for t in range(seq_len):
-            var tid = tokens[t]
-            for d in range(cfg.hidden_size):
-                x[t * cfg.hidden_size + d] = Float32(
-                    (tid * 17 + d * 3) % 100
-                ) * Float32(0.001)
+        try:
+            x = gguf_embed_tokens(gguf_index, tokens, cfg)
+        except e:
+            fail_m9(M9_ERR_QUANT, "QUANT_EMBED_FAILED", String(e))
 
         # Jalankan macro scheduler transformer penuh dengan tracking waktu
         var t_fwd_start = perf_counter_ns()
@@ -1626,9 +1669,9 @@ def cmd_forward(args: List[String]) raises:
         var pool = WorkerPool(threads)
         var out_x = List[Float32]()
         try:
-            out_x = forward_port_macro_scheduler(
+            out_x = forward_port_macro_scheduler_gguf(
                 x,
-                blocks,
+                gguf_index,
                 gdn_states,
                 kv_cache,
                 pos_offset,
@@ -1654,6 +1697,16 @@ def cmd_forward(args: List[String]) raises:
             walltime_sec = 0.000001
         var tokens_per_sec = Float64(seq_len) / walltime_sec
 
+        # Final RMSNorm + proyeksi output.weight GGUF -> logits.
+        var logits = List[Float32]()
+        try:
+            logits = gguf_logits_from_hidden(
+                gguf_index, out_x, seq_len, cfg, eps
+            )
+        except e:
+            fail_m9(M9_ERR_QUANT, "QUANT_HEAD_FAILED", String(e))
+        _ = out_x^
+
         # Simpan session jika diminta
         if save_session_path.byte_length() > 0:
             var all_tokens = List[Int]()
@@ -1672,37 +1725,18 @@ def cmd_forward(args: List[String]) raises:
                     "failed saving session: " + String(e),
                 )
 
-        # Tulis output logits jika --output diberikan
+        # Tulis output logits GGUF-backed jika --output diberikan.
+        # DILARANG oracle Python / safetensors real: output selalu dari
+        # komputasi engine atas bobot GGUF yang di-stream.
         if output_file.byte_length() > 0:
-            var weights_fixture = String("fixtures/m9_port_weights.safetensors")
-            var ran_oracle = False
-            if c_access_r(weights_fixture):
-                var py_bin = String("python3")
-                if c_access_r(".venv/bin/python"):
-                    py_bin = String(".venv/bin/python")
-                var oracle_cmd = String(
-                    py_bin,
-                    ' tools/oracle/oracle_port.py --tokens "',
-                    tokens_path,
-                    '" --weights "',
-                    weights_fixture,
-                    '" --architecture qwen3.6 --output "',
-                    output_file,
-                    '" --seed 42 > /dev/null 2>&1',
+            try:
+                atomic_write_logits(output_file, logits)
+            except e:
+                fail_m9(
+                    M9_ERR_OUTPUT,
+                    "OUTPUT_WRITE_FAILED",
+                    "failed writing logits: " + String(e),
                 )
-                var cmd_b = oracle_cmd.as_bytes()
-                var cmd_z = List[UInt8]()
-                for idx in range(len(cmd_b)):
-                    cmd_z.append(cmd_b[idx])
-                cmd_z.append(0)
-                var ret = external_call["system", Int32](cmd_z.unsafe_ptr())
-                if ret == 0 and get_file_size(output_file) > 0:
-                    ran_oracle = True
-            if not ran_oracle:
-                try:
-                    atomic_write_logits(output_file, out_x)
-                except:
-                    pass
 
         var vmhwm = get_vmhwm_bytes()
         if vmhwm == 0:
@@ -1847,12 +1881,18 @@ def cmd_forward(args: List[String]) raises:
             ' "verdict": "PASS"\n  }'
         ),
         ',\n  "loader": {\n    "format": "',
-        "gguf" if is_gguf else "safetensors",
-        (
-            '",\n    "on_demand_streaming": true,\n   '
-            ' "heap_tensors_loaded_bytes": 0,\n    "security_audit": {\n     '
-            ' "sec1_integrity": "VERIFIED",\n      "sec3_vocab": "VERIFIED",\n '
-            '     "sec4_budget": "VERIFIED"\n    }\n  }'
+        "gguf" if (
+            is_gguf or quant_model_path.byte_length() > 0
+        ) else "safetensors",
+        String(
+            '",\n    "quant_model": "',
+            json_escape(quant_model_path),
+            (
+                '",\n    "on_demand_streaming": true,\n   '
+                ' "heap_tensors_loaded_bytes": 0,\n    "security_audit": {\n   '
+                '   "sec1_integrity": "VERIFIED",\n      "sec3_vocab":'
+                ' "VERIFIED",\n      "sec4_budget": "VERIFIED"\n    }\n  }'
+            ),
         ),
         exec_json,
         "\n}",

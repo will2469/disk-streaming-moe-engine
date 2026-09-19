@@ -95,6 +95,11 @@ def run_single_decode(
     base_cmd = [
         str(dismoen_bin),
         "decode",
+        # NOTA KEJUJURAN (fix #3): komputasi REAL butuh GGUF 35B (belum ada).
+        # --mock-decode EKSPLISIT = stub komputasi berlabel untuk plumbing +
+        # metodologi bench; tokenisasi --prompt tetap BPE real. Angka tok/s
+        # di bawah adalah timer-stub, BUKAN inferensi 35B (dilabeli di laporan).
+        "--mock-decode",
         "--model-dir",
         str(model_dir),
         "--prompt",
@@ -159,6 +164,7 @@ def run_single_decode(
     return {
         "run": run_idx,
         "type": run_type,
+        "compute": "mock-stub-labeled",
         "run_id": run_id,
         "threads": threads,
         "cgroup_confined": use_cgroup,
@@ -684,6 +690,10 @@ def main():
     print("\n" + "=" * 72)
     print("RINGKASAN BENCHMARK M5 AUTOREGRESSIVE DECODE (N=30 STATS):")
     print("=" * 72)
+    print(
+        "Compute              : mock-stub LABELED (--mock-decode; inferensi 35B"
+        " real butuh GGUF 35B)"
+    )
     print(
         f"Walltime (p50 / p95) : {stats['walltime_sec']['p50']:.3f} s / "
         f"{stats['walltime_sec']['p95']:.3f} s"

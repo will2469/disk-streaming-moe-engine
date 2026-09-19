@@ -111,6 +111,9 @@ def run_single_decode(
     base_cmd = [
         str(dismoen_bin),
         "decode",
+        # NOTA KEJUJURAN (fix #3): --mock-decode EKSPLISIT (stub komputasi
+        # berlabel; baseline 4-bit REAL butuh GGUF 35B yang belum ada).
+        "--mock-decode",
         "--model-dir",
         str(model_dir),
         "--tokens",
@@ -995,6 +998,10 @@ Pengujian dua pola I/O normatif (`tools/bench/io_benchmark.mojo`):
 ---
 
 ## 3. G-M7-3: Baseline Decode 4-bit Throughput ($N={n_count}$ Runs)
+
+> NOTA KEJUJURAN (fix #3): komputasi di bawah adalah stub berlabel
+> (--mock-decode; baseline 4-bit REAL butuh GGUF 35B). Telemetri I/O
+> (O_DIRECT/LRU) nyata; timer tok/s adalah timer-stub.
 
 - **Throughput Terukur (p50)**: **{tok_s_p50}** (Target: $\\ge 2.0\\text{{ tok/s}}$).
 - **Latensi Decode (64 token)**: {dec_sec} (p50).

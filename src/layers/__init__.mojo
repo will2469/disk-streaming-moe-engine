@@ -100,5 +100,13 @@ from layers.port_scheduler import (
     PortBlockWeights,
     create_synthetic_block_weights,
     forward_port_block,
-    forward_port_macro_scheduler,
+    forward_port_macro_scheduler_streaming,
+)
+from layers.gguf_port_loader import (
+    forward_port_macro_scheduler_gguf,
+    gguf_embed_tokens,
+    gguf_logits_from_hidden,
+    load_port_block_from_gguf,
+    resolve_quant_model_path,
+    validate_gguf_port_coverage,
 )

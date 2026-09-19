@@ -24,6 +24,7 @@ if [[ ! -x "$DISMOEN" ]]; then
 fi
 
 MINI_CONFIG="fixtures/m9_port_config_mini.json"
+QUANT_GGUF="fixtures/m9_port_mini.gguf"
 TOKENS_FIXTURE="fixtures/m9_port_tokens.json"
 
 TEST_DIR="/tmp/test_m11_w1_workerpool_$$"
@@ -80,18 +81,21 @@ LOGITS_C4="${TEST_DIR}/forward_c4.bin"
 
 "$DISMOEN" forward \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$TOKENS_FIXTURE" \
     --threads 1 \
     --output "$LOGITS_C1" > /dev/null
 
 "$DISMOEN" forward \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$TOKENS_FIXTURE" \
     --threads 2 \
     --output "$LOGITS_C2" > /dev/null
 
 "$DISMOEN" forward \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$TOKENS_FIXTURE" \
     --threads 4 \
     --output "$LOGITS_C4" > /dev/null
@@ -117,6 +121,7 @@ echo "--> Stage 4: Full CLI Decode Multithreading Parity (c=1 vs c=2 vs c=4)"
 SESS_PATH="${TEST_DIR}/prefill.kmss"
 "$DISMOEN" forward \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$TOKENS_FIXTURE" \
     --save-session "$SESS_PATH" > /dev/null
 
@@ -126,6 +131,7 @@ DEC_C4="${TEST_DIR}/dec_c4.json"
 
 "$DISMOEN" decode \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --session "$SESS_PATH" \
     --max-tokens 8 \
     --threads 1 \
@@ -133,6 +139,7 @@ DEC_C4="${TEST_DIR}/dec_c4.json"
 
 "$DISMOEN" decode \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --session "$SESS_PATH" \
     --max-tokens 8 \
     --threads 2 \
@@ -140,6 +147,7 @@ DEC_C4="${TEST_DIR}/dec_c4.json"
 
 "$DISMOEN" decode \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --session "$SESS_PATH" \
     --max-tokens 8 \
     --threads 4 \

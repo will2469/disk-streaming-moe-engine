@@ -31,6 +31,7 @@ fi
 
 MINI_CONFIG="fixtures/m9_port_config_mini.json"
 TOKENS_FIXTURE="fixtures/m9_port_tokens.json"
+QUANT_GGUF="fixtures/m9_port_mini.gguf"
 
 TEST_DIR="/tmp/test_m9_w5_$$"
 mkdir -p "$TEST_DIR"
@@ -74,6 +75,7 @@ fi
 CLI_TEST_OUT=$("$DISMOEN" forward-port \
     --architecture qwen3.6 \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$TOKENS_FIXTURE" \
     --run-id "M9-CLI-CHECK" \
     --timing-profile)
@@ -190,12 +192,14 @@ echo "--> Test 5: Invarian Determinisme Output Stdout Tanpa Flag Profiling"
 RUN1_OUT=$("$DISMOEN" forward-port \
     --architecture qwen3.6 \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$TOKENS_FIXTURE" \
     --threads 1)
 
 RUN2_OUT=$("$DISMOEN" forward-port \
     --architecture qwen3.6 \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$TOKENS_FIXTURE" \
     --threads 1)
 

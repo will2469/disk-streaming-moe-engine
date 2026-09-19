@@ -15,10 +15,8 @@ from format.kmss import KmssMetadata, read_kmss_v1, write_kmss_v1
 from layers.gated_attention import GatedAttnKVCache
 from layers.gdn import GDNState
 from layers.port_scheduler import (
-    PortBlockWeights,
     SchedulerTimings,
-    create_synthetic_block_weights,
-    forward_port_macro_scheduler,
+    forward_port_macro_scheduler_streaming,
 )
 from std.collections import List
 from std.ffi import external_call
@@ -412,10 +410,8 @@ def test_greedy_parity_cache_vs_full() raises:
     )
     var domain_key = compute_domain_key("qwen3.6", "pin_v1", "m12_v1")
 
-    # Siapkan bobot transformer sintetis
-    var blocks = List[PortBlockWeights]()
-    for l in range(cfg.num_hidden_layers):
-        blocks.append(create_synthetic_block_weights(cfg, l, 16, 16))
+    # STREAMING: tanpa List[PortBlockWeights] N layer (peak O(1 layer)).
+    # Scheduler membuat 1 block -> forward -> discard per layer.
 
     # Urutan token total T: 6 token
     var full_tokens = List[Int]()
@@ -443,9 +439,8 @@ def test_greedy_parity_cache_vs_full() raises:
                 (tid * 17 + d * 3) % 100
             ) * Float32(0.001)
 
-    var out_full = forward_port_macro_scheduler(
+    var out_full = forward_port_macro_scheduler_streaming(
         x_full,
-        blocks,
         gdn_full,
         kv_full,
         0,
@@ -482,9 +477,8 @@ def test_greedy_parity_cache_vs_full() raises:
                 (tid * 17 + d * 3) % 100
             ) * Float32(0.001)
 
-    _ = forward_port_macro_scheduler(
+    _ = forward_port_macro_scheduler_streaming(
         x_p1,
-        blocks,
         gdn_cached,
         kv_cached,
         0,
@@ -529,9 +523,8 @@ def test_greedy_parity_cache_vs_full() raises:
                 (tid * 17 + d * 3) % 100
             ) * Float32(0.001)
 
-    var out_delta = forward_port_macro_scheduler(
+    var out_delta = forward_port_macro_scheduler_streaming(
         x_delta,
-        blocks,
         gdn_delta,
         kv_delta,
         lookup_res.prefix_len,

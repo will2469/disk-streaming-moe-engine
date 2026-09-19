@@ -153,6 +153,7 @@ echo "--> Stage 3: Gate G-M9-2 Full Forward & Peak Memory Ceiling (M_peak <= 7.5
 FWD_OUT=$("$DISMOEN" forward-port \
     --architecture qwen3.6 \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$GGUF_FIXTURE" \
     --tokens "$TOKENS_FIXTURE" \
     --run-id "M9-GATE-G2" \
     --timing-profile)
@@ -192,6 +193,7 @@ echo '{"tokens": [100], "seq_len": 1}' > "$DEC_TOKENS"
 "$DISMOEN" forward-port \
     --architecture qwen3.6 \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$GGUF_FIXTURE" \
     --tokens "$TOKENS_FIXTURE" \
     --save-session "$SESS1" > /dev/null
 
@@ -199,6 +201,7 @@ echo '{"tokens": [100], "seq_len": 1}' > "$DEC_TOKENS"
 DEC_OUT=$("$DISMOEN" forward-port \
     --architecture qwen3.6 \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$GGUF_FIXTURE" \
     --tokens "$DEC_TOKENS" \
     --load-session "$SESS1" \
     --save-session "$SESS2" \
@@ -264,9 +267,9 @@ grep -q '"verdict": "PASS"' "$QUANT_REPORT" || {
     exit 1
 }
 
-# F11b ukuran berkas eksak
+# F11b ukuran berkas eksak (148 tensor full-coverage, generate_m9_gguf_fixture.py)
 ACTUAL_GGUF_SZ=$(stat -c %s "$GGUF_FIXTURE")
-EXPECTED_GGUF_SZ=329280
+EXPECTED_GGUF_SZ=762080
 if [ "$ACTUAL_GGUF_SZ" -ne "$EXPECTED_GGUF_SZ" ]; then
     echo "FAIL: F11b ukuran GGUF $ACTUAL_GGUF_SZ != $EXPECTED_GGUF_SZ (Delta != 0 B)!"
     exit 1

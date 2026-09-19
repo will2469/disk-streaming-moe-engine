@@ -2,12 +2,21 @@
 # Copyright 2026 will2469
 # Licensed under the Apache License, Version 2.0 (the "License");
 # See LICENSE for details.
-"""Tokenizer CLI & Fast Daemon helper for Dismoen Engine (M12-W2b).
+"""Tokenizer CLI & Fast Daemon helper for Dismoen Engine (M12-W2b, fix #3).
 
-Provides:
-1. --encode "<text>" : Outputs JSON list of token IDs
-2. --decode "<id or json-list>" : Decodes token ID(s) to UTF-8 text
-3. --daemon : Persistent mode reading stdin and outputting to stdout for low-latency IPC
+Kontrak non-negotiable (fix #3): TIDAK ADA fallback hash/sintetis.
+Bila tokenizer.json tidak ada atau pustaka `tokenizers` gagal memuatnya,
+proses GAGAL fail-closed (exit != 0 + pesan ke stderr). ID yang keluar
+selalu ID BPE sebenarnya dari pustaka HF — nilai asli, bukan mock.
+
+Protokol daemon (satu fork per sesi CLI, dipakai klien Mojo):
+- Server mencetak satu baris `READY` saat siap.
+- Klien mengirim satu baris JSON per permintaan:
+    {"op": "encode", "text": "<teks mentah>"}
+    {"op": "decode", "ids": [1, 2, 3]}
+- Server menjawab satu baris JSON:
+    {"ok": true, "ids": [...]} / {"ok": true, "text": "..."}
+    {"ok": false, "error": "..."}
 """
 
 import argparse
@@ -34,18 +43,6 @@ def load_vocab_size(model_dir: str) -> int:
     return DEFAULT_VOCAB_SIZE
 
 
-def fallback_encode(text: str, vocab_size: int) -> list:
-    """Simple deterministic hashing encoder for mock/synthetic tests."""
-    words = text.strip().split()
-    token_ids = []
-    for w in words:
-        h = 0
-        for c in w:
-            h = (h * 31 + ord(c)) & 0x7FFFFFFF
-        token_ids.append((h % (vocab_size - 1000)) + 100)
-    return token_ids
-
-
 def resolve_model_dir(cli_model_dir: str) -> str:
     """Precedence: --model-dir > DISMOEN_MODEL_ROOT > $HOME/models/qwen3.6-35b-a3b."""
     if cli_model_dir:
@@ -68,77 +65,77 @@ def resolve_model_dir(cli_model_dir: str) -> str:
     return ""
 
 
-def init_tokenizer(model_dir: str):
-    """Initializes tokenizers.Tokenizer if tokenizer.json exists."""
+def init_tokenizer_or_fail(model_dir: str):
+    """Initializes tokenizers.Tokenizer or FAILS CLOSED (no hash fallback)."""
     tok_path = os.path.join(model_dir, "tokenizer.json") if model_dir else ""
-    if tok_path and os.path.exists(tok_path):
-        try:
-            from tokenizers import Tokenizer
+    if not tok_path or not os.path.exists(tok_path):
+        print(
+            f"TOKENIZER_NOT_FOUND: no tokenizer.json in model dir: {model_dir!r} "
+            "(hash fallback dilarang per fix #3)",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    try:
+        from tokenizers import Tokenizer
 
-            return Tokenizer.from_file(tok_path)
-        except Exception:
-            return None
-    return None
-
-
-def encode_text(text: str, tokenizer, vocab_size: int) -> list:
-    """Encodes text to token IDs using tokenizer or fallback."""
-    if not text:
-        return []
-    if tokenizer is not None:
-        try:
-            return tokenizer.encode(text).ids
-        except Exception:
-            pass
-    return fallback_encode(text, vocab_size)
+        return Tokenizer.from_file(tok_path)
+    except Exception as exc:
+        print(
+            f"TOKENIZER_LOAD_FAILED: cannot load {tok_path}: {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
 
-def decode_token(tok_id: int, tokenizer) -> str:
-    """Decodes single token ID preserving whitespace."""
-    if tokenizer is not None:
-        try:
-            return tokenizer.decode([tok_id], skip_special_tokens=False)
-        except Exception:
-            pass
-    return f" tok_{tok_id} "
+def encode_text(text: str, tokenizer) -> list:
+    """Encodes text to REAL BPE token IDs (raises on failure, no fallback)."""
+    return tokenizer.encode(text).ids
 
 
-def handle_daemon(tokenizer, vocab_size: int):
-    """Runs interactive line-by-line daemon."""
-    while True:
-        try:
-            line = sys.stdin.readline()
-        except (KeyboardInterrupt, EOFError):
-            break
-        if not line:
-            break
+def decode_token_ids(ids: list, tokenizer) -> str:
+    """Decodes token IDs to text via the REAL tokenizer (raises on failure)."""
+    return tokenizer.decode(ids, skip_special_tokens=False)
+
+
+def handle_daemon(tokenizer):
+    """Runs persistent daemon: READY handshake, one JSON line per request."""
+    sys.stdout.write(json.dumps({"ok": True, "status": "READY"}) + "\n")
+    sys.stdout.flush()
+    for line in sys.stdin:
         line = line.rstrip("\r\n")
         if not line:
             continue
-
-        if line.startswith("Q") or line == "/exit":
-            break
-        elif line.startswith("E "):
-            ids = encode_text(line[2:], tokenizer, vocab_size)
-            sys.stdout.write(json.dumps(ids) + "\n")
+        try:
+            req = json.loads(line)
+        except Exception as exc:
+            sys.stdout.write(
+                json.dumps({"ok": False, "error": f"bad JSON: {exc}"}) + "\n"
+            )
             sys.stdout.flush()
-        elif line.startswith("D "):
-            try:
-                tid = int(line[2:].strip())
-                dec_text = decode_token(tid, tokenizer)
-                sys.stdout.write(json.dumps(dec_text) + "\n")
-                sys.stdout.flush()
-            except Exception:
-                sys.stdout.write(json.dumps("") + "\n")
-                sys.stdout.flush()
-        else:
-            sys.stdout.write(json.dumps([]) + "\n")
-            sys.stdout.flush()
+            continue
+        op = req.get("op", "")
+        try:
+            if op == "encode":
+                ids = encode_text(req.get("text", ""), tokenizer)
+                sys.stdout.write(json.dumps({"ok": True, "ids": ids}) + "\n")
+            elif op == "decode":
+                ids = req.get("ids", [])
+                text = decode_token_ids([int(x) for x in ids], tokenizer)
+                sys.stdout.write(json.dumps({"ok": True, "text": text}) + "\n")
+            elif op == "quit":
+                break
+            else:
+                sys.stdout.write(
+                    json.dumps({"ok": False, "error": f"unknown op: {op}"}) + "\n"
+                )
+        except Exception as exc:
+            sys.stdout.write(json.dumps({"ok": False, "error": str(exc)}) + "\n")
+        sys.stdout.flush()
 
 
-def handle_encode(text_to_encode: str, tokenizer, vocab_size: int, output_path: str):
-    """Handles one-shot encode command."""
-    ids = encode_text(text_to_encode, tokenizer, vocab_size)
+def handle_encode(text_to_encode: str, tokenizer, output_path: str):
+    """Handles one-shot encode command (REAL tokenizer only)."""
+    ids = encode_text(text_to_encode, tokenizer)
     if output_path:
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(ids, f)
@@ -147,26 +144,27 @@ def handle_encode(text_to_encode: str, tokenizer, vocab_size: int, output_path: 
 
 
 def handle_decode(decode_arg: str, tokenizer):
-    """Handles one-shot decode command."""
+    """Handles one-shot decode command (REAL tokenizer only).
+
+    Output ditulis TANPA newline tambahan (data murni untuk klien Mojo).
+    """
     try:
         val = json.loads(decode_arg)
         if isinstance(val, list):
-            if tokenizer is not None:
-                print(tokenizer.decode(val, skip_special_tokens=False))
-            else:
-                print(" ".join([decode_token(x, tokenizer) for x in val]))
+            sys.stdout.write(decode_token_ids([int(x) for x in val], tokenizer))
             return
         elif isinstance(val, int):
-            print(decode_token(val, tokenizer))
+            sys.stdout.write(decode_token_ids([val], tokenizer))
             return
     except Exception:
         pass
 
     try:
         tid = int(decode_arg)
-        print(decode_token(tid, tokenizer))
-    except Exception:
-        print("")
+        sys.stdout.write(decode_token_ids([tid], tokenizer))
+    except Exception as exc:
+        print(f"TOKENIZER_DECODE_FAILED: {exc}", file=sys.stderr)
+        sys.exit(2)
 
 
 def main():
@@ -180,16 +178,15 @@ def main():
 
     args = parser.parse_args()
     model_dir = resolve_model_dir(args.model_dir)
-    vocab_size = load_vocab_size(model_dir) if model_dir else DEFAULT_VOCAB_SIZE
-    tokenizer = init_tokenizer(model_dir)
+    tokenizer = init_tokenizer_or_fail(model_dir)
 
     if args.daemon:
-        handle_daemon(tokenizer, vocab_size)
+        handle_daemon(tokenizer)
         sys.exit(0)
 
     text_to_encode = args.encode or args.prompt
     if text_to_encode:
-        handle_encode(text_to_encode, tokenizer, vocab_size, args.output)
+        handle_encode(text_to_encode, tokenizer, args.output)
         sys.exit(0)
 
     if args.decode:

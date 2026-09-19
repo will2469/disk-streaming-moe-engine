@@ -155,6 +155,7 @@ echo "--> Stage 6: Testing CLI Subcommand tune & Flag --auto"
 
 # 3. Test forward --auto
 MINI_CONFIG="fixtures/m9_port_config_mini.json"
+QUANT_GGUF="fixtures/m9_port_mini.gguf"
 TOKENS_FIXTURE="fixtures/m9_port_tokens.json"
 OUT_C1="/tmp/test_fwd_c1_$$.bin"
 OUT_AUTO="/tmp/test_fwd_auto_$$.bin"
@@ -163,12 +164,14 @@ trap 'rm -f "$OUT_C1" "$OUT_AUTO"' EXIT
 
 "$DISMOEN" forward \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$TOKENS_FIXTURE" \
     --threads 1 \
     --output "$OUT_C1" > /dev/null
 
 "$DISMOEN" forward \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$TOKENS_FIXTURE" \
     --auto \
     --output "$OUT_AUTO" > /dev/null

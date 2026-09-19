@@ -3,6 +3,7 @@
 # See LICENSE for details.
 """Modul Tokenizer & Special-Token Resolver DISMOEN (Milestone 12)."""
 
+from tokenizer.hf_client import decode_via_hf, encode_via_hf
 from tokenizer.special_tokens import (
     SpecialTokenResolver,
     resolve_special_tokens,

@@ -1,0 +1,15 @@
+{
+  "added_tokens_decoder": {
+    "1": {
+      "content": "<|im_start|>"
+    },
+    "2": {
+      "content": "<|im_end|>"
+    },
+    "0": {
+      "content": "<|endoftext|>"
+    }
+  },
+  "eos_token": "<|im_end|>",
+  "tokenizer_class": "Qwen2Tokenizer"
+}

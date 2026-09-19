@@ -197,7 +197,7 @@ echo "   PASS: Validasi kuantisasi F11-GGUF (Tier 1 & Tier 2) PASS."
 # -----------------------------------------------------------------------------
 # Stage 7: Adversarial Fuzzing Runner (27 Mutasi)
 # -----------------------------------------------------------------------------
-echo ">> [7/7] Menjalankan 27 kasus adversarial fuzzing (0 crash, 0 hang, 0 OOM)..."
+echo ">> [7/7] Menjalankan kasus adversarial fuzzing (0 crash, 0 hang, 0 OOM)..."
 "$PYTHON" tools/fixtures/generate_m9_fuzz.py >/dev/null
 
 FUZZ_MANIFEST="fixtures/m9-fuzz/manifest.json"

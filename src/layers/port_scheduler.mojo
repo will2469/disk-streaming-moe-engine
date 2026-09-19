@@ -8,6 +8,15 @@ Mengimplementasikan arsitektur 40 block hybrid:
 - 30 State GDN independen per-layer S[0..29] berukuran [30, dv, dk] (bukan shared state)
 - KV cache hanya di GatedAttn (10 layer, GDN no-op KV)
 - MoE di setiap 40 block (top-8 routed + 1 shared expert)
+
+INVARIAN STREAMING (M0-M4 continuity, non-negotiable):
+- DILARANG mematerialisasi seluruh bobot model di RAM (List[PortBlockWeights]
+  untuk N layer = OOM pada 40L/256E nyata). Peak wajib O(1 layer).
+- Scheduler streaming: buat 1 block -> forward 1 block -> discard, per layer.
+  Pola yang sama dengan forward_single_layer (M4): pread -> pakai -> buang.
+- create_synthetic_block_weights adalah factory SATU layer untuk fixture mini;
+  ia bukan cache resident. Loader bobot nyata wajib mengikuti pola yang sama
+  (pread 1 layer dari safetensors/GGUF via ShardHeaderCache, lalu discard).
 """
 
 from core.config import ModelConfig
@@ -80,7 +89,12 @@ struct PortBlockWeights(Movable):
 def create_synthetic_block_weights(
     cfg: ModelConfig, layer_idx: Int, dv: Int = 32, dk: Int = 32
 ) raises -> PortBlockWeights:
-    """Membuat bobot sintetis terinisialisasi deterministik untuk satu block."""
+    """Factory bobot sintetis SATU block (fixture mini, deterministik).
+
+    INVARIAN: hasilnya adalah working set 1 layer. Caller WAJIB discard
+    setelah forward 1 block (lihat forward_port_macro_scheduler_streaming).
+    DILARANG menumpuk hasil factory ini ke List[PortBlockWeights] N layer.
+    """
     var hidden = cfg.hidden_size
     var is_linear = cfg.is_linear_attn_layer(layer_idx)
 
@@ -533,9 +547,8 @@ def forward_port_block(
     )
 
 
-def forward_port_macro_scheduler(
+def forward_port_macro_scheduler_streaming(
     x: List[Float32],
-    blocks: List[PortBlockWeights],
     mut gdn_states: GDNState,
     mut kv_cache: GatedAttnKVCache,
     pos_offset: Int,
@@ -547,7 +560,12 @@ def forward_port_macro_scheduler(
     dv: Int = 32,
     eps: Float32 = Float32(1e-6),
 ) raises -> List[Float32]:
-    """Mengeksekusi macro scheduler transformer penuh dengan WorkerPool dan tracking profil waktu.
+    """Macro scheduler STREAMING: 1 block resident, discard per layer.
+
+    Kontinuitas M0-M4: bobot 1 layer dibuat/dimuat -> forward 1 block ->
+    discard sebelum layer berikutnya. Peak O(1 layer), bukan O(N layer).
+    Bit-identical vs versi full-resident lama karena factory deterministik
+    per layer_idx dan urutan forward identik.
     """
     var cur_x = List[Float32]()
     cur_x.resize(len(x), Float32(0.0))
@@ -556,9 +574,12 @@ def forward_port_macro_scheduler(
 
     var num_layers = cfg.num_hidden_layers
     for layer_idx in range(num_layers):
+        # SATU layer resident dalam satu waktu; discard otomatis di akhir
+        # iterasi (lifetime Mojo) sebelum layer berikutnya dibuat.
+        var block = create_synthetic_block_weights(cfg, layer_idx, dv, dk)
         cur_x = forward_port_block(
             cur_x,
-            blocks[layer_idx],
+            block^,
             gdn_states,
             kv_cache,
             layer_idx,
@@ -575,9 +596,8 @@ def forward_port_macro_scheduler(
     return cur_x^
 
 
-def forward_port_macro_scheduler(
+def forward_port_macro_scheduler_streaming(
     x: List[Float32],
-    blocks: List[PortBlockWeights],
     mut gdn_states: GDNState,
     mut kv_cache: GatedAttnKVCache,
     pos_offset: Int,
@@ -588,12 +608,10 @@ def forward_port_macro_scheduler(
     dv: Int = 32,
     eps: Float32 = Float32(1e-6),
 ) raises -> List[Float32]:
-    """Mengeksekusi macro scheduler transformer penuh dengan tracking profil waktu.
-    """
+    """Macro scheduler streaming tanpa worker pool (single-threaded)."""
     var dummy_pool = WorkerPool(1)
-    return forward_port_macro_scheduler(
+    return forward_port_macro_scheduler_streaming(
         x,
-        blocks,
         gdn_states,
         kv_cache,
         pos_offset,
@@ -607,9 +625,8 @@ def forward_port_macro_scheduler(
     )
 
 
-def forward_port_macro_scheduler(
+def forward_port_macro_scheduler_streaming(
     x: List[Float32],
-    blocks: List[PortBlockWeights],
     mut gdn_states: GDNState,
     mut kv_cache: GatedAttnKVCache,
     pos_offset: Int,
@@ -619,11 +636,11 @@ def forward_port_macro_scheduler(
     dv: Int = 32,
     eps: Float32 = Float32(1e-6),
 ) raises -> List[Float32]:
-    """Mengeksekusi macro scheduler transformer penuh (40 block atau mini)."""
+    """Macro scheduler streaming tanpa akumulator timing (40 block atau mini).
+    """
     var dummy_timings = SchedulerTimings()
-    return forward_port_macro_scheduler(
+    return forward_port_macro_scheduler_streaming(
         x,
-        blocks,
         gdn_states,
         kv_cache,
         pos_offset,

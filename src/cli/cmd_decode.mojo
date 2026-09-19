@@ -45,6 +45,7 @@ from core.topology import read_hardware_lock_c_star
 from core.f3b_f5 import F3bTraffic, F5Forecast
 from core.tensor_loader import ShardHeaderCache, _load_one_tensor_by_name
 from format.file_io import read_small_file, resolve_within_root
+from format.gguf import parse_gguf_index
 from format.index import parse_index
 from format.kmss import KmssMetadata, read_kmss_v1, write_kmss_v1
 from format.types import json_escape
@@ -62,96 +63,52 @@ from layers.kv_cache import (
     validate_context_bounds,
 )
 from core.worker_pool import WorkerPool
-from layers.port_scheduler import (
-    PortBlockWeights,
-    SchedulerTimings,
-    create_synthetic_block_weights,
-    forward_port_macro_scheduler,
+from layers.gguf_port_loader import (
+    forward_port_macro_scheduler_gguf,
+    gguf_embed_tokens,
+    gguf_logits_from_hidden,
+    resolve_quant_model_path,
+    validate_gguf_port_coverage,
 )
+from layers.port_scheduler import SchedulerTimings
+from tokenizer.hf_client import encode_via_hf
 from layers.rmsnorm import rmsnorm
 from std.collections import Dict, List
 from std.ffi import external_call
-from std.math import abs, exp, isinf, isnan
+from std.math import abs, exp, isinf, isnan, max
 from std.time import perf_counter_ns
-
-
-def tokenize_text_native(text: String) -> List[Int]:
-    """Tokenize text into integer token IDs natively in Mojo."""
-    var tokens = List[Int]()
-    var b = text.as_bytes()
-    var n = len(b)
-    var i = 0
-    while i < n:
-        while i < n and (b[i] == 32 or b[i] == 9 or b[i] == 10 or b[i] == 13):
-            i += 1
-        if i >= n:
-            break
-        var h = 0
-        while i < n and b[i] != 32 and b[i] != 9 and b[i] != 10 and b[i] != 13:
-            h = (h * 31 + Int(b[i])) & 0x7FFFFFFF
-            i += 1
-        var tid = (h % 150000) + 100
-        tokens.append(tid)
-    return tokens^
 
 
 def tokenize_prompt(
     prompt_text: String, model_dir: String, run_dir: String
-) -> List[Int]:
-    """Tokenize prompt text using helper script if available, or native fallback.
+) raises -> List[Int]:
+    """Tokenisasi prompt TEKS via BPE HF REAL (fix #3, tanpa hash).
+
+    - JSON array / path berkas .json -> parse IDs langsung (tanpa tokenizer).
+    - Teks mentah -> encode_via_hf atas tokenizer.json model_dir.
+    - Gagal di titik mana pun -> raise TOKENIZER_* (fail-closed).
     """
+    _ = run_dir
     if prompt_text.byte_length() == 0:
         return List[Int]()
 
     # Cek apakah prompt_text sebenarnya JSON array [ ... ]
     var trimmed = prompt_text.strip()
     if trimmed.startswith("[") and trimmed.endswith("]"):
-        try:
-            var raw_bytes = List[UInt8]()
-            var tb = trimmed.as_bytes()
-            for k in range(len(tb)):
-                raw_bytes.append(tb[k])
-            return parse_flat_u32_tokens(raw_bytes, "inline_prompt")
-        except:
-            pass
+        var raw_bytes = List[UInt8]()
+        var tb = trimmed.as_bytes()
+        for k in range(len(tb)):
+            raw_bytes.append(tb[k])
+        return parse_flat_u32_tokens(raw_bytes, "inline_prompt")
 
     # Cek apakah prompt_text adalah file yang ada
     var trimmed_s = String(trimmed)
     if trimmed_s.endswith(".json") and get_file_size(trimmed_s) > 0:
-        try:
-            var raw = read_small_file(trimmed_s)
-            return parse_flat_u32_tokens(raw, trimmed_s)
-        except:
-            pass
+        var raw = read_small_file(trimmed_s)
+        return parse_flat_u32_tokens(raw, trimmed_s)
 
-    # Coba gunakan python tools/tokenize_prompt.py jika ada
-    var tmp_tok_path = String(run_dir, "/prompt_tokens.tmp.json")
-    var cmd = String(
-        'python3 tools/tokenize_prompt.py --model-dir "',
-        model_dir,
-        '" --prompt "',
-        prompt_text,
-        '" --output "',
-        tmp_tok_path,
-        '" 2>/dev/null',
-    )
-    var cmd_b = cmd.as_bytes()
-    var cmd_z = List[UInt8]()
-    for idx in range(len(cmd_b)):
-        cmd_z.append(cmd_b[idx])
-    cmd_z.append(0)
-
-    var ret = external_call["system", Int32](cmd_z.unsafe_ptr())
-    if ret == 0 and get_file_size(tmp_tok_path) > 0:
-        try:
-            var raw_tok = read_small_file(tmp_tok_path)
-            _ = c_unlink(tmp_tok_path)
-            return parse_flat_u32_tokens(raw_tok, tmp_tok_path)
-        except:
-            _ = c_unlink(tmp_tok_path)
-
-    # Native pure Mojo tokenization fallback
-    return tokenize_text_native(prompt_text)
+    # Jalur TEKS: BPE real, tanpa fallback apa pun.
+    return encode_via_hf(prompt_text, model_dir)
 
 
 def argmax_sample(logits: List[Float32], vocab_size: Int) raises -> Int:
@@ -209,6 +166,7 @@ def cmd_decode(args: List[String]) raises:
     var canonical_tokens_path = String("")
     var domain_key_arg = String("")
     var finish_reason_arg = String("stop")
+    var quant_model_arg = String("")
 
     # 1. Parse argument
     var i = 2
@@ -294,6 +252,15 @@ def cmd_decode(args: List[String]) raises:
                     "missing argument for --finish-reason",
                 )
             finish_reason_arg = String(args[i + 1])
+            i += 2
+        elif a == "--quant-model":
+            if i + 1 >= len(args):
+                fail_m5(
+                    "M5_ERR_INPUT",
+                    "input",
+                    "missing argument for --quant-model",
+                )
+            quant_model_arg = String(args[i + 1])
             i += 2
         elif a == "--max-tokens":
             if i + 1 >= len(args):
@@ -725,7 +692,17 @@ def cmd_decode(args: List[String]) raises:
                 tmp_files=tmp_files,
             )
     else:
-        prompt_tokens = tokenize_prompt(prompt_text, model_dir, run_dir)
+        try:
+            prompt_tokens = tokenize_prompt(prompt_text, model_dir, run_dir)
+        except e:
+            fail_m5(
+                "M5_ERR_INPUT",
+                "input",
+                "prompt tokenization failed (BPE real, tanpa fallback): "
+                + String(e),
+                run_dir=run_dir,
+                tmp_files=tmp_files,
+            )
 
     var s_prompt = len(prompt_tokens)
     if s_prompt == 0:
@@ -739,18 +716,21 @@ def cmd_decode(args: List[String]) raises:
 
     for ti in range(s_prompt):
         var tid = prompt_tokens[ti]
-        if tid < 0 or tid >= 151936:
+        # Batas kewarasan ID: 248320 = maksimum vocab yang dikenal
+        # (Qwen3.6; trial 151936 tercakup). BPE real dapat menghasilkan ID
+        # di atas 151936 — menolaknya berarti menghalangi model real.
+        if tid < 0 or tid >= 248320:
             var details = String(
                 '{"token_id":',
                 String(tid),
-                ',"vocab_size":151936,"position":',
+                ',"vocab_size":248320,"position":',
                 String(ti),
                 "}",
             )
             fail_m5(
                 "M5_ERR_INPUT",
                 "input",
-                "token ID out of range [0, 151936)",
+                "token ID out of range [0, 248320)",
                 details_json=details,
                 run_dir=run_dir,
                 tmp_files=tmp_files,
@@ -1152,6 +1132,45 @@ def cmd_decode(args: List[String]) raises:
             except:
                 pass
 
+        # WAJIB quantizer: tanpa berkas GGUF tidak ada komputasi — bukan
+        # fallback ke sintetis/safetensors. Fail-closed NO_QUANTIZER_MODEL.
+        var quant_model_path = resolve_quant_model_path(
+            quant_model_arg, model_dir
+        )
+        if (
+            quant_model_path.byte_length() == 0
+            or get_file_size(quant_model_path) <= 0
+        ):
+            fail_m5(
+                "M5_ERR_INPUT",
+                "input",
+                String(
+                    (
+                        "no quantizer model found: provide --quant-model"
+                        " <file.gguf> or point --model-dir at a .gguf file (got"
+                        " --quant-model='"
+                    ),
+                    quant_model_arg,
+                    "' --model-dir='",
+                    model_dir,
+                    "')",
+                ),
+                run_dir=run_dir,
+                tmp_files=tmp_files,
+            )
+
+        var gguf_index = parse_gguf_index(quant_model_path)
+        try:
+            validate_gguf_port_coverage(gguf_index, cfg)
+        except e:
+            fail_m5(
+                "M5_ERR_INPUT",
+                "input",
+                String(e),
+                run_dir=run_dir,
+                tmp_files=tmp_files,
+            )
+
         var l_att = cfg.num_attention_layers()
         var h_kv = cfg.num_key_value_heads
         var head_dim = cfg.head_dim()
@@ -1163,30 +1182,35 @@ def cmd_decode(args: List[String]) raises:
             kmss_kv_cache = GatedAttnKVCache(kv_cap, l_att, h_kv, head_dim)
             kmss_gdn_states = GDNState(gdn_l, 32, 32)
 
-        var blocks = List[PortBlockWeights]()
-        for l in range(cfg.num_hidden_layers):
-            blocks.append(create_synthetic_block_weights(cfg, l, 32, 32))
+        # STREAMING (M0-M4 continuity): scheduler membuat 1 block -> forward
+        # -> discard per layer di dalam loop (peak O(1 layer)). DILARANG
+        # menumpuk List[PortBlockWeights] N layer (OOM pada 40L/256E).
 
         var t_prefill_start_actual = perf_counter_ns()
         var timings = SchedulerTimings()
         var pool = WorkerPool(threads)
 
         if delta_prefill_tokens > 0:
-            var x_prefill = List[Float32]()
-            x_prefill.resize(
-                delta_prefill_tokens * cfg.hidden_size, Float32(0.0)
-            )
+            var delta_ids = List[Int]()
             for t in range(delta_prefill_tokens):
-                var tid = prompt_tokens[matched_prefix_tokens + t]
-                for d in range(cfg.hidden_size):
-                    x_prefill[t * cfg.hidden_size + d] = Float32(
-                        (tid * 17 + d * 3) % 100
-                    ) * Float32(0.001)
+                delta_ids.append(prompt_tokens[matched_prefix_tokens + t])
+            var x_prefill = List[Float32]()
+            try:
+                x_prefill = gguf_embed_tokens(gguf_index, delta_ids, cfg)
+            except e:
+                pool.shutdown()
+                fail_m5(
+                    "M5_ERR_PREFILL",
+                    "prefill",
+                    "GGUF embedding failed: " + String(e),
+                    run_dir=run_dir,
+                    tmp_files=tmp_files,
+                )
 
             try:
-                _ = forward_port_macro_scheduler(
+                _ = forward_port_macro_scheduler_gguf(
                     x_prefill,
-                    blocks,
+                    gguf_index,
                     kmss_gdn_states,
                     kmss_kv_cache,
                     matched_prefix_tokens,
@@ -1220,16 +1244,27 @@ def cmd_decode(args: List[String]) raises:
 
         for step in range(max_tokens):
             var cur_input = last_tok
+            var step_ids = List[Int]()
+            step_ids.append(cur_input)
             var x = List[Float32]()
-            x.resize(cfg.hidden_size, Float32(0.0))
-            for d in range(cfg.hidden_size):
-                x[d] = Float32((cur_input * 17 + d * 3) % 100) * Float32(0.001)
+            try:
+                x = gguf_embed_tokens(gguf_index, step_ids, cfg)
+            except e:
+                pool.shutdown()
+                fail_m5(
+                    "M5_ERR_DECODE",
+                    "decode",
+                    "GGUF embedding failed: " + String(e),
+                    run_dir=run_dir,
+                    tmp_files=tmp_files,
+                )
 
             var pos_offset = s_prompt + step
+            var step_hidden = List[Float32]()
             try:
-                _ = forward_port_macro_scheduler(
+                step_hidden = forward_port_macro_scheduler_gguf(
                     x,
-                    blocks,
+                    gguf_index,
                     kmss_gdn_states,
                     kmss_kv_cache,
                     pos_offset,
@@ -1251,9 +1286,35 @@ def cmd_decode(args: List[String]) raises:
                     tmp_files=tmp_files,
                 )
 
-            var gen_tok = (cur_input * 37 + step * 7 + 101) % cfg.vocab_size
-            if gen_tok < 0:
-                gen_tok = -gen_tok
+            # Sampling dari logits GGUF-backed (bukan hash sintetis).
+            var step_logits = List[Float32]()
+            try:
+                step_logits = gguf_logits_from_hidden(
+                    gguf_index, step_hidden, 1, cfg, Float32(1e-6)
+                )
+            except e:
+                pool.shutdown()
+                fail_m5(
+                    "M5_ERR_DECODE",
+                    "decode",
+                    "GGUF head projection failed: " + String(e),
+                    run_dir=run_dir,
+                    tmp_files=tmp_files,
+                )
+            _ = step_hidden^
+            var gen_tok = 0
+            try:
+                gen_tok = argmax_sample(step_logits, cfg.vocab_size)
+            except e:
+                pool.shutdown()
+                fail_m5(
+                    "M5_ERR_DECODE",
+                    "decode",
+                    "sampling failed: " + String(e),
+                    run_dir=run_dir,
+                    tmp_files=tmp_files,
+                )
+            _ = step_logits^
             generated_tokens.append(gen_tok)
             last_tok = gen_tok
             if step == 0:
@@ -1352,20 +1413,18 @@ def cmd_decode(args: List[String]) raises:
 
                     var reb_delta = len(canon_tokens) - reb_offset
                     if reb_delta > 0:
-                        var x_reb = List[Float32]()
-                        x_reb.resize(reb_delta * cfg.hidden_size, Float32(0.0))
+                        var reb_ids = List[Int]()
                         for t in range(reb_delta):
-                            var tid = canon_tokens[reb_offset + t]
-                            for d in range(cfg.hidden_size):
-                                x_reb[t * cfg.hidden_size + d] = Float32(
-                                    (tid * 17 + d * 3) % 100
-                                ) * Float32(0.001)
+                            reb_ids.append(canon_tokens[reb_offset + t])
                         var pool_reb = WorkerPool(threads)
                         var timings_reb = SchedulerTimings()
                         try:
-                            _ = forward_port_macro_scheduler(
+                            var x_reb = gguf_embed_tokens(
+                                gguf_index, reb_ids, cfg
+                            )
+                            _ = forward_port_macro_scheduler_gguf(
                                 x_reb,
-                                blocks,
+                                gguf_index,
                                 rebase_gdn,
                                 rebase_kv,
                                 reb_offset,
@@ -1736,19 +1795,125 @@ def cmd_decode(args: List[String]) raises:
         print(out_json)
         return
 
-    # Real decode path: model checkpoint loading
-    var index_path = String(model_dir, "/model.safetensors.index.json")
-    if get_file_size(index_path) < 0:
+    # Real decode path: inferensi streaming dari model kuantisasi GGUF.
+    # DILARANG memuat safetensors real maupun fallback mock: tanpa berkas
+    # GGUF -> fail-closed NO_QUANTIZER_MODEL (no quantizer model found).
+    var quant_model_path = resolve_quant_model_path(quant_model_arg, model_dir)
+    if (
+        quant_model_path.byte_length() == 0
+        or get_file_size(quant_model_path) <= 0
+    ):
         fail_m5(
-            "M5_ERR_PREFILL",
-            "prefill",
-            "model index not found: " + index_path,
+            "M5_ERR_INPUT",
+            "input",
+            String(
+                (
+                    "no quantizer model found: provide --quant-model"
+                    " <file.gguf> or point --model-dir at a .gguf file (got"
+                    " --quant-model='"
+                ),
+                quant_model_arg,
+                "' --model-dir='",
+                model_dir,
+                "')",
+            ),
             run_dir=run_dir,
             tmp_files=tmp_files,
         )
 
-    # For real decode execution, mock_decode=False runs full streaming inference.
-    # Fallback to mock decode if shards are not present in test environment
+    var gguf_index = parse_gguf_index(quant_model_path)
+    var port_cfg = ModelConfig(
+        hidden_size=128,
+        num_hidden_layers=4,
+        num_attention_heads=4,
+        vocab_size=1024,
+        num_key_value_heads=1,
+        head_dim_override=32,
+        num_experts=8,
+        num_experts_per_tok=2,
+        moe_intermediate_size=64,
+        shared_expert_intermediate_size=64,
+        full_attention_interval=4,
+        norm_topk_prob=False,
+        attention_bias=False,
+        architecture="qwen3.6",
+    )
+    var cfg_cand = String(model_dir, "/config.json")
+    if get_file_size(cfg_cand) <= 0:
+        cfg_cand = String(model_dir, "/m9_port_config_mini.json")
+    if get_file_size(cfg_cand) <= 0 and get_file_size(model_dir) > 0:
+        cfg_cand = model_dir
+    if get_file_size(cfg_cand) > 0:
+        try:
+            var parsed_cfg = parse_model_config(cfg_cand)
+            port_cfg = parsed_cfg[0].copy()
+        except:
+            pass
+    try:
+        validate_gguf_port_coverage(gguf_index, port_cfg)
+    except e:
+        fail_m5(
+            "M5_ERR_INPUT",
+            "input",
+            String(e),
+            run_dir=run_dir,
+            tmp_files=tmp_files,
+        )
+
+    var port_l_att = port_cfg.num_attention_layers()
+    var port_h_kv = port_cfg.num_key_value_heads
+    var port_head_dim = port_cfg.head_dim()
+    var port_gdn_l = port_cfg.num_gdn_layers()
+    var port_kv = GatedAttnKVCache(
+        max(s_prompt + max_tokens + 64, 512),
+        port_l_att,
+        port_h_kv,
+        port_head_dim,
+    )
+    var port_gdn = GDNState(port_gdn_l, 32, 32)
+    var port_timings = SchedulerTimings()
+    var port_pool = WorkerPool(threads)
+
+    # Prefill GGUF-backed dari token_embd.weight (bukan hash sintetis).
+    var prefill_ids = List[Int]()
+    for t in range(s_prompt):
+        prefill_ids.append(prompt_tokens[t])
+    var prefill_x = List[Float32]()
+    try:
+        prefill_x = gguf_embed_tokens(gguf_index, prefill_ids, port_cfg)
+    except e:
+        port_pool.shutdown()
+        fail_m5(
+            "M5_ERR_PREFILL",
+            "prefill",
+            "GGUF embedding failed: " + String(e),
+            run_dir=run_dir,
+            tmp_files=tmp_files,
+        )
+    try:
+        _ = forward_port_macro_scheduler_gguf(
+            prefill_x,
+            gguf_index,
+            port_gdn,
+            port_kv,
+            0,
+            s_prompt,
+            port_cfg,
+            port_timings,
+            port_pool,
+            32,
+            32,
+            Float32(1e-6),
+        )
+    except e:
+        port_pool.shutdown()
+        fail_m5(
+            "M5_ERR_PREFILL",
+            "prefill",
+            "GGUF prefill failed: " + String(e),
+            run_dir=run_dir,
+            tmp_files=tmp_files,
+        )
     kv_cache.set_current_len(s_prompt)
     var t_prefill_end = perf_counter_ns()
     var prefill_time_sec = (
@@ -1761,11 +1926,13 @@ def cmd_decode(args: List[String]) raises:
         max_tokens=max_tokens,
         context_size=context_size,
     )
+    var last_tok = prompt_tokens[s_prompt - 1]
 
     for step in range(max_tokens):
         try:
             step_ctx.assert_step_invariants(kv_cache.current_len())
         except e:
+            port_pool.shutdown()
             fail_m5(
                 "M5_ERR_DECODE",
                 "decode",
@@ -1774,29 +1941,61 @@ def cmd_decode(args: List[String]) raises:
                 tmp_files=tmp_files,
             )
 
-        # Simulasi akses MoE 24 layers x 4 experts via LRUCache
-        var exp_size = 5120000
-        for l in range(24):
-            for k in range(4):
-                var exp_id = (prompt_tokens[0] + step * 7 + l * 5 + k * 11) % 60
-                if l == 0 and k == 0 and (step % 2 == 0):
-                    exp_id = 17
-                var st = lru_cache.begin_access(l, exp_id)
-                if st == STATE_ABSENT:
-                    var is_pinned = l == 0 and exp_id == 17
-                    lru_cache.finish_load_size(
-                        l, exp_id, exp_size, is_pinned=is_pinned
-                    )
-
-        var gen_tok = (
-            (prompt_tokens[0] + step * 37) % 150000
-        ) + 100 if is_greedy else (
-            ((prompt_tokens[0] + step * 37 + seed_val) % 150000) + 100
-        )
+        var one_id = List[Int]()
+        one_id.append(last_tok)
+        var one_x = List[Float32]()
+        var one_hidden = List[Float32]()
+        var one_logits = List[Float32]()
+        try:
+            one_x = gguf_embed_tokens(gguf_index, one_id, port_cfg)
+            one_hidden = forward_port_macro_scheduler_gguf(
+                one_x,
+                gguf_index,
+                port_gdn,
+                port_kv,
+                s_prompt + step,
+                1,
+                port_cfg,
+                port_timings,
+                port_pool,
+                32,
+                32,
+                Float32(1e-6),
+            )
+            one_logits = gguf_logits_from_hidden(
+                gguf_index, one_hidden, 1, port_cfg, Float32(1e-6)
+            )
+        except e:
+            port_pool.shutdown()
+            fail_m5(
+                "M5_ERR_DECODE",
+                "decode",
+                "GGUF decode step failed: " + String(e),
+                run_dir=run_dir,
+                tmp_files=tmp_files,
+            )
+        _ = one_x^
+        _ = one_hidden^
+        var gen_tok = 0
+        try:
+            gen_tok = argmax_sample(one_logits, port_cfg.vocab_size)
+        except e:
+            port_pool.shutdown()
+            fail_m5(
+                "M5_ERR_DECODE",
+                "decode",
+                "sampling failed: " + String(e),
+                run_dir=run_dir,
+                tmp_files=tmp_files,
+            )
+        _ = one_logits^
 
         generated_tokens.append(gen_tok)
+        last_tok = gen_tok
         kv_cache.increment_len()
         step_ctx.advance_step()
+
+    port_pool.shutdown()
 
     var t_decode_end = perf_counter_ns()
     var decode_time_sec = Float64(t_decode_end - t_decode_start) / 1e9 + 0.01

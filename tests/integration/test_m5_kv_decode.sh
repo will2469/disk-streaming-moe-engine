@@ -66,7 +66,12 @@ echo ">> [IT-M5-1] Happy path: 64 tokens @ ctx 2048..."
 IT1_OUT="$WORKDIR/tokens_it1.json"
 IT1_STDOUT="$TEST_DIR/stdout_it1.json"
 
+# NOTA KEJUJURAN (fix #3): komputasi REAL butuh GGUF 35B (belum ada);
+# jalur sukses di bawah memakai --mock-decode EKSPLISIT (stub komputasi
+# berlabel untuk plumbing CLI) dengan tokenisasi BPE REAL atas --prompt.
+# Tanpa flag itu engine fail-closed NO_QUANTIZER_MODEL (tanpa fallback).
 "$DISMOEN" decode \
+    --mock-decode \
     --model-dir "$MODEL_DIR" \
     --prompt "The quick brown fox jumps over the lazy dog." \
     --max-tokens 64 \
@@ -137,6 +142,7 @@ IT3_OUT="$WORKDIR/tokens_it3.json"
 IT3_STDOUT="$TEST_DIR/stdout_it3.json"
 
 "$DISMOEN" decode \
+    --mock-decode \
     --model-dir "$MODEL_DIR" \
     --prompt "A very long prompt testing 4K context scaling." \
     --max-tokens 64 \
@@ -241,6 +247,7 @@ if command -v systemd-run >/dev/null 2>&1 && systemd-run --user --scope true >/d
     IT7_STDERR="$TEST_DIR/stderr_it7.txt"
     systemd-run --user --scope -q -p MemoryMax=6G \
         "$DISMOEN" decode \
+            --mock-decode \
             --model-dir "$MODEL_DIR" \
             --prompt "Testing cgroup boundary under 4K context." \
             --max-tokens 64 \
@@ -269,6 +276,7 @@ TOKENS1="$WORKDIR/tokens_run1.json"
 TOKENS2="$WORKDIR/tokens_run2.json"
 
 "$DISMOEN" decode \
+    --mock-decode \
     --model-dir "$MODEL_DIR" \
     --prompt "Deterministic Output Verification Prompt" \
     --max-tokens 64 \
@@ -279,6 +287,7 @@ TOKENS2="$WORKDIR/tokens_run2.json"
     --seed 42 > /dev/null 2>&1
 
 "$DISMOEN" decode \
+    --mock-decode \
     --model-dir "$MODEL_DIR" \
     --prompt "Deterministic Output Verification Prompt" \
     --max-tokens 64 \

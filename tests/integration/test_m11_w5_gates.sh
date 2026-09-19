@@ -134,6 +134,7 @@ echo "   [✓] WorkerPool reduction contract & bit-exact unit tests: PASS"
 
 # 2. Multi-core forward bit-exactness verification (Delta_max == 0.0)
 MINI_CONFIG="fixtures/m9_port_config_mini.json"
+QUANT_GGUF="fixtures/m9_port_mini.gguf"
 TOKENS_FIXTURE="fixtures/m9_port_tokens.json"
 OUT_C1="/tmp/test_m11_g4_c1_$$.bin"
 OUT_C4="/tmp/test_m11_g4_c4_$$.bin"
@@ -146,6 +147,7 @@ trap 'rm -f "$OUT_C1" "$OUT_C4" "$OUT_AUTO" "$SESS1" "$OUT_DEC_C1" "$OUT_DEC_C4"
 
 "$DISMOEN" forward \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$TOKENS_FIXTURE" \
     --save-session "$SESS1" \
     --threads 1 \
@@ -153,12 +155,14 @@ trap 'rm -f "$OUT_C1" "$OUT_C4" "$OUT_AUTO" "$SESS1" "$OUT_DEC_C1" "$OUT_DEC_C4"
 
 "$DISMOEN" forward \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$TOKENS_FIXTURE" \
     --threads 4 \
     --output "$OUT_C4" > /dev/null
 
 "$DISMOEN" forward \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$TOKENS_FIXTURE" \
     --auto \
     --output "$OUT_AUTO" > /dev/null
@@ -177,6 +181,7 @@ echo "   [✓] CLI forward multi-core vs single-thread: 100% bit-exact (Delta_ma
 # 3. Multi-core decode bit-exactness verification
 "$DISMOEN" decode \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --session "$SESS1" \
     --max-tokens 4 \
     --threads 1 \
@@ -184,6 +189,7 @@ echo "   [✓] CLI forward multi-core vs single-thread: 100% bit-exact (Delta_ma
 
 "$DISMOEN" decode \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --session "$SESS1" \
     --max-tokens 4 \
     --threads 4 \

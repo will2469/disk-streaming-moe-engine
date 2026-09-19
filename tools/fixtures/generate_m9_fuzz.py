@@ -236,7 +236,7 @@ def main():
         }
     )
 
-    # 10. Empty Tokens Array
+    # 10. Empty Tokens Array (dengan quant model agar mencapai validasi input)
     p10 = os.path.join(fuzz_dir, "empty_tokens.json")
     with open(p10, "w") as f:
         json.dump({"tokens": [], "seq_len": 0}, f)
@@ -248,6 +248,8 @@ def main():
             "args": [
                 "--model-dir",
                 "fixtures/m9_port_config_mini.json",
+                "--quant-model",
+                "fixtures/m9_port_mini.gguf",
                 "--architecture",
                 "qwen3.6",
                 "--tokens",
@@ -316,8 +318,27 @@ def main():
             }
         )
 
+    # 28. Missing quantizer model: tanpa --quant-model dan model-dir bukan
+    # .gguf -> fail-closed NO_QUANTIZER_MODEL (fix #2, tanpa fallback).
+    cases.append(
+        {
+            "id": "FUZZ_28_MISSING_QUANTIZER_MODEL",
+            "description": "Tanpa model kuantisasi -> NO_QUANTIZER_MODEL exit 7",
+            "args": [
+                "--model-dir",
+                "fixtures/m9_port_config_mini.json",
+                "--architecture",
+                "qwen3.6",
+                "--tokens",
+                "fixtures/m9_port_tokens.json",
+            ],
+            "want_exit": 7,
+            "want_err": "NO_QUANTIZER_MODEL",
+        }
+    )
+
     manifest = {
-        "description": "M9-W3 Fuzzing Corpus (27 Adversarial Test Cases)",
+        "description": "M9-W3 Fuzzing Corpus (28 Adversarial Test Cases)",
         "cases_count": len(cases),
         "cases": cases,
     }

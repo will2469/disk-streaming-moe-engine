@@ -187,6 +187,7 @@ def evaluate_gate_g_m9_2(dismoen_bin: Path) -> dict[str, Any]:
     """Evaluasi Gate G-M9-2: Full Forward & Peak Memory Budget <= 7.5 GiB."""
     mini_config = REPO_ROOT / "fixtures/m9_port_config_mini.json"
     tokens_file = REPO_ROOT / "fixtures/m9_port_tokens.json"
+    quant_gguf = REPO_ROOT / "fixtures/m9_port_mini.gguf"
 
     # 1. Jalankan forward-port pada dismoen binary dan baca VmHWM
     cmd = [
@@ -196,6 +197,8 @@ def evaluate_gate_g_m9_2(dismoen_bin: Path) -> dict[str, Any]:
         "qwen3.6",
         "--model-dir",
         str(mini_config),
+        "--quant-model",
+        str(quant_gguf),
         "--tokens",
         str(tokens_file),
         "--run-id",
@@ -270,6 +273,8 @@ def evaluate_gate_g_m9_3(dismoen_bin: Path) -> dict[str, Any]:
             "qwen3.6",
             "--model-dir",
             str(mini_config),
+            "--quant-model",
+            str(REPO_ROOT / "fixtures/m9_port_mini.gguf"),
             "--tokens",
             str(tokens_file),
             "--save-session",
@@ -291,6 +296,8 @@ def evaluate_gate_g_m9_3(dismoen_bin: Path) -> dict[str, Any]:
             "qwen3.6",
             "--model-dir",
             str(mini_config),
+            "--quant-model",
+            str(REPO_ROOT / "fixtures/m9_port_mini.gguf"),
             "--tokens",
             str(dec_tokens_file),
             "--load-session",
@@ -386,9 +393,9 @@ def evaluate_f11_gguf(python_bin: str) -> dict[str, Any]:
     glob_eps = metrics.get("global_epsilon_rel", 1.0)
     max_tensor_eps = metrics.get("max_tensor_epsilon_rel", 1.0)
 
-    # F11b size verification
+    # F11b size verification (148 tensor full-coverage, generate_m9_gguf_fixture.py)
     actual_size = gguf_path.stat().st_size
-    expected_size = 329280  # analytical size of fixtures/m9_port_mini.gguf
+    expected_size = 762080  # analytical size of fixtures/m9_port_mini.gguf
     delta_size = abs(actual_size - expected_size)
 
     is_pass = (

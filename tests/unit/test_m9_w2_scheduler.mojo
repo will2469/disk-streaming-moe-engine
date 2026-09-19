@@ -6,11 +6,7 @@
 from core.config import ModelConfig
 from layers.gdn import GDNState
 from layers.gated_attention import GatedAttnKVCache
-from layers.port_scheduler import (
-    PortBlockWeights,
-    create_synthetic_block_weights,
-    forward_port_macro_scheduler,
-)
+from layers.port_scheduler import forward_port_macro_scheduler_streaming
 from std.collections import List
 from std.math import isfinite
 from std.testing import (
@@ -102,7 +98,12 @@ def test_gdn_state_isolation() raises:
 
 
 def test_macro_scheduler_execution() raises:
-    """Verifikasi eksekusi forward macro scheduler pada topologi mini 4-block.
+    """Verifikasi eksekusi forward macro scheduler STREAMING pada mini 4-block.
+
+    INVARIAN M0-M4: scheduler membuat 1 block -> forward -> discard per
+    layer (peak O(1 layer)). Test ini sengaja TIDAK menumpuk
+    List[PortBlockWeights] N layer agar mencerminkan behaviour produksi
+    anti-OOM, bukan menyembunyikannya.
     """
     var hidden = 64
     var num_layers = 4  # 3 GDN + 1 GatedAttn
@@ -134,10 +135,6 @@ def test_macro_scheduler_execution() raises:
         architecture="qwen3.6",
     )
 
-    var blocks = List[PortBlockWeights]()
-    for l in range(num_layers):
-        blocks.append(create_synthetic_block_weights(cfg, l, dv, dk))
-
     var gdn_states = GDNState(num_gdn, dv, dk)
     var kv_cache = GatedAttnKVCache(16, num_attn, num_kv_heads, head_dim)
 
@@ -146,9 +143,8 @@ def test_macro_scheduler_execution() raises:
     for i in range(seq_len * hidden):
         input_x[i] = Float32(0.05 * Float32((i % 7) + 1))
 
-    var out = forward_port_macro_scheduler(
+    var out = forward_port_macro_scheduler_streaming(
         input_x,
-        blocks,
         gdn_states,
         kv_cache,
         pos_offset=0,
@@ -169,7 +165,7 @@ def test_macro_scheduler_execution() raises:
 
 
 def test_macro_scheduler_determinism() raises:
-    """Verifikasi determinisme hasil forward macro scheduler."""
+    """Verifikasi determinisme hasil forward macro scheduler streaming."""
     var hidden = 32
     var num_layers = 4
     var num_exp = 2
@@ -200,12 +196,6 @@ def test_macro_scheduler_determinism() raises:
         architecture="qwen3.6",
     )
 
-    var blocks1 = List[PortBlockWeights]()
-    var blocks2 = List[PortBlockWeights]()
-    for l in range(num_layers):
-        blocks1.append(create_synthetic_block_weights(cfg, l, dv, dk))
-        blocks2.append(create_synthetic_block_weights(cfg, l, dv, dk))
-
     var gdn1 = GDNState(num_gdn, dv, dk)
     var kv1 = GatedAttnKVCache(16, num_attn, num_kv_heads, head_dim)
 
@@ -217,11 +207,11 @@ def test_macro_scheduler_determinism() raises:
     var x2 = List[Float32]()
     x2.resize(seq_len * hidden, Float32(0.123))
 
-    var out1 = forward_port_macro_scheduler(
-        x1, blocks1, gdn1, kv1, 0, seq_len, cfg, dk, dv
+    var out1 = forward_port_macro_scheduler_streaming(
+        x1, gdn1, kv1, 0, seq_len, cfg, dk, dv
     )
-    var out2 = forward_port_macro_scheduler(
-        x2, blocks2, gdn2, kv2, 0, seq_len, cfg, dk, dv
+    var out2 = forward_port_macro_scheduler_streaming(
+        x2, gdn2, kv2, 0, seq_len, cfg, dk, dv
     )
 
     assert_equal(len(out1), len(out2))

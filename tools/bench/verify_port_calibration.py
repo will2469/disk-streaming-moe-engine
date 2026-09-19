@@ -24,6 +24,9 @@ import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+# Model kuantisasi GGUF wajib untuk runtime port (fix #2): tanpa berkas ini
+# engine fail-closed NO_QUANTIZER_MODEL (tanpa fallback).
+QUANT_GGUF = REPO_ROOT / "fixtures" / "m9_port_mini.gguf"
 
 
 def evaluate_f2_kv_cache_grid(
@@ -47,6 +50,8 @@ def evaluate_f2_kv_cache_grid(
             "qwen3.6",
             "--model-dir",
             str(config_path),
+            "--quant-model",
+            str(QUANT_GGUF),
             "--tokens",
             str(tok_file),
             "--run-id",
@@ -169,6 +174,8 @@ def calculate_f5_decode_calibration(
         "qwen3.6",
         "--model-dir",
         str(config_path),
+        "--quant-model",
+        str(QUANT_GGUF),
         "--tokens",
         str(single_tok),
         "--save-session",
@@ -186,6 +193,8 @@ def calculate_f5_decode_calibration(
             "qwen3.6",
             "--model-dir",
             str(config_path),
+            "--quant-model",
+            str(QUANT_GGUF),
             "--tokens",
             str(single_tok),
             "--load-session",

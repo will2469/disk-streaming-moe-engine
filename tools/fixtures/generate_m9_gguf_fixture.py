@@ -39,6 +39,11 @@ def encode_metadata_kv(key: str, val_type: int, val_bytes: bytes) -> bytes:
     return encode_string(key) + struct.pack("<I", val_type) + val_bytes
 
 
+def create_f32_block(num_elements: int, fill: float) -> bytes:
+    """Payload F32 deterministik (norm-like / bias-like tensors)."""
+    return struct.pack(f"<{num_elements}f", *[fill] * num_elements)
+
+
 def create_q8_0_block(num_elements: int) -> bytes:
     """Sintetis Q8_0 payload (32 weights/block, 34 bytes/block)."""
     assert num_elements % 32 == 0
@@ -121,7 +126,11 @@ def main():
     f32_norm = struct.pack(f"<{128}f", *[1.0] * 128)
     tensors.append(("output_norm.weight", [128], GGML_TYPE_F32, f32_norm))
 
-    # 4. Layer 0..3 tensors
+    # 4. Layer 0..3 tensors (full coverage untuk compute GGUF-backed:
+    #    norm + attention/GDN + router + 8 routed experts + shared expert.
+    #    Tensor legacy (attn_norm, ffn_norm, linear_attn.k/v, attn_q/k,
+    #    ffn_gate_exps, ffn_down_exps.0) dipertahankan apa adanya untuk
+    #    kompatibilitas backward (M9-W3 loader tests menunjuk ke nama itu).
     for layer_idx in range(4):
         pfx = f"blk.{layer_idx}."
         tensors.append((pfx + "attn_norm.weight", [128], GGML_TYPE_F32, f32_norm))
@@ -145,6 +154,26 @@ def main():
                     create_q4_k_block(128 * 32),
                 )
             )
+            # Pelengkap GDN: beta proj + output proj (diperlukan loader
+            # GGUF-backed; tidak ada di fixture 27-tensor awal).
+            # NOTA LAYOUT: dims GGUF [dv, hidden] agar torch-oracle
+            # (reshape reversed) melihat [hidden, dv] untuk matmul(wout, ot).
+            tensors.append(
+                (
+                    pfx + "linear_attn.beta.weight",
+                    [128],
+                    GGML_TYPE_F32,
+                    create_f32_block(128, 0.02),
+                )
+            )
+            tensors.append(
+                (
+                    pfx + "linear_attn.out.weight",
+                    [32, 128],
+                    GGML_TYPE_Q4_K,
+                    create_q4_k_block(32 * 128),
+                )
+            )
         else:  # GatedAttn
             tensors.append(
                 (
@@ -162,8 +191,33 @@ def main():
                     create_q4_k_block(128 * 32),
                 )
             )
+            # Pelengkap GatedAttn: V + gate + output proj.
+            tensors.append(
+                (
+                    pfx + "attn_v.weight",
+                    [128, 32],
+                    GGML_TYPE_Q4_K,
+                    create_q4_k_block(128 * 32),
+                )
+            )
+            tensors.append(
+                (
+                    pfx + "attn_gate.weight",
+                    [128, 128],
+                    GGML_TYPE_Q4_K,
+                    create_q4_k_block(128 * 128),
+                )
+            )
+            tensors.append(
+                (
+                    pfx + "attn_o.weight",
+                    [128, 128],
+                    GGML_TYPE_Q4_K,
+                    create_q4_k_block(128 * 128),
+                )
+            )
 
-        # MoE experts (Q3_K, 256 elems per expert)
+        # MoE router (Q8_0, 8 experts x 128 hidden) — dipertahankan.
         tensors.append(
             (
                 pfx + "ffn_gate_exps.weight",
@@ -172,12 +226,77 @@ def main():
                 create_q8_0_block(128 * 8),
             )
         )
+        # MoE legacy probe tensor — dipertahankan untuk kompatibilitas.
         tensors.append(
             (
                 pfx + "ffn_down_exps.0.weight",
                 [64, 128],
                 GGML_TYPE_Q3_K,
                 create_q3_k_block(64 * 128),
+            )
+        )
+
+        # Routed experts penuh 8 x (gate, up, down), inter=64, hidden=128.
+        # Loader GGUF-backed memakai tensor ini (bukan tensor legacy di atas).
+        for e in range(8):
+            tensors.append(
+                (
+                    pfx + f"ffn_gate.{e}.weight",
+                    [64, 128],
+                    GGML_TYPE_Q3_K,
+                    create_q3_k_block(64 * 128),
+                )
+            )
+            tensors.append(
+                (
+                    pfx + f"ffn_up.{e}.weight",
+                    [64, 128],
+                    GGML_TYPE_Q3_K,
+                    create_q3_k_block(64 * 128),
+                )
+            )
+            tensors.append(
+                (
+                    pfx + f"ffn_down.{e}.weight",
+                    [128, 64],
+                    GGML_TYPE_Q3_K,
+                    create_q3_k_block(128 * 64),
+                )
+            )
+
+        # Shared expert penuh + sigmoid gate.
+        # NOTA LAYOUT: dims GGUF [in, out] agar torch-oracle (reshape
+        # reversed, F.linear) melihat [out, in] yang benar.
+        tensors.append(
+            (
+                pfx + "ffn_shared_gate.weight",
+                [128, 64],
+                GGML_TYPE_Q3_K,
+                create_q3_k_block(128 * 64),
+            )
+        )
+        tensors.append(
+            (
+                pfx + "ffn_shared_up.weight",
+                [128, 64],
+                GGML_TYPE_Q3_K,
+                create_q3_k_block(128 * 64),
+            )
+        )
+        tensors.append(
+            (
+                pfx + "ffn_shared_down.weight",
+                [64, 128],
+                GGML_TYPE_Q3_K,
+                create_q3_k_block(64 * 128),
+            )
+        )
+        tensors.append(
+            (
+                pfx + "shared_gate.weight",
+                [128],
+                GGML_TYPE_F32,
+                create_f32_block(128, 0.02),
             )
         )
 

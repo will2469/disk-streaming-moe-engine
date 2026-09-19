@@ -80,7 +80,11 @@ fi
 
 echo ">> [3/6] Menguji dismoen decode dengan telemetri LRU cache (--cache-stats)..."
 STDOUT_DECODE="$WORKDIR/stdout_dec.json"
+# NOTA KEJUJURAN (fix #3): --mock-decode EKSPLISIT (stub komputasi berlabel;
+# komputasi REAL butuh GGUF 35B yang belum ada). Telemetri LRU/O_DIRECT nyata
+# dari plumbing; timer tok/s adalah timer-stub (dilabeli mock).
 ./dismoen decode \
+  --mock-decode \
   --model-dir "$REAL_MODEL_DIR" \
   --tokens tools/fixtures/m4_prompt1_tokens.json \
   --max-tokens 64 \

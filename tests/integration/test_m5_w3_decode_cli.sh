@@ -40,6 +40,10 @@ trap cleanup EXIT
 
 mkdir -p "$WORKDIR" "$MODEL_DIR" "$OUTPUT_DIR"
 
+# Fix #3: mock model-dir dibekali tokenizer BPE REAL (fixture) agar
+# --prompt menghasilkan ID BPE sebenarnya (tanpa hash fallback).
+cp fixtures/m12_tokenizer/tokenizer.json "$MODEL_DIR/"
+
 echo "============================================================"
 echo "M5-W3: Decode CLI Integration Verification"
 echo "============================================================"

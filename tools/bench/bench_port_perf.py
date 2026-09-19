@@ -67,6 +67,7 @@ def run_forward_port_cmd(
     tokens_file: Path,
     run_id: str,
     extra_args: list[str] | None = None,
+    quant_model: Path | None = None,
 ) -> dict:
     """Menjalankan binary dismoen forward-port dan membaca output JSON."""
     cmd = [
@@ -76,6 +77,10 @@ def run_forward_port_cmd(
         "qwen3.6",
         "--model-dir",
         str(model_dir),
+    ]
+    if quant_model is not None:
+        cmd += ["--quant-model", str(quant_model)]
+    cmd += [
         "--tokens",
         str(tokens_file),
         "--run-id",
@@ -109,12 +114,18 @@ def execute_prefill_benchmark(
     warmup: int,
     today_str: str,
     session_file: Path,
+    quant_model: Path | None = None,
 ) -> list[dict]:
     """Menjalankan benchmark prefill N=5 dengan 2x warmup."""
     print(f"--> [Prefill] Menjalankan {warmup} warmup + {n_runs} runs...")
     for _ in range(warmup):
         run_forward_port_cmd(
-            dismoen_bin, model_dir, tokens_file, "WARMUP-PREFILL", extra_args=[]
+            dismoen_bin,
+            model_dir,
+            tokens_file,
+            "WARMUP-PREFILL",
+            extra_args=[],
+            quant_model=quant_model,
         )
 
     results = []
@@ -122,7 +133,12 @@ def execute_prefill_benchmark(
         run_id = f"M9-{today_str}-{idx:03d}"
         extra = ["--save-session", str(session_file)] if idx == n_runs else []
         res = run_forward_port_cmd(
-            dismoen_bin, model_dir, tokens_file, run_id, extra_args=extra
+            dismoen_bin,
+            model_dir,
+            tokens_file,
+            run_id,
+            extra_args=extra,
+            quant_model=quant_model,
         )
         results.append(res)
     return results
@@ -137,6 +153,7 @@ def execute_decode_benchmark(
     today_str: str,
     initial_session_file: Path,
     start_run_idx: int,
+    quant_model: Path | None = None,
 ) -> list[dict]:
     """Menjalankan benchmark decode N=30 token-by-token continuation."""
     print(f"--> [Decode] Menjalankan {warmup} warmup + {n_runs} runs...")
@@ -158,6 +175,7 @@ def execute_decode_benchmark(
                 "--save-session",
                 str(next_session),
             ],
+            quant_model=quant_model,
         )
 
     results = []
@@ -174,6 +192,7 @@ def execute_decode_benchmark(
                 "--save-session",
                 str(next_session),
             ],
+            quant_model=quant_model,
         )
         recompute = res["execution"]["recompute_tokens"]
         if recompute != 0:
@@ -379,6 +398,12 @@ def main():
         help="Path ke model config JSON",
     )
     parser.add_argument(
+        "--quant-model",
+        type=Path,
+        default=REPO_ROOT / "fixtures/m9_port_mini.gguf",
+        help="Path ke model kuantisasi GGUF (wajib untuk runtime port)",
+    )
+    parser.add_argument(
         "--prefill-seq",
         type=int,
         default=128,
@@ -444,6 +469,7 @@ def main():
             args.warmup,
             today_str,
             session_file,
+            quant_model=args.quant_model,
         )
 
         decode_runs = execute_decode_benchmark(
@@ -455,6 +481,7 @@ def main():
             today_str,
             session_file,
             start_run_idx=args.n_prefill,
+            quant_model=args.quant_model,
         )
 
     prefill_stats = aggregate_run_metrics(prefill_runs)

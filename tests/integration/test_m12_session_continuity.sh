@@ -37,6 +37,7 @@ if [[ ! -x "$PYTHON" ]]; then
 fi
 
 MINI_CONFIG="fixtures/m9_port_config_mini.json"
+QUANT_GGUF="fixtures/m9_port_mini.gguf"
 TEST_DIR="/tmp/test_m12_session_continuity_$$"
 mkdir -p "$TEST_DIR"
 
@@ -120,6 +121,7 @@ EOF
 T1_OUT_TOKENS="${TEST_DIR}/turn1_gen.json"
 T1_STDOUT=$("$DISMOEN" decode \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$T1_FILE" \
     --prefix-cache-dir "$CACHE_DIR" \
     --max-tokens 4 \
@@ -149,6 +151,7 @@ EOF
 T2_OUT_TOKENS="${TEST_DIR}/turn2_gen.json"
 T2_STDOUT=$("$DISMOEN" decode \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$T2_FILE" \
     --prefix-cache-dir "$CACHE_DIR" \
     --max-tokens 4 \
@@ -177,6 +180,7 @@ mkdir -p "$EMPTY_CACHE_DIR"
 RECOMP_OUT_TOKENS="${TEST_DIR}/recomp_gen.json"
 RECOMP_STDOUT=$("$DISMOEN" decode \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$T2_FILE" \
     --prefix-cache-dir "$EMPTY_CACHE_DIR" \
     --max-tokens 4 \
@@ -189,15 +193,18 @@ TTFT_RECOMP=$("$PYTHON" -c "import json; data=json.loads('''$RECOMP_STDOUT'''); 
 echo "   Turn-2 Cache Hit TTFT: ${TTFT_TURN2} ms"
 echo "   Full Recompute TTFT   : ${TTFT_RECOMP} ms"
 
-# Asersi rasio TTFT turn2 <= 0.8 * TTFT_recompute (dalam simulasi synthetic mini-block overhead tetap ada, delta prefill 4 vs 20 tokens)
+# NOTA KEJUJURAN (fix #3): BUKTI optimasi adalah struktural (delta=4 vs 20
+# token, recompute=0 — diasersi di atas) BUKAN wall-clock: pada workload
+# mini (~20ms) noise OS mengalahkan selisih prefill 16 token. Rasio TTFT
+# hanya guardrail longgar anti-regresi parke (bukan bukti speedup).
 "$PYTHON" -c "
 ttft_hit = float('$TTFT_TURN2')
 ttft_recomp = float('$TTFT_RECOMP')
 print(f'   Rasio TTFT Hit vs Recomp: {ttft_hit / ttft_recomp:.3f}')
-assert ttft_hit <= ttft_recomp, f'TTFT cache hit ({ttft_hit}) harus lebih cepat dari recompute ({ttft_recomp})'
+assert ttft_hit <= 1.5 * ttft_recomp, f'TTFT cache hit ({ttft_hit}) > 1.5x recompute ({ttft_recomp}): regresi parke'
 "
 
-echo "   PASS: Turn-2 Cache HIT teramati (delta=4, recompute=0, TTFT speedup valid)."
+echo "   PASS: Turn-2 Cache HIT teramati (delta=4, recompute=0, TTFT wajar)."
 
 # ---------------------------------------------------------------------------
 # Stage 4: Session Isolation (Dua Sesi Beda Isi dengan Panjang Sama)
@@ -222,6 +229,7 @@ EOF
 ALPHA_OUT="${TEST_DIR}/alpha_out.json"
 "$DISMOEN" decode \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$ALPHA_TOKENS" \
     --prefix-cache-dir "$SESS_ISO_DIR" \
     --max-tokens 2 \
@@ -231,6 +239,7 @@ ALPHA_OUT="${TEST_DIR}/alpha_out.json"
 BETA_OUT="${TEST_DIR}/beta_out.json"
 BETA_STDOUT=$("$DISMOEN" decode \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$BETA_TOKENS" \
     --prefix-cache-dir "$SESS_ISO_DIR" \
     --max-tokens 2 \
@@ -262,6 +271,7 @@ EOF
 DIV_OUT="${TEST_DIR}/div_out.json"
 DIV_STDOUT=$("$DISMOEN" decode \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$DIV_TOKENS" \
     --prefix-cache-dir "$CACHE_DIR" \
     --max-tokens 2 \
@@ -314,6 +324,7 @@ EOF
 ABORT_OUT="${TEST_DIR}/abort_out.json"
 "$DISMOEN" decode \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$ABORT_TOKENS" \
     --prefix-cache-dir "$ABORT_CACHE_DIR" \
     --finish-reason "abort" \
@@ -323,6 +334,7 @@ ABORT_OUT="${TEST_DIR}/abort_out.json"
 # Verifikasi bahwa cache tetap kosong (tidak memasukkan state parsial yang abort)
 ABORT_CHECK_STDOUT=$("$DISMOEN" decode \
     --model-dir "$MINI_CONFIG" \
+    --quant-model "$QUANT_GGUF" \
     --tokens "$ABORT_TOKENS" \
     --prefix-cache-dir "$ABORT_CACHE_DIR" \
     --max-tokens 2 \
