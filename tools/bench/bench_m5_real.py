@@ -756,7 +756,7 @@ def main():
             "ram_stream_copy_bw_gb_s": bw_ram_sustained,
         },
         "model": {
-            "path": str(args.model_dir),
+            "path": str(args.model_dir).replace(os.path.expanduser("~"), "$HOME"),
             "max_tokens": args.max_tokens,
             "context_size": args.context_size,
         },

@@ -25,7 +25,7 @@ Membuktikan bahwa seluruh badan transformer 40 layer hybrid benar secara numerik
 >
 > 1. **M4 adalah Milestone Streaming Full Forward**: M4 menguji dan membuktikan bahwa _pipeline streaming layer-by-layer_ bekerja benar dari token input, embedding lookup, 40 layer transformer, hingga proyeksi LM Head.
 > 2. **Safetensors BF16 adalah SSOT Ground Truth (Oracle Reference)**:
->    - Model fisik yang ada di direktori pengguna adalah `/home/will/models/qwen3.6-35b-a3b` (67 GiB, 26 shard Safetensors BF16 asli).
+>    - Model fisik yang ada di direktori pengguna adalah `$HOME/models/qwen3.6-35b-a3b` (67 GiB, 26 shard Safetensors BF16 asli).
 >    - Format GGUF v3 adalah format kompresi/kuantisasi runtime (Q3_K/Q4_K, $\sim 15\text{ GiB}$) untuk menghemat kapasitas disk pada lingkungan produksi.
 >    - Setiap kuantisasi menghasilkan error aproksimasi numerik ($\varepsilon_{rel} \approx 10^{-2}\text{--}10^{-3}$). Untuk sertifikasi numerik presisi tinggi (Gate G-M4-1 loose $\varepsilon_{rel} \le 10^{-4}$ atau strict $10^{-6}$), referensi wajib dihitung terhadap bobot asli tanpa loss (Safetensors BF16).
 > 3. **Streaming Bersifat Format-Agnostik**:
@@ -114,7 +114,7 @@ Perkakas Oracle `tools/oracle/oracle_full.py` menjalankan full forward reference
 
 ```bash
 python tools/oracle/oracle_full.py \
-  --model-dir /home/will/models/qwen3.6-35b-a3b \
+  --model-dir $HOME/models/qwen3.6-35b-a3b \
   --tokens tools/fixtures/m4_prompt1_tokens.json \
   --output /work/logits_oracle.bin \
   [--dump-routing /work/routing]

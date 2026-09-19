@@ -71,7 +71,7 @@ dismoen check-index shard-00001-of-00003.safetensors shard-00002-of-00003.safete
 Contoh checkpoint asli Qwen3.6-35B-A3B (26 shard, N penuh):
 
 ```bash
-dismoen check-index /home/will/models/qwen3.6-35b-a3b/model-*.safetensors
+dismoen check-index $HOME/models/qwen3.6-35b-a3b/model-*.safetensors
 ```
 
 atau eksplisit 26 shard:

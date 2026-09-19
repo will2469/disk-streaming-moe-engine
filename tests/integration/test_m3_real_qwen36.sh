@@ -44,7 +44,7 @@ if [[ ! -x "$DISMOEN_TOOLS" ]]; then
     DISMOEN_TOOLS="$ROOT_DIR/target/debug/dismoen-tools"
 fi
 
-MODEL_DIR="${MODEL_DIR:-/home/will/models/qwen3.6-35b-a3b}"
+MODEL_DIR="${MODEL_DIR:-$HOME/models/qwen3.6-35b-a3b}"
 if [[ ! -d "$MODEL_DIR" || ! -f "$MODEL_DIR/model.safetensors.index.json" ]]; then
     echo "SKIP: Direktori model Qwen3.6-35B-A3B ($MODEL_DIR) tidak ditemukan. Melewati uji real MoE."
     exit 0

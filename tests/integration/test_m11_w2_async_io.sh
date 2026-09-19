@@ -5,7 +5,7 @@
 #
 # Master Integration & Gate G-M11-2 Verifier Suite (M11-W2b: Async I/O Worker & Overlap Verification).
 # Memverifikasi:
-#   1. Static Hygiene & Zero Suppression (0 noqa, 0 #[allow], 0 fast-math flags, 0 /home/will)
+#   1. Static Hygiene & Zero Suppression (0 noqa, 0 #[allow], 0 fast-math flags, 0 user home path)
 #   2. Staging Memory & Chunk Ring Unit Suite (test_m11_w2a_staging.mojo)
 #   3. Async I/O Worker & Overlap Unit Suite (test_m11_w2b_overlap.mojo)
 #   4. Rezim 2 Steady-State Calibration Benchmark (bench_async_overlap.py)
@@ -45,8 +45,9 @@ for file in "${TRACKED_FILES[@]}"; do
             echo "FAIL: Ditemukan suppressions terlarang di $file!"
             exit 1
         fi
-        if grep -F "/home/will" "$file"; then
-            echo "FAIL: Ditemukan hardcoded /home/will di $file!"
+        FORBIDDEN_USER_HOME="/home/"'will'
+        if grep -F "$FORBIDDEN_USER_HOME" "$file"; then
+            echo "FAIL: Ditemukan hardcoded user home di $file!"
             exit 1
         fi
     fi

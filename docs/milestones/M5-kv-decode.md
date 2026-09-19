@@ -321,7 +321,7 @@ Untuk G-M5-3 (memori @4K ctx), tambahkan variant:
 
 #### 1. Arsitektur Target: Qwen3.6-35B-A3B Hybrid (40 Layer: 10 Gated Attention + 30 GDN)
 
-Pada model target riil **Qwen3.6-35B-A3B** (`/home/will/models/qwen3.6-35b-a3b`), layer transformer dibagi menjadi dua jenis mixer:
+Pada model target riil **Qwen3.6-35B-A3B** (`$HOME/models/qwen3.6-35b-a3b`), layer transformer dibagi menjadi dua jenis mixer:
 
 1. **10 Layer Gated Attention ($l \in \{3, 7, 11, 15, 19, 23, 27, 31, 35, 39\}$)**:
    - Menggunakan KV Cache standar untuk menyimpan pasangan Key dan Value historis.
